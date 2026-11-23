@@ -1,0 +1,618 @@
+import { useImperativeHandle, useRef, forwardRef } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Volume2, VolumeX } from 'lucide-react';
+import { DESK_MAP } from '../../shared/maps/desk';
+import type { HudFrameData } from '../engine/ThreeGameEngine';
+import type { KillFeedEntry, RoomState } from '../../shared/types';
+import { FR } from '../i18n/fr';
+
+export interface HudHandle {
+  updateFrame: (data: HudFrameData, aimX: number, aimY: number, boosting: boolean) => void;
+}
+
+interface HudOverlayProps {
+  room: RoomState;
+  localPlayerId: string;
+  ping: number;
+  muted: boolean;
+  paused: boolean;
+  showScoreboard: boolean;
+  killFeed: KillFeedEntry[];
+  onToggleMute: () => void;
+  onTogglePause: () => void;
+  onResume: () => void;
+  onQuitToMenu: () => void;
+  onSpectatorCycle: (dir: -1 | 1) => void;
+}
+
+function formatTimer(sec: number): string {
+  const s = Math.max(0, Math.ceil(sec));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
+export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOverlay(
+  {
+    room,
+    localPlayerId,
+    ping,
+    muted,
+    paused,
+    showScoreboard,
+    killFeed,
+    onToggleMute,
+    onTogglePause,
+    onResume,
+    onQuitToMenu,
+    onSpectatorCycle,
+  },
+  ref
+) {
+  const hpFillRef = useRef<HTMLDivElement>(null);
+  const hpTextRef = useRef<HTMLSpanElement>(null);
+  const boostFillRef = useRef<HTMLDivElement>(null);
+  const heatFillRef = useRef<HTMLDivElement>(null);
+  const overheatBadgeRef = useRef<HTMLSpanElement>(null);
+  const speedRef = useRef<HTMLSpanElement>(null);
+  const timerRef = useRef<HTMLSpanElement>(null);
+  const livesWrapRef = useRef<HTMLDivElement>(null);
+  const reticleRef = useRef<HTMLDivElement>(null);
+  const speedLinesRef = useRef<SVGSVGElement>(null);
+  const oobBannerRef = useRef<HTMLDivElement>(null);
+  const oobCountdownRef = useRef<HTMLSpanElement>(null);
+  const spectatorBarRef = useRef<HTMLDivElement>(null);
+  const spectatorNameRef = useRef<HTMLSpanElement>(null);
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+  const labelsContainerRef = useRef<HTMLDivElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    updateFrame(data: HudFrameData, aimX: number, aimY: number, boosting: boolean) {
+      const hpPct = Math.max(0, Math.min(100, (data.hp / Math.max(1, data.maxHp)) * 100));
+      if (hpFillRef.current) {
+        hpFillRef.current.style.width = `${hpPct}%`;
+        hpFillRef.current.style.backgroundColor =
+          hpPct > 50 ? '#22C55E' : hpPct > 25 ? '#F59E0B' : '#EF4444';
+      }
+      if (hpTextRef.current) {
+        hpTextRef.current.textContent = `${data.hp}/${data.maxHp}`;
+      }
+      if (boostFillRef.current) {
+        boostFillRef.current.style.width = `${Math.max(0, Math.min(100, data.boost))}%`;
+      }
+      if (heatFillRef.current) {
+        heatFillRef.current.style.width = `${Math.max(0, Math.min(100, data.heat))}%`;
+        heatFillRef.current.style.backgroundColor = data.overheated ? '#EF4444' : '#F97316';
+      }
+      if (overheatBadgeRef.current) {
+        overheatBadgeRef.current.style.display = data.overheated ? 'inline' : 'none';
+      }
+      if (speedRef.current) {
+        speedRef.current.textContent = `${data.speed}`;
+      }
+      if (timerRef.current) {
+        timerRef.current.textContent = formatTimer(data.roundTimer);
+      }
+
+      if (livesWrapRef.current) {
+        const children = livesWrapRef.current.children;
+        for (let i = 0; i < children.length; i++) {
+          const el = children[i] as HTMLElement;
+          el.style.opacity = i < data.lives ? '1' : '0.22';
+        }
+      }
+
+      if (reticleRef.current) {
+        const rx = aimX * 160;
+        const ry = -aimY * 110;
+        reticleRef.current.style.transform = `translate(calc(-50% + ${rx}px), calc(-50% + ${ry}px))`;
+      }
+
+      if (speedLinesRef.current) {
+        speedLinesRef.current.style.opacity = boosting && data.alive && data.boost > 2 ? '0.65' : '0';
+      }
+
+      if (oobBannerRef.current && oobCountdownRef.current) {
+        if (data.alive && data.outOfBounds > 0.05) {
+          oobBannerRef.current.style.display = 'flex';
+          const rem = Math.max(0, 4.0 - data.outOfBounds);
+          oobCountdownRef.current.textContent = `${rem.toFixed(1)}s`;
+        } else {
+          oobBannerRef.current.style.display = 'none';
+        }
+      }
+
+      if (spectatorBarRef.current && spectatorNameRef.current) {
+        if (!data.alive && data.lives <= 0 && room.phase === 'playing') {
+          spectatorBarRef.current.style.display = 'flex';
+          spectatorNameRef.current.textContent = data.spectatingName || '—';
+        } else {
+          spectatorBarRef.current.style.display = 'none';
+        }
+      }
+
+      // Draw Minimap
+      const mc = minimapCanvasRef.current;
+      if (mc) {
+        const ctx = mc.getContext('2d');
+        if (ctx) {
+          const w = mc.width;
+          const h = mc.height;
+          ctx.clearRect(0, 0, w, h);
+
+          // Room floor
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(0, 0, w, h);
+
+          const toMx = (wx: number) =>
+            ((wx - DESK_MAP.hardBounds.minX) /
+              (DESK_MAP.hardBounds.maxX - DESK_MAP.hardBounds.minX)) *
+            w;
+          const toMy = (wz: number) =>
+            ((wz - DESK_MAP.hardBounds.minZ) /
+              (DESK_MAP.hardBounds.maxZ - DESK_MAP.hardBounds.minZ)) *
+            h;
+
+          // Desk outline
+          ctx.fillStyle = '#92400E';
+          ctx.fillRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
+          ctx.strokeStyle = '#FDE68A';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
+
+          // Blips
+          for (const b of data.minimapBlips) {
+            const bx = toMx(b.x);
+            const by = toMy(b.z);
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(-b.yaw);
+            ctx.beginPath();
+            if (b.isLocal) {
+              ctx.fillStyle = '#FACC15';
+              ctx.moveTo(0, -6);
+              ctx.lineTo(4.5, 5);
+              ctx.lineTo(-4.5, 5);
+            } else {
+              ctx.fillStyle =
+                b.team === 'red' ? '#EF4444' : b.team === 'blue' ? '#38BDF8' : '#FB7185';
+              ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+
+      // Render projected enemy name tags & off-screen directional arrows
+      const container = labelsContainerRef.current;
+      if (container) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let html = '';
+        for (const lbl of data.labels) {
+          const badgeColor =
+            lbl.team === 'blue' ? '#2563EB' : lbl.team === 'red' ? '#DC2626' : '#E11D48';
+          if (lbl.onScreen && lbl.distance < 360) {
+            const lx = Math.round(lbl.screenX);
+            const ly = Math.round(lbl.screenY - 14);
+            html += `<div style="position:absolute;left:${lx}px;top:${ly}px;transform:translate(-50%,-100%);pointer-events:none;text-align:center;">
+              <div style="font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 0 #09090b,1px 0 0 #09090b,-1px 0 0 #09090b,0 -1px 0 #09090b;white-space:nowrap;">${escapeHtml(lbl.nickname)}</div>
+              <div style="width:42px;height:4px;margin:2px auto 0;background:#18181b;border:1px solid #09090b;border-radius:2px;overflow:hidden;">
+                <div style="width:${Math.round(lbl.hpRatio * 100)}%;height:100%;background:${badgeColor};"></div>
+              </div>
+            </div>`;
+          } else {
+            // Off-screen edge indicator
+            const cx = vw * 0.5;
+            const cy = vh * 0.5;
+            const rad = Math.min(cx - 38, cy - 38);
+            const ex = Math.round(cx + Math.cos(lbl.angle) * rad);
+            const ey = Math.round(cy + Math.sin(lbl.angle) * rad);
+            const deg = Math.round((lbl.angle * 180) / Math.PI + 90);
+            html += `<div style="position:absolute;left:${ex}px;top:${ey}px;transform:translate(-50%,-50%) rotate(${deg}deg);pointer-events:none;">
+              <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:13px solid ${badgeColor};filter:drop-shadow(0 1px 0 #09090b);"></div>
+            </div>`;
+          }
+        }
+        container.innerHTML = html;
+      }
+    },
+  }));
+
+  const aliveCount = room.scoreboard.filter((s) => s.alive || s.livesRemaining > 0).length;
+  const maxLives = room.settings.livesPerRound;
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
+      {/* Boost Speed Lines SVG */}
+      <svg
+        ref={speedLinesRef}
+        viewBox="0 0 1000 1000"
+        preserveAspectRatio="none"
+        className="pointer-events-none fixed inset-0 h-full w-full opacity-0 transition-opacity duration-150"
+        aria-hidden="true"
+      >
+        {Array.from({ length: 24 }).map((_, i) => {
+          const a = (i / 24) * Math.PI * 2;
+          const x1 = 500 + Math.cos(a) * 340;
+          const y1 = 500 + Math.sin(a) * 340;
+          const x2 = 500 + Math.cos(a) * 560;
+          const y2 = 500 + Math.sin(a) * 560;
+          return (
+            <line
+              key={i}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="#FFFFFF"
+              strokeWidth={i % 2 === 0 ? '4' : '2'}
+              strokeLinecap="round"
+            />
+          );
+        })}
+      </svg>
+
+      {/* Enemy floating labels & off-screen arrows */}
+      <div ref={labelsContainerRef} className="pointer-events-none fixed inset-0" />
+
+      {/* Center Plane Nose Crosshair */}
+      <div
+        className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        aria-hidden="true"
+      >
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="2.5" fill="#FACC15" stroke="#18181B" strokeWidth="1.5" />
+          <line x1="14" y1="2" x2="14" y2="8" stroke="#FFFFFF" strokeWidth="2" />
+          <line x1="14" y1="20" x2="14" y2="26" stroke="#FFFFFF" strokeWidth="2" />
+          <line x1="2" y1="14" x2="8" y2="14" stroke="#FFFFFF" strokeWidth="2" />
+          <line x1="20" y1="14" x2="26" y2="14" stroke="#FFFFFF" strokeWidth="2" />
+        </svg>
+      </div>
+
+      {/* Dynamic Mouse-Aim Steering Reticle */}
+      <div
+        ref={reticleRef}
+        className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        aria-hidden="true"
+      >
+        <svg width="36" height="36" viewBox="0 0 36 36">
+          <circle
+            cx="18"
+            cy="18"
+            r="13"
+            fill="none"
+            stroke="#38BDF8"
+            strokeWidth="2.5"
+            strokeDasharray="6 4"
+          />
+          <circle cx="18" cy="18" r="2" fill="#38BDF8" />
+        </svg>
+      </div>
+
+      {/* Top-Left: Vitality, Lives, Boost, Overheat */}
+      <div className="toy-panel-dark fixed left-4 top-4 flex w-56 flex-col gap-2 rounded-2xl p-3 text-white">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+            {FR.hud.lives}
+          </span>
+          <div ref={livesWrapRef} className="flex items-center gap-1">
+            {Array.from({ length: maxLives }).map((_, i) => (
+              <svg key={i} width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 2L15 9L22 12L15 14L14 21L12 19L10 21L9 14L2 12L9 9Z"
+                  fill="#FACC15"
+                  stroke="#09090B"
+                  strokeWidth="1.5"
+                />
+              </svg>
+            ))}
+          </div>
+        </div>
+
+        {/* HP */}
+        <div>
+          <div className="mb-0.5 flex justify-between text-[11px] font-bold">
+            <span className="text-slate-300">{FR.hud.hp}</span>
+            <span ref={hpTextRef} className="font-mono-num">
+              100/100
+            </span>
+          </div>
+          <div className="h-3 w-full overflow-hidden rounded-md border border-black bg-slate-800">
+            <div ref={hpFillRef} className="h-full w-full bg-emerald-500 transition-[width] duration-75" />
+          </div>
+        </div>
+
+        {/* Boost */}
+        <div>
+          <div className="mb-0.5 flex justify-between text-[11px] font-bold">
+            <span className="text-sky-300">{FR.hud.boost}</span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-md border border-black bg-slate-800">
+            <div ref={boostFillRef} className="h-full w-full bg-sky-400 transition-[width] duration-75" />
+          </div>
+        </div>
+
+        {/* Heat */}
+        <div>
+          <div className="mb-0.5 flex items-center justify-between text-[11px] font-bold">
+            <span className="text-orange-300">{FR.hud.heat}</span>
+            <span ref={overheatBadgeRef} className="hidden text-[10px] font-extrabold text-red-400">
+              {FR.hud.overheated}
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-md border border-black bg-slate-800">
+            <div ref={heatFillRef} className="h-full w-0 bg-orange-500 transition-[width] duration-75" />
+          </div>
+        </div>
+      </div>
+
+      {/* Top-Center: Round, Score/Alive, Timer, Ping */}
+      <div className="toy-panel-dark fixed left-1/2 top-4 flex -translate-x-1/2 items-center gap-4 rounded-2xl px-4 py-2 text-white">
+        <div className="text-center">
+          <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.round}</div>
+          <div className="font-mono-num text-sm font-extrabold text-amber-300">
+            {room.roundNumber}/{room.maxRounds}
+          </div>
+        </div>
+
+        <div className="h-6 w-px bg-slate-700" />
+
+        {room.settings.mode === 'last_plane_teams' ? (
+          <div className="flex items-center gap-2.5 font-mono-num text-sm font-extrabold">
+            <span className="text-red-400">{room.teamRoundWins.red}</span>
+            <span className="text-slate-500">-</span>
+            <span className="text-sky-400">{room.teamRoundWins.blue}</span>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.alive}</div>
+            <div className="font-mono-num text-sm font-extrabold text-emerald-400">
+              {aliveCount}
+            </div>
+          </div>
+        )}
+
+        <div className="h-6 w-px bg-slate-700" />
+
+        <span ref={timerRef} className="font-mono-num text-xl font-extrabold text-white">
+          04:00
+        </span>
+
+        <div className="h-6 w-px bg-slate-700" />
+
+        <span className="font-mono-num text-xs font-bold text-slate-300">
+          {ping} {FR.hud.pingUnit}
+        </span>
+      </div>
+
+      {/* Top-Right: Utility Buttons + Kill Feed */}
+      <div className="fixed right-4 top-4 flex flex-col items-end gap-2">
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={FR.hud.mute}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onToggleMute();
+            }}
+            className="toy-btn flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300 text-slate-950"
+          >
+            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={FR.hud.pause}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onTogglePause();
+            }}
+            className="toy-btn flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-950"
+          >
+            <Pause className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-col items-end gap-1">
+          {killFeed.slice(0, 4).map((kf) => (
+            <div
+              key={kf.id}
+              className="rounded-lg border border-black bg-slate-900/90 px-2.5 py-1 text-xs font-bold text-white"
+            >
+              {kf.reason === 'gun' ? (
+                <>
+                  <span className="text-amber-300">{kf.killerName}</span>{' '}
+                  <span className="text-slate-300">{FR.hud.killGun}</span>{' '}
+                  <span className="text-rose-300">{kf.victimName}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-rose-300">{kf.victimName}</span>{' '}
+                  <span className="text-slate-300">
+                    {kf.reason === 'oob' ? FR.hud.killOob : FR.hud.killCrash}
+                  </span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom-Left: Minimap */}
+      <div className="toy-panel-dark fixed bottom-4 left-4 overflow-hidden rounded-2xl p-1.5">
+        <canvas ref={minimapCanvasRef} width={144} height={108} className="block rounded-xl" />
+      </div>
+
+      {/* Bottom-Right: Power-Up Slot (Milestone 3 ready) + Speed */}
+      <div className="toy-panel-dark fixed bottom-4 right-4 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-white">
+        <div className="flex h-11 w-28 items-center justify-center rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/80 px-2 text-center text-[11px] font-semibold text-slate-400">
+          {FR.hud.secondaryEmpty}
+        </div>
+        <div className="text-right">
+          <span ref={speedRef} className="font-mono-num block text-xl font-extrabold text-amber-300">
+            95
+          </span>
+          <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.speedUnit}</div>
+        </div>
+      </div>
+
+      {/* Out of bounds alert */}
+      <div
+        ref={oobBannerRef}
+        className="fixed left-1/2 top-24 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-red-600 px-6 py-2.5 text-white shadow-[0_5px_0_#09090b]"
+      >
+        <div className="font-display text-lg font-extrabold">
+          {FR.hud.outOfBounds} <span ref={oobCountdownRef} className="font-mono-num">4.0s</span>
+        </div>
+        <div className="text-xs font-semibold text-red-100">{FR.hud.outOfBoundsSub}</div>
+      </div>
+
+      {/* Spectator Mode Bar */}
+      <div
+        ref={spectatorBarRef}
+        className="pointer-events-auto fixed bottom-6 left-1/2 hidden -translate-x-1/2 items-center gap-4 rounded-2xl border-3 border-slate-950 bg-slate-900/95 px-5 py-2.5 text-white shadow-[0_5px_0_#09090b]"
+      >
+        <button
+          type="button"
+          onClick={() => onSpectatorCycle(-1)}
+          aria-label={FR.hud.spectatorPrev}
+          className="toy-btn flex h-8 w-8 items-center justify-center rounded-lg bg-amber-300 text-slate-950"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="text-center">
+          <div className="text-[11px] font-bold uppercase text-amber-300">
+            {FR.hud.spectatorMode}
+          </div>
+          <div className="text-sm font-extrabold">
+            {FR.hud.spectating} <span ref={spectatorNameRef}>—</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onSpectatorCycle(1)}
+          aria-label={FR.hud.spectatorNext}
+          className="toy-btn flex h-8 w-8 items-center justify-center rounded-lg bg-amber-300 text-slate-950"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Countdown Overlay */}
+      {room.phase === 'countdown' && (
+        <div className="fixed inset-0 flex items-center justify-center">
+          <div className="toy-panel rounded-3xl bg-amber-300 px-10 py-6 text-center text-slate-950">
+            <div className="font-display text-4xl font-extrabold">
+              {FR.hud.round} {room.roundNumber}
+            </div>
+            <div className="mt-1 text-lg font-extrabold text-sky-800">{FR.hud.countdownGo}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Round End Banner */}
+      {room.phase === 'round_end' && room.lastRoundWinner && (
+        <div className="fixed inset-0 flex items-center justify-center bg-slate-950/45">
+          <div className="toy-panel rounded-3xl px-8 py-6 text-center text-slate-900">
+            <div className="text-xs font-bold uppercase text-slate-500">{FR.hud.roundEndTitle}</div>
+            <h2 className="font-display mt-1 text-3xl font-extrabold text-amber-600">
+              {FR.hud.roundWinnerPrefix} {room.lastRoundWinner.winnerName}
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-slate-600">{FR.hud.nextRoundSoon}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Scoreboard */}
+      {showScoreboard && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="toy-panel w-full max-w-2xl rounded-2xl p-5 text-slate-900">
+            <h2 className="font-display text-xl font-extrabold">{FR.hud.scoreboardTitle}</h2>
+            <table className="mt-3 w-full text-left text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-900 text-xs uppercase text-slate-500">
+                  <th className="py-2">{FR.hud.colPilot}</th>
+                  {room.settings.mode === 'last_plane_teams' && (
+                    <th className="py-2">{FR.hud.colTeam}</th>
+                  )}
+                  <th className="py-2 text-right">{FR.hud.colKills}</th>
+                  <th className="py-2 text-right">{FR.hud.colDeaths}</th>
+                  <th className="py-2 text-right">{FR.hud.colLives}</th>
+                  <th className="py-2 text-right">{FR.hud.colRounds}</th>
+                  <th className="py-2 text-right">{FR.hud.colScore}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {room.scoreboard.map((row) => (
+                  <tr
+                    key={row.playerId}
+                    className={`border-b border-slate-200 font-semibold ${
+                      row.playerId === localPlayerId ? 'bg-amber-100' : ''
+                    }`}
+                  >
+                    <td className="py-2 font-extrabold">{row.nickname}</td>
+                    {room.settings.mode === 'last_plane_teams' && (
+                      <td className="py-2">
+                        <span
+                          className={`text-xs font-extrabold ${
+                            row.team === 'red' ? 'text-red-600' : 'text-blue-600'
+                          }`}
+                        >
+                          {row.team === 'red' ? FR.lobby.teamRed : FR.lobby.teamBlue}
+                        </span>
+                      </td>
+                    )}
+                    <td className="font-mono-num py-2 text-right">{row.kills}</td>
+                    <td className="font-mono-num py-2 text-right">{row.deaths}</td>
+                    <td className="font-mono-num py-2 text-right">{row.livesRemaining}</td>
+                    <td className="font-mono-num py-2 text-right">{row.roundWins}</td>
+                    <td className="font-mono-num py-2 text-right font-extrabold">{row.score}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pause Modal */}
+      {paused && (
+        <div
+          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-slate-950/65 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="toy-panel w-full max-w-sm rounded-2xl p-6 text-center text-slate-900">
+            <h2 className="font-display text-2xl font-extrabold">{FR.hud.pauseTitle}</h2>
+            <div className="mt-5 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={onResume}
+                className="toy-btn w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-extrabold text-slate-950"
+              >
+                {FR.hud.resume}
+              </button>
+              <button
+                type="button"
+                onClick={onQuitToMenu}
+                className="toy-btn w-full rounded-xl bg-rose-400 px-4 py-3 text-sm font-extrabold text-slate-950"
+              >
+                {FR.hud.quitToMenu}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}

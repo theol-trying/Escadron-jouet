@@ -1,0 +1,244 @@
+export type PlaneId =
+  | 'plastic_jet'
+  | 'windup_biplane'
+  | 'foam_glider'
+  | 'diecast_bomber';
+
+export type PaintId =
+  | 'red'
+  | 'blue'
+  | 'yellow'
+  | 'green'
+  | 'orange'
+  | 'white';
+
+export type StickerId = 'star' | 'lightning' | 'target' | 'flame';
+
+export type GameModeId = 'last_plane_ffa' | 'last_plane_teams';
+
+export type MapId = 'desk' | 'kitchen' | 'garden';
+
+export type TeamId = 'none' | 'red' | 'blue';
+
+export type RoomPhase =
+  | 'lobby'
+  | 'countdown'
+  | 'playing'
+  | 'round_end'
+  | 'match_end';
+
+export interface RoomSettings {
+  mode: GameModeId;
+  mapId: MapId;
+  livesPerRound: number;
+  botsEnabled: boolean;
+  maxPlayers: number;
+  friendlyFire: boolean;
+  isPrivate: boolean;
+}
+
+export interface PlayerCosmetics {
+  planeId: PlaneId;
+  paintId: PaintId;
+  stickerId: StickerId;
+}
+
+export interface PlayerLobbyInfo {
+  id: string;
+  nickname: string;
+  isHost: boolean;
+  isBot: boolean;
+  ready: boolean;
+  connected: boolean;
+  team: TeamId;
+  cosmetics: PlayerCosmetics;
+  ping: number;
+}
+
+export interface MatchScoreEntry {
+  playerId: string;
+  nickname: string;
+  isBot: boolean;
+  team: TeamId;
+  planeId: PlaneId;
+  paintId: PaintId;
+  kills: number;
+  deaths: number;
+  roundWins: number;
+  score: number;
+  alive: boolean;
+  livesRemaining: number;
+}
+
+export interface RoomState {
+  code: string;
+  phase: RoomPhase;
+  settings: RoomSettings;
+  players: PlayerLobbyInfo[];
+  roundNumber: number;
+  maxRounds: number;
+  roundTimer: number;
+  countdownTimer: number;
+  teamRoundWins: { red: number; blue: number };
+  lastRoundWinner: {
+    winnerId: string | null;
+    winnerTeam: TeamId;
+    winnerName: string;
+  } | null;
+  scoreboard: MatchScoreEntry[];
+}
+
+export interface PlayerInputState {
+  seq: number;
+  dt: number;
+  aimX: number; // -1..1 normalized steering offset from screen center
+  aimY: number; // -1..1 normalized pitch steering offset
+  throttle: number; // -1..1
+  roll: number; // -1..1
+  boost: boolean;
+  fire: boolean;
+  barrelRollDir: -1 | 0 | 1;
+}
+
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface Quat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
+export interface PlaneSimState {
+  x: number;
+  y: number;
+  z: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+  speed: number;
+  hp: number;
+  maxHp: number;
+  boost: number; // 0..100
+  heat: number; // 0..100
+  overheated: boolean;
+  barrelRollTimer: number; // >0 while barrel rolling
+  barrelRollCooldown: number;
+  barrelRollDir: -1 | 0 | 1;
+  invulnTimer: number;
+  outOfBoundsTimer: number; // >0 when outside soft bounds
+  alive: boolean;
+  lives: number;
+  respawnTimer: number;
+  fireCooldown: number;
+  hitFlashTimer: number;
+  collideCooldown: number;
+}
+
+export interface SnapshotPlane {
+  id: string;
+  nickname: string;
+  isBot: boolean;
+  team: TeamId;
+  planeId: PlaneId;
+  paintId: PaintId;
+  stickerId: StickerId;
+  x: number;
+  y: number;
+  z: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+  speed: number;
+  hp: number;
+  maxHp: number;
+  boost: number;
+  heat: number;
+  overheated: boolean;
+  alive: boolean;
+  lives: number;
+  invuln: boolean;
+  outOfBounds: number;
+  barrelRoll: number;
+  lastAckSeq: number;
+}
+
+export interface SnapshotProjectile {
+  id: number;
+  ownerId: string;
+  team: TeamId;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  heavy: boolean;
+}
+
+export interface SnapshotPayload {
+  tick: number;
+  serverTime: number;
+  roundTimer: number;
+  fanAngle: number;
+  planes: SnapshotPlane[];
+  projectiles: SnapshotProjectile[];
+}
+
+export interface KillFeedEntry {
+  id: string;
+  killerName: string;
+  killerTeam: TeamId;
+  victimName: string;
+  victimTeam: TeamId;
+  reason: 'gun' | 'crash' | 'oob';
+  timestamp: number;
+}
+
+export interface HitFeedbackEvent {
+  targetId: string;
+  attackerId: string;
+  damage: number;
+  x: number;
+  y: number;
+  z: number;
+  fatal: boolean;
+}
+
+export interface JoinRoomPayload {
+  mode: 'quick' | 'create' | 'join';
+  roomCode?: string;
+  nickname: string;
+  cosmetics: PlayerCosmetics;
+  sessionToken: string;
+}
+
+export interface ClientToServerEvents {
+  'room:join': (
+    payload: JoinRoomPayload,
+    ack: (res: { ok: boolean; room?: RoomState; playerId?: string; error?: string }) => void
+  ) => void;
+  'room:leave': () => void;
+  'room:updateSettings': (settings: Partial<RoomSettings>) => void;
+  'room:setReady': (ready: boolean) => void;
+  'room:switchTeam': (team: TeamId) => void;
+  'room:updateCosmetics': (cosmetics: PlayerCosmetics) => void;
+  'room:startMatch': () => void;
+  'room:playAgain': () => void;
+  'game:input': (input: PlayerInputState) => void;
+  'net:ping': (clientSentAt: number, ack: (clientSentAt: number) => void) => void;
+}
+
+export interface ServerToClientEvents {
+  'room:state': (state: RoomState) => void;
+  'game:snapshot': (snapshot: SnapshotPayload) => void;
+  'game:hit': (event: HitFeedbackEvent) => void;
+  'game:killfeed': (entry: KillFeedEntry) => void;
+  'room:error': (message: string) => void;
+}
