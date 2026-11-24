@@ -212,6 +212,12 @@ export const FR = {
     noItem: 'vide',
   },
 
+  roomEvents: {
+    cat: 'Attention, le chat traverse la pièce !',
+    blackout: 'Panne de courant !',
+    fridge: 'Le frigo s’ouvre !',
+  },
+
   objectives: {
     raceTitle: 'Course d’anneaux',
     ring: 'Anneau',

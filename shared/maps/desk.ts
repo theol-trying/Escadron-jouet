@@ -243,6 +243,8 @@ export const DESK_MAP_DESIGN: MapDefinition = {
   ],
   updraftZones: [],
   hazardZones: [],
+  // Clear floor lane along the front wall for the room-event cat
+  catPath: { ax: -238, az: 158, bx: 238, bz: 158, y: 6 },
   powerUpSpots: [
     { id: 'pu_under_monitor', x: -45, y: 85, z: -87 },
     { id: 'pu_drawer_tunnel', x: 92, y: 58, z: 62 },

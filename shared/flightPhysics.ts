@@ -1,3 +1,4 @@
+import { getEventColliders, hash01 } from './roomEvents';
 import type { HazardZoneConfig, MapCollider, MapDefinition } from './maps/types';
 import type { PlaneArchetype } from './planes';
 import type { PlaneSimState, PlayerInputState, Vec3 } from './types';
@@ -116,7 +117,16 @@ export function getHingeDoorAngleAtTime(
   cycleSeconds: number,
   elapsedTime: number
 ): number {
-  const openRatio = 0.5 - 0.5 * Math.cos((elapsedTime * Math.PI * 2) / Math.max(1, cycleSeconds));
+  // The door opens at irregular moments: in each window of two cycles it may open once (65 %),
+  // at a pseudo-random offset. The very first window always opens right away.
+  const cycle = Math.max(1, cycleSeconds);
+  const windowLen = cycle * 2;
+  const w = Math.floor(Math.max(0, elapsedTime) / windowLen);
+  const opens = w === 0 || hash01(w * 3.17) < 0.65;
+  const offset = w === 0 ? 0 : hash01(w * 7.91) * (windowLen - cycle);
+  const local = elapsedTime - w * windowLen - offset;
+  if (!opens || local < 0 || local > cycle) return 0;
+  const openRatio = 0.5 - 0.5 * Math.cos((local * Math.PI * 2) / cycle);
   const angle = maxAngle * openRatio;
   return angle === 0 ? 0 : angle;
 }
@@ -462,7 +472,9 @@ export function stepPlanePhysics(
 
   // Collisions against map colliders
   const r = archetype.hitboxRadius;
-  for (const col of map.colliders) {
+  const eventColliders = getEventColliders(map, elapsedTime);
+  const colliders = eventColliders.length > 0 ? [...map.colliders, ...eventColliders] : map.colliders;
+  for (const col of colliders) {
     if (destroyedColliderIds?.has(col.id)) continue;
     const hit = resolveSphereVsCollider(nx, ny, nz, r, col, elapsedTime);
     if (hit) {

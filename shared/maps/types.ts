@@ -157,4 +157,6 @@ export interface MapDefinition {
   updraftZones: UpdraftZoneConfig[];
   hazardZones: HazardZoneConfig[];
   powerUpSpots: PowerUpSpotConfig[];
+  /** Floor lane where the giant cat walks across during the « chat » room event */
+  catPath?: { ax: number; az: number; bx: number; bz: number; y: number };
 }

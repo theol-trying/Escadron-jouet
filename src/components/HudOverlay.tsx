@@ -99,6 +99,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const objSubRef = useRef<HTMLDivElement>(null);
   const objBarRef = useRef<HTMLDivElement>(null);
   const objMarkerRef = useRef<HTMLDivElement>(null);
+  const roomEventRef = useRef<HTMLDivElement>(null);
   const objArrowRef = useRef<HTMLDivElement>(null);
   const objDistRef = useRef<HTMLSpanElement>(null);
   const topLeftPanelRef = useRef<HTMLDivElement>(null);
@@ -144,6 +145,11 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
           objBarRef.current.style.backgroundColor =
             obj.zoneState === 'mine' ? '#22c55e' : obj.zoneState === 'theirs' ? '#ef4444' : obj.zoneState === 'contested' ? '#f97316' : '#facc15';
         }
+      }
+      if (roomEventRef.current) {
+        const label = data.roomEvent && data.alive ? FR.roomEvents[data.roomEvent] : '';
+        if (roomEventRef.current.textContent !== label) roomEventRef.current.textContent = label;
+        roomEventRef.current.style.display = label ? 'block' : 'none';
       }
       const mk = data.objectiveMarker;
       if (objMarkerRef.current) {
@@ -513,6 +519,13 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         </div>
         <span ref={objDistRef} className="font-mono-num mt-0.5 rounded bg-slate-900/80 px-1 text-[10px] font-bold text-amber-200" />
       </div>
+
+      {/* Room event banner (cat, blackout, fridge) */}
+      <div
+        ref={roomEventRef}
+        className="pointer-events-none fixed left-1/2 top-36 -translate-x-1/2 rounded-xl border-2 border-slate-950 bg-violet-200 px-4 py-1.5 text-sm font-extrabold text-slate-900 shadow-[0_4px_0_#09090b] sm:top-40"
+        style={{ display: 'none' }}
+      />
 
       {/* Objective modes panel (race progress / king of the sky) */}
       <div

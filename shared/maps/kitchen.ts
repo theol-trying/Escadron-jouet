@@ -225,6 +225,8 @@ export const KITCHEN_MAP_DESIGN: MapDefinition = {
       damage: 9999,
     },
   ],
+  // Clear floor lane in front of the island for the room-event cat
+  catPath: { ax: 238, az: 122, bx: -238, bz: 122, y: 6 },
   powerUpSpots: [
     { id: 'pu_island_tunnel', x: 0, y: 38, z: 44 },
     { id: 'pu_sink_arch', x: -95, y: 116, z: -136 },

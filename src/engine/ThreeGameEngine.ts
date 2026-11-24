@@ -42,6 +42,9 @@ import { WingTrails, type TrailInput } from './wingTrails';
 import { DebrisField } from './debris';
 import { Podium, type PodiumEntry } from './podium';
 import { ObjectiveRenderer, type ZoneState } from './objectives3d';
+import { CatVisual } from './catModel';
+import { getCatPose, getRoomEvent } from '../../shared/roomEvents';
+import { getHingeDoorAngleAtTime } from '../../shared/flightPhysics';
 import {
   KING_TARGET,
   RACE_LAPS,
@@ -132,6 +135,8 @@ export interface HudFrameData {
   climbRate: number;
   /** Objective modes HUD (null in elimination modes) */
   objective: ObjectiveHud | null;
+  /** Room event in progress, for the HUD banner */
+  roomEvent: 'cat' | 'blackout' | 'fridge' | null;
   /** Screen marker toward the next ring / the zone (null when none) */
   objectiveMarker: { x: number; y: number; onScreen: boolean; angle: number; distance: number } | null;
 }
@@ -209,6 +214,10 @@ export class ThreeGameEngine {
   private debris: DebrisField;
   private podium: Podium | null = null;
   private objectives3d: ObjectiveRenderer;
+  /** Room events: lights dimmed during a blackout, the giant cat */
+  private lights: Array<{ light: THREE.Light; base: number }> = [];
+  private lightLevel = 1;
+  private cat!: CatVisual;
   private gameMode: GameModeId = 'last_plane_ffa';
   private raceResult: { time: number; best: number | null; newRecord: boolean } | null = null;
   private prevLocalObjective = 0;
@@ -349,6 +358,7 @@ export class ThreeGameEngine {
     // Warm sunny window directional key light + cool HemisphereLight fill
     const hemi = new THREE.HemisphereLight(0xdbeafe, 0xfde68a, 0.95);
     this.scene.add(hemi);
+    this.lights.push({ light: hemi, base: hemi.intensity });
 
     const sunKey = new THREE.DirectionalLight(0xfff1d6, 1.45);
     sunKey.position.set(-220 * ARENA_SCALE, 240 * ARENA_SCALE, 60 * ARENA_SCALE);
@@ -365,10 +375,13 @@ export class ThreeGameEngine {
     sunKey.shadow.bias = -0.0005;
     sunKey.shadow.normalBias = 0.02;
     this.scene.add(sunKey);
+    this.lights.push({ light: sunKey, base: sunKey.intensity });
 
     const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.45);
     rimLight.position.set(180, 140, -160);
     this.scene.add(rimLight);
+    this.lights.push({ light: rimLight, base: rimLight.intensity });
+    this.cat = new CatVisual(this.scene);
 
     // Build initial 3D world
     this.maxAniso = this.renderer.capabilities.getMaxAnisotropy();
@@ -442,6 +455,24 @@ export class ThreeGameEngine {
     }
     this.updateScene(0.016, performance.now());
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private updateRoomEvents(dt: number): HudFrameData['roomEvent'] {
+    const t = this.latestSnapshot?.mapEventTime ?? this.elapsedTime;
+    const ev = this.mode === 'playing' ? getRoomEvent(this.currentMap, t) : null;
+    this.cat.update(this.mode === 'playing' ? getCatPose(this.currentMap, t) : null, this.elapsedTime);
+
+    // Blackout: lights fade down to a dim glow, then come back
+    const target = ev?.kind === 'blackout' ? 0.16 : 1;
+    this.lightLevel += (target - this.lightLevel) * Math.min(1, dt * 4);
+    for (const l of this.lights) l.light.intensity = l.base * this.lightLevel;
+
+    let fridgeOpening = false;
+    if (this.currentMapId === 'kitchen' && this.mode === 'playing') {
+      fridgeOpening = getHingeDoorAngleAtTime(-1.18, 10, t) !== 0;
+    }
+    if (ev) return ev.kind;
+    return fridgeOpening ? 'fridge' : null;
   }
 
   /** Objective modes: per-frame markers, HUD figures and the screen pointer. */
@@ -1440,6 +1471,9 @@ export class ThreeGameEngine {
     // Objective modes: markers, HUD figures and a screen pointer toward the next ring / the zone
     const objectiveFrame = this.updateObjectives(livingPlanes);
 
+    // Room events (same clock as the server): cat crossing, blackout, fridge opening by itself
+    const roomEvent = this.updateRoomEvents(dt);
+
     // Wing trails (white ribbons from the wingtips, brighter at full throttle or turbo)
     const trailInputs: TrailInput[] = [];
     for (const pv of this.planeVisuals.values()) {
@@ -1648,6 +1682,7 @@ export class ThreeGameEngine {
         altitude: Math.max(0, (sim?.y ?? 0) - this.currentMap.hardBounds.minY),
         climbRate,
         objective: objectiveFrame.hud,
+        roomEvent,
         objectiveMarker: objectiveFrame.marker,
         hp: Math.round(sim?.hp ?? 0),
         maxHp: sim?.maxHp ?? 100,
@@ -1693,6 +1728,7 @@ export class ThreeGameEngine {
     this.debris.dispose();
     this.podium?.dispose();
     this.objectives3d.dispose();
+    this.cat.dispose();
     this.extrasRenderer.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {

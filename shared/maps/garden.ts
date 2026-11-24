@@ -210,6 +210,8 @@ export const GARDEN_MAP_DESIGN: MapDefinition = {
   ],
   updraftZones: [],
   hazardZones: [],
+  // Along the east fence (only a grass tuft on the way) for the room-event cat
+  catPath: { ax: 225, az: -172, bx: 225, bz: 172, y: 6 },
   powerUpSpots: [
     { id: 'pu_doghouse_tunnel', x: -130, y: 28, z: -105 },
     { id: 'pu_swing_arch', x: 60, y: 94, z: -110 },

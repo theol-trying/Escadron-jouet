@@ -99,5 +99,8 @@ export function scaleMapDefinition(
       height: h.height * s,
     })),
     powerUpSpots: def.powerUpSpots.map((p) => ({ ...p, x: p.x * s, y: p.y * s, z: p.z * s })),
+    catPath: def.catPath
+      ? { ax: def.catPath.ax * s, az: def.catPath.az * s, bx: def.catPath.bx * s, bz: def.catPath.bz * s, y: def.catPath.y * s }
+      : undefined,
   };
 }
