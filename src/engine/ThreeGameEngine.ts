@@ -15,6 +15,7 @@ import { MAPS } from '../../shared/maps/index';
 import type { MapDefinition } from '../../shared/maps/types';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
 import type {
+  GameModeId,
   HitFeedbackEvent,
   MapId,
   PaintId,
@@ -40,6 +41,15 @@ import { ParticleAndProjectilePool } from './particlePool';
 import { WingTrails, type TrailInput } from './wingTrails';
 import { DebrisField } from './debris';
 import { Podium, type PodiumEntry } from './podium';
+import { ObjectiveRenderer, type ZoneState } from './objectives3d';
+import {
+  KING_TARGET,
+  RACE_LAPS,
+  getKingZone,
+  getRaceCourse,
+  isObjectiveMode,
+  roundDuration,
+} from '../../shared/objectives';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
 
 // Hangar preview spot on the desk (design units 18, 115, 18), following the arena scale
@@ -120,7 +130,33 @@ export interface HudFrameData {
   /** Height above the floor and vertical speed (world units = cm, cm/s). */
   altitude: number;
   climbRate: number;
+  /** Objective modes HUD (null in elimination modes) */
+  objective: ObjectiveHud | null;
+  /** Screen marker toward the next ring / the zone (null when none) */
+  objectiveMarker: { x: number; y: number; onScreen: boolean; angle: number; distance: number } | null;
 }
+
+export type ObjectiveHud =
+  | {
+      kind: 'race';
+      ringsPassed: number;
+      ringsTotal: number;
+      lap: number;
+      laps: number;
+      time: number;
+      finished: boolean;
+      best: number | null;
+      newRecord: boolean;
+    }
+  | {
+      kind: 'king';
+      mine: number;
+      target: number;
+      leaderName: string;
+      leaderValue: number;
+      zoneState: ZoneState;
+      movesIn: number;
+    };
 
 interface RemoteBufferEntry {
   time: number;
@@ -172,6 +208,10 @@ export class ThreeGameEngine {
   private trails: WingTrails;
   private debris: DebrisField;
   private podium: Podium | null = null;
+  private objectives3d: ObjectiveRenderer;
+  private gameMode: GameModeId = 'last_plane_ffa';
+  private raceResult: { time: number; best: number | null; newRecord: boolean } | null = null;
+  private prevLocalObjective = 0;
   private readonly podiumAnchor = new THREE.Vector3();
   private confettiTimer = 0;
 
@@ -336,6 +376,7 @@ export class ThreeGameEngine {
     this.pool = new ParticleAndProjectilePool(this.scene);
     this.trails = new WingTrails(this.scene);
     this.debris = new DebrisField(this.scene);
+    this.objectives3d = new ObjectiveRenderer(this.scene);
     this.extrasRenderer = new MatchExtrasRenderer(this.scene);
 
     // Ambient planes for the title flyover
@@ -387,6 +428,7 @@ export class ThreeGameEngine {
     this.currentMapId = mapId;
     this.currentMap = MAPS[mapId] ?? MAPS.desk;
     this.mapHandles = this.buildMapScene(mapId);
+    this.objectives3d.configure(this.gameMode, this.currentMap);
     this.scene.background = new THREE.Color(this.currentMap.skyColor);
     this.scene.fog = new THREE.Fog(
       this.currentMap.fogColor,
@@ -400,6 +442,125 @@ export class ThreeGameEngine {
     }
     this.updateScene(0.016, performance.now());
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Objective modes: per-frame markers, HUD figures and the screen pointer. */
+  private updateObjectives(livingPlanes: ActivePlaneVisual[]): {
+    hud: ObjectiveHud | null;
+    marker: HudFrameData['objectiveMarker'];
+  } {
+    const snap = this.latestSnapshot;
+    const active = isObjectiveMode(this.gameMode) && this.mode === 'playing' && !!snap;
+    this.objectives3d.setVisible(active);
+    if (!active || !snap) return { hud: null, marker: null };
+
+    const roundElapsed = roundDuration(this.gameMode) - snap.roundTimer;
+    const localData = this.localPlayerId ? snap.planes.find((p) => p.id === this.localPlayerId) : undefined;
+    const localObjective = localData?.objective ?? 0;
+    let target: THREE.Vector3 | null = null;
+    let hud: ObjectiveHud;
+
+    if (this.gameMode === 'ring_race') {
+      const course = getRaceCourse(this.currentMap);
+      const total = course.length * RACE_LAPS;
+      const finished = localObjective >= total;
+      if (localObjective < this.prevLocalObjective) this.raceResult = null; // new round
+      if (finished && this.prevLocalObjective < total && !this.raceResult) {
+        // Personal best per room, kept on this device
+        const key = `ej_race_best_${this.currentMapId}`;
+        let best: number | null = null;
+        try {
+          const v = Number(localStorage.getItem(key));
+          best = Number.isFinite(v) && v > 0 ? v : null;
+        } catch {
+          best = null;
+        }
+        const newRecord = best === null || roundElapsed < best;
+        if (newRecord) {
+          try {
+            localStorage.setItem(key, String(roundElapsed));
+          } catch {
+            // storage unavailable
+          }
+        }
+        this.raceResult = { time: roundElapsed, best: newRecord ? roundElapsed : best, newRecord };
+      }
+      this.prevLocalObjective = localObjective;
+      this.objectives3d.updateRace(localObjective, finished, this.elapsedTime);
+      if (!finished) {
+        const r = course[localObjective % course.length];
+        target = this._v3.set(r.x, r.y, r.z);
+      }
+      hud = {
+        kind: 'race',
+        ringsPassed: Math.min(localObjective, total),
+        ringsTotal: total,
+        lap: Math.min(RACE_LAPS, Math.floor(localObjective / course.length) + 1),
+        laps: RACE_LAPS,
+        time: this.raceResult?.time ?? roundElapsed,
+        finished,
+        best: this.raceResult?.best ?? null,
+        newRecord: this.raceResult?.newRecord ?? false,
+      };
+    } else {
+      const zone = getKingZone(this.currentMap, roundElapsed);
+      let insideMine = false;
+      let insideOthers = 0;
+      for (const pv of livingPlanes) {
+        if (pv.interpPos.distanceTo(this._v1.set(zone.x, zone.y, zone.z)) < zone.radius) {
+          if (pv.id === this.localPlayerId) insideMine = true;
+          else insideOthers++;
+        }
+      }
+      const state: ZoneState =
+        insideMine && insideOthers === 0 ? 'mine' : !insideMine && insideOthers === 1 ? 'theirs' : insideMine || insideOthers > 1 ? 'contested' : 'free';
+      const hb = this.currentMap.hardBounds;
+      this.objectives3d.updateZone(zone, state, hb.minY, hb.maxY, this.elapsedTime);
+      let leader = snap.planes[0];
+      for (const p of snap.planes) if (p.objective > (leader?.objective ?? -1)) leader = p;
+      target = this._v3.set(zone.x, zone.y, zone.z);
+      hud = {
+        kind: 'king',
+        mine: localObjective,
+        target: KING_TARGET,
+        leaderName: leader && leader.objective > 0 ? (this.roomPlayersMeta.get(leader.id)?.nickname ?? '') : '',
+        leaderValue: leader?.objective ?? 0,
+        zoneState: state,
+        movesIn: zone.movesIn,
+      };
+    }
+
+    let marker: HudFrameData['objectiveMarker'] = null;
+    if (target) {
+      const width = this.container.clientWidth || 1;
+      const height = this.container.clientHeight || 1;
+      const distance = this.camera.position.distanceTo(target);
+      const p = this._v2.copy(target).project(this.camera);
+      const behind = p.z > 1;
+      let nx = behind ? -p.x : p.x;
+      let ny = behind ? -p.y : p.y;
+      const onScreen = !behind && Math.abs(nx) < 0.92 && Math.abs(ny) < 0.88;
+      if (!onScreen) {
+        // Clamp to the screen edge along the direction of the target
+        const k = 1 / Math.max(Math.abs(nx) / 0.92, Math.abs(ny) / 0.88, 1e-6);
+        nx *= k;
+        ny *= k;
+      }
+      marker = {
+        x: (nx * 0.5 + 0.5) * width,
+        y: (-ny * 0.5 + 0.5) * height,
+        onScreen,
+        angle: Math.atan2(-ny, nx),
+        distance,
+      };
+    }
+    return { hud, marker };
+  }
+
+  /** Game mode of the room (objective modes show rings / the king zone). */
+  public setGameMode(mode: GameModeId): void {
+    this.gameMode = mode;
+    this.objectives3d.configure(mode, this.currentMap);
   }
 
   /** End of match: top-3 planes on a toy podium floating in the room, camera orbiting around. */
@@ -416,6 +577,7 @@ export class ThreeGameEngine {
 
   public setMode(mode: EngineMode, cosmetics?: PlayerCosmetics): void {
     this.mode = mode;
+    this.objectives3d.setVisible(mode === 'playing' && isObjectiveMode(this.gameMode));
     if (mode !== 'podium' && this.podium) {
       this.podium.dispose();
       this.podium = null;
@@ -1275,6 +1437,9 @@ export class ThreeGameEngine {
       this.currentSpectatingName = this.roomPlayersMeta.get(spec.id)?.nickname ?? '';
     }
 
+    // Objective modes: markers, HUD figures and a screen pointer toward the next ring / the zone
+    const objectiveFrame = this.updateObjectives(livingPlanes);
+
     // Wing trails (white ribbons from the wingtips, brighter at full throttle or turbo)
     const trailInputs: TrailInput[] = [];
     for (const pv of this.planeVisuals.values()) {
@@ -1482,6 +1647,8 @@ export class ThreeGameEngine {
         pitchDeg,
         altitude: Math.max(0, (sim?.y ?? 0) - this.currentMap.hardBounds.minY),
         climbRate,
+        objective: objectiveFrame.hud,
+        objectiveMarker: objectiveFrame.marker,
         hp: Math.round(sim?.hp ?? 0),
         maxHp: sim?.maxHp ?? 100,
         lives: sim?.lives ?? 0,
@@ -1525,6 +1692,7 @@ export class ThreeGameEngine {
     this.trails.dispose();
     this.debris.dispose();
     this.podium?.dispose();
+    this.objectives3d.dispose();
     this.extrasRenderer.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {

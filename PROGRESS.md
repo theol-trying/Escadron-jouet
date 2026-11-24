@@ -20,7 +20,8 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
        lecteur de musiques externes (src/audio/musicTracks.ts, fichiers dans public/music/), volume « Musique ».
 5. [x] Graphismes : traînées d'ailes, balles traçantes fluides, accessoires qui éclatent en morceaux, podium 3D,
        peintures/autocollants à débloquer (3 nouvelles peintures, Cœur et Couronne ; src/progression.ts).
-6. [ ] Modes : course d'anneaux (jouable seul), roi du ciel.
+6. [x] Modes : Course d'anneaux (2 tours, sans tir, record par pièce sur l'appareil) et Roi du ciel (zone tenue seul,
+       40 s, zone qui bouge toutes les 30 s) ; règles dans shared/objectives.ts, repères 3D et HUD dédiés.
 7. [ ] Pièces : événements (chat, lumière, frigo), 4e pièce « Le grenier ».
 8. [ ] Technique : chargement découpé (Three.js à part, cartes à la demande), données réseau compactes.
 9. [ ] Salon unique.

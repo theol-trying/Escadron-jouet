@@ -34,6 +34,8 @@ export function LobbyView({
   const localPlayer = room.players.find((p) => p.id === localPlayerId);
   const isHost = Boolean(localPlayer?.isHost);
   const isTeams = room.settings.mode === 'last_plane_teams';
+  // Objective modes respawn without limit: the lives setting does not apply
+  const isObjective = room.settings.mode === 'ring_race' || room.settings.mode === 'king_of_sky';
 
   const [inviteState, setInviteState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
@@ -267,7 +269,10 @@ export function LobbyView({
                 >
                   <option value="last_plane_ffa">{FR.lobby.modeFfa}</option>
                   <option value="last_plane_teams">{FR.lobby.modeTeams}</option>
+                  <option value="ring_race">{FR.lobby.modeRace}</option>
+                  <option value="king_of_sky">{FR.lobby.modeKing}</option>
                 </select>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">{FR.lobby.modeHint[room.settings.mode]}</p>
               </div>
 
               {/* Map */}
@@ -314,14 +319,15 @@ export function LobbyView({
                   </label>
                   <select
                     id="lobby-lives"
-                    disabled={!isHost}
+                    disabled={!isHost || isObjective}
                     value={room.settings.livesPerRound}
                     onChange={(e) =>
                       onUpdateSettings({ livesPerRound: Number(e.target.value) })
                     }
                     className="font-mono-num mt-1 w-full rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-sm font-bold disabled:opacity-65"
                   >
-                    {[1, 2, 3, 4, 5].map((n) => (
+                    {isObjective && <option value={room.settings.livesPerRound}>{FR.lobby.livesUnlimited}</option>}
+                    {!isObjective && [1, 2, 3, 4, 5].map((n) => (
                       <option key={n} value={n}>
                         {n}
                       </option>

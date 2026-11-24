@@ -208,6 +208,7 @@ export default function App() {
     }
 
     engine?.setMap(room.settings.mapId);
+    engine?.setGameMode(room.settings.mode);
 
     if (room.phase === 'lobby') {
       document.body.dataset.state = 'lobby';

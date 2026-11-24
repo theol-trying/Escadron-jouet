@@ -38,6 +38,14 @@ function formatTimer(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
+/** Race chrono, e.g. 1:07.4 */
+function formatRaceTime(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const m = Math.floor(s / 60);
+  const rest = s - m * 60;
+  return `${m}:${rest < 10 ? '0' : ''}${rest.toFixed(1)}`;
+}
+
 export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOverlay(
   {
     room,
@@ -84,6 +92,15 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const statusBadgesRef = useRef<HTMLDivElement>(null);
   const mobileStatusBadgesRef = useRef<HTMLDivElement>(null);
   const vacuumBannerRef = useRef<HTMLDivElement>(null);
+  // Objective modes: panel under the round bar + marker toward the next ring / the zone
+  const objectivePanelRef = useRef<HTMLDivElement>(null);
+  const objTitleRef = useRef<HTMLDivElement>(null);
+  const objMainRef = useRef<HTMLDivElement>(null);
+  const objSubRef = useRef<HTMLDivElement>(null);
+  const objBarRef = useRef<HTMLDivElement>(null);
+  const objMarkerRef = useRef<HTMLDivElement>(null);
+  const objArrowRef = useRef<HTMLDivElement>(null);
+  const objDistRef = useRef<HTMLSpanElement>(null);
   const topLeftPanelRef = useRef<HTMLDivElement>(null);
   const bottomRightPanelRef = useRef<HTMLDivElement>(null);
   const cockpitRef = useRef<CockpitHandle>(null);
@@ -100,6 +117,46 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         setCockpitPlane(cockpitNow);
       }
       if (cockpitNow) cockpitRef.current?.update(data);
+
+      // Objective modes panel
+      const obj = data.objective;
+      if (objectivePanelRef.current) objectivePanelRef.current.style.display = obj ? 'block' : 'none';
+      if (obj && objTitleRef.current && objMainRef.current && objSubRef.current && objBarRef.current) {
+        if (obj.kind === 'race') {
+          objTitleRef.current.textContent = FR.objectives.raceTitle;
+          objMainRef.current.textContent = obj.finished
+            ? `${FR.objectives.finished} ${formatRaceTime(obj.time)}`
+            : `${FR.objectives.ring} ${obj.ringsPassed + 1} / ${obj.ringsTotal} · ${FR.objectives.lap} ${obj.lap} / ${obj.laps}`;
+          objSubRef.current.textContent = obj.finished
+            ? obj.newRecord
+              ? FR.objectives.newRecord
+              : obj.best !== null
+                ? `${FR.objectives.best} : ${formatRaceTime(obj.best)}`
+                : ''
+            : formatRaceTime(obj.time);
+          objBarRef.current.style.width = `${(obj.ringsPassed / Math.max(1, obj.ringsTotal)) * 100}%`;
+          objBarRef.current.style.backgroundColor = '#facc15';
+        } else {
+          objTitleRef.current.textContent = FR.objectives.kingTitle;
+          objMainRef.current.textContent = `${FR.objectives.crown} ${obj.mine.toFixed(1)} / ${obj.target} s · ${FR.objectives.zone[obj.zoneState]}`;
+          objSubRef.current.textContent = `${obj.leaderName ? `${FR.objectives.leader} : ${obj.leaderName} (${obj.leaderValue.toFixed(0)} s) · ` : ''}${FR.objectives.movesIn} ${Math.ceil(obj.movesIn)} s`;
+          objBarRef.current.style.width = `${(obj.mine / obj.target) * 100}%`;
+          objBarRef.current.style.backgroundColor =
+            obj.zoneState === 'mine' ? '#22c55e' : obj.zoneState === 'theirs' ? '#ef4444' : obj.zoneState === 'contested' ? '#f97316' : '#facc15';
+        }
+      }
+      const mk = data.objectiveMarker;
+      if (objMarkerRef.current) {
+        objMarkerRef.current.style.display = mk && data.alive ? 'flex' : 'none';
+        if (mk) {
+          objMarkerRef.current.style.transform = `translate(${mk.x}px, ${mk.y}px) translate(-50%, -50%)`;
+          if (objArrowRef.current) {
+            objArrowRef.current.style.display = mk.onScreen ? 'none' : 'block';
+            objArrowRef.current.style.transform = `rotate(${(-mk.angle * 180) / Math.PI}deg)`;
+          }
+          if (objDistRef.current) objDistRef.current.textContent = `${Math.round(mk.distance)} cm`;
+        }
+      }
       if (topLeftPanelRef.current) topLeftPanelRef.current.style.display = cockpitNow ? 'none' : '';
       if (bottomRightPanelRef.current) bottomRightPanelRef.current.style.display = cockpitNow ? 'none' : '';
 
@@ -440,6 +497,35 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
           />
           <circle cx="18" cy="18" r="2" fill="#38BDF8" />
         </svg>
+      </div>
+
+      {/* Objective marker (next ring / king zone), pinned to the screen edge when off-screen */}
+      <div
+        ref={objMarkerRef}
+        className="pointer-events-none fixed left-0 top-0 hidden flex-col items-center"
+        aria-hidden="true"
+      >
+        <div className="relative flex h-7 w-7 items-center justify-center">
+          <div className="h-4 w-4 rotate-45 rounded-sm border-2 border-slate-950 bg-amber-300 shadow-[0_0_10px_#facc15]" />
+          <div ref={objArrowRef} className="absolute inset-0 hidden">
+            <div className="absolute right-[-10px] top-1/2 h-0 w-0 -translate-y-1/2 border-y-[7px] border-l-[11px] border-y-transparent border-l-amber-300" />
+          </div>
+        </div>
+        <span ref={objDistRef} className="font-mono-num mt-0.5 rounded bg-slate-900/80 px-1 text-[10px] font-bold text-amber-200" />
+      </div>
+
+      {/* Objective modes panel (race progress / king of the sky) */}
+      <div
+        ref={objectivePanelRef}
+        className="toy-panel-dark pointer-events-none fixed left-1/2 top-[4.6rem] w-[min(420px,90vw)] -translate-x-1/2 rounded-2xl px-4 py-2 text-center text-white sm:top-20"
+        style={{ display: 'none' }}
+      >
+        <div ref={objTitleRef} className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300" />
+        <div ref={objMainRef} className="text-sm font-extrabold" />
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-slate-700">
+          <div ref={objBarRef} className="h-full w-0 rounded" />
+        </div>
+        <div ref={objSubRef} className="font-mono-num mt-0.5 text-[11px] font-semibold text-slate-300" />
       </div>
 
       {/* Top Row on Mobile (<640px): Match Status Pill + Utility Buttons cleanly separated */}

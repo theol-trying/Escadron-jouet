@@ -40,6 +40,15 @@ export const FR = {
     modeLabel: 'Mode de jeu',
     modeFfa: 'Dernier avion en vol — Chacun pour soi',
     modeTeams: 'Dernier avion en vol — Équipes',
+    modeRace: 'Course d’anneaux — 2 tours, sans tir (jouable seul)',
+    modeKing: 'Roi du ciel — tenir la zone 40 s',
+    modeHint: {
+      last_plane_ffa: 'Le dernier avion encore en vol gagne la manche.',
+      last_plane_teams: 'La dernière équipe encore en vol gagne la manche.',
+      ring_race: 'Passe dans les anneaux dans l’ordre (anneau doré), 2 tours. Pas de tir ; un crash te ramène à l’anneau précédent.',
+      king_of_sky: 'Reste seul dans la zone pour marquer ; elle change de place toutes les 30 s. Réapparitions illimitées.',
+    },
+    livesUnlimited: 'Illimitées',
     mapLabel: 'Terrain',
     mapSoon: 'Bientôt',
     livesLabel: 'Vies par manche',
@@ -201,6 +210,25 @@ export const FR = {
     },
     overheated: 'SURCHAUFFE',
     noItem: 'vide',
+  },
+
+  objectives: {
+    raceTitle: 'Course d’anneaux',
+    ring: 'Anneau',
+    lap: 'Tour',
+    finished: 'Arrivée !',
+    newRecord: 'Nouveau record !',
+    best: 'Record',
+    kingTitle: 'Roi du ciel',
+    crown: 'Couronne',
+    leader: 'En tête',
+    movesIn: 'La zone bouge dans',
+    zone: {
+      free: 'Zone libre : fonce !',
+      mine: 'Tu tiens la zone !',
+      theirs: 'Un adversaire tient la zone',
+      contested: 'Zone disputée',
+    },
   },
 
   hud: {
