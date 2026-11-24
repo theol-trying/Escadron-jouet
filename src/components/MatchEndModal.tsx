@@ -30,12 +30,12 @@ export function MatchEndModal({
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-slate-950/65 p-4"
+      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-slate-950/30 p-4 lg:justify-end lg:pr-10"
       role="dialog"
       aria-modal="true"
       aria-labelledby="podium-title"
     >
-      <div className="toy-panel max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl p-6 text-slate-900">
+      <div className="toy-panel max-h-full w-full max-w-xl overflow-y-auto rounded-2xl p-6 text-slate-900">
         <div className="flex items-center justify-center gap-3">
           <Trophy className="h-8 w-8 text-amber-500" />
           <h2 id="podium-title" className="font-display text-3xl font-extrabold">

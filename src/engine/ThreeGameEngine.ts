@@ -39,6 +39,7 @@ import type { MapSceneHandles } from './maps/types';
 import { ParticleAndProjectilePool } from './particlePool';
 import { WingTrails, type TrailInput } from './wingTrails';
 import { DebrisField } from './debris';
+import { Podium, type PodiumEntry } from './podium';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
 
 // Hangar preview spot on the desk (design units 18, 115, 18), following the arena scale
@@ -64,7 +65,7 @@ const AIM_ASSIST_RANGE = 320;
 
 const HANGAR_SPOT = { x: 18 * ARENA_SCALE, y: 115 * ARENA_SCALE, z: 18 * ARENA_SCALE };
 
-export type EngineMode = 'title_tour' | 'hangar_preview' | 'playing';
+export type EngineMode = 'title_tour' | 'hangar_preview' | 'playing' | 'podium';
 
 export interface ProjectedLabel {
   id: string;
@@ -170,6 +171,9 @@ export class ThreeGameEngine {
   private pool: ParticleAndProjectilePool;
   private trails: WingTrails;
   private debris: DebrisField;
+  private podium: Podium | null = null;
+  private readonly podiumAnchor = new THREE.Vector3();
+  private confettiTimer = 0;
 
   private mode: EngineMode = 'title_tour';
   private frameId = 0;
@@ -398,8 +402,24 @@ export class ThreeGameEngine {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /** End of match: top-3 planes on a toy podium floating in the room, camera orbiting around. */
+  public showPodium(entries: PodiumEntry[]): void {
+    this.podium?.dispose();
+    this.podium = new Podium(entries);
+    const hb = this.currentMap.hardBounds;
+    // Open air in the upper part of the room, where the planes usually fly
+    this.podiumAnchor.set(0, hb.minY + (hb.maxY - hb.minY) * 0.6, 0);
+    this.podium.group.position.copy(this.podiumAnchor);
+    this.scene.add(this.podium.group);
+    this.setMode('podium');
+  }
+
   public setMode(mode: EngineMode, cosmetics?: PlayerCosmetics): void {
     this.mode = mode;
+    if (mode !== 'podium' && this.podium) {
+      this.podium.dispose();
+      this.podium = null;
+    }
 
     // Show/hide tour planes
     for (const tp of this.tourPlanes) {
@@ -1015,6 +1035,51 @@ export class ThreeGameEngine {
       this.mode === 'playing'
     );
 
+    if (this.mode === 'podium' && this.podium) {
+      this.podium.update(this.elapsedTime, dt);
+      const a = this.elapsedTime * 0.22;
+      const R = 92;
+      const c = this.podiumAnchor;
+      this.camera.position.set(c.x + Math.sin(a) * R, c.y + 32, c.z + Math.cos(a) * R);
+      // Furniture between the podium and the camera (monitor, lamp…): move in closer
+      this._v1.set(c.x, c.y + 10, c.z);
+      this._v3.subVectors(this.camera.position, this._v1);
+      const camDist = this._v3.length();
+      this._v3.divideScalar(camDist);
+      this._raycaster.set(this._v1, this._v3);
+      this._raycaster.far = camDist;
+      const block = this._raycaster
+        .intersectObjects(this.mapHandles.cameraColliders, false)
+        .find((h) => h.object.visible);
+      if (block) {
+        this.camera.position.copy(this._v1).addScaledVector(this._v3, Math.max(45, block.distance - 4));
+      }
+      // On wide screens the score panel sits on the right: shift the podium to the left third
+      const shift = this.container.clientWidth > 1000 ? 20 : 0;
+      this.camera.lookAt(c.x + Math.cos(a) * shift, c.y + 10, c.z - Math.sin(a) * shift);
+      if (this.camera.fov !== 55) {
+        this.camera.fov = 55;
+        this.camera.updateProjectionMatrix();
+      }
+      // Confetti
+      this.confettiTimer -= dt;
+      if (this.confettiTimer <= 0) {
+        this.confettiTimer = 0.28;
+        this.pool.spawnBurst(
+          c.x + (Math.random() - 0.5) * 60,
+          c.y + 38 + Math.random() * 10,
+          c.z + (Math.random() - 0.5) * 40,
+          8,
+          [0xef4444, 0xfacc15, 0x22c55e, 0x38bdf8, 0xf472b6, 0xffffff],
+          22,
+          1.1,
+          18,
+          1.8
+        );
+      }
+      return;
+    }
+
     if (this.mode === 'title_tour') {
       const t = this.elapsedTime * 0.18;
       const s = ARENA_SCALE;
@@ -1459,6 +1524,7 @@ export class ThreeGameEngine {
     this.pool.dispose();
     this.trails.dispose();
     this.debris.dispose();
+    this.podium?.dispose();
     this.extrasRenderer.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {

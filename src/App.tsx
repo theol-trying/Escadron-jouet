@@ -208,9 +208,20 @@ export default function App() {
       soundEngine.stopFlightAudio();
     } else if (room.phase === 'match_end') {
       document.body.dataset.state = 'gameover';
-      engine?.setMode('playing');
       soundEngine.stopFlightAudio();
-      if (phaseChanged) soundEngine.playVictoryFanfare();
+      if (phaseChanged) {
+        soundEngine.playVictoryFanfare();
+        // 3D podium with the top-3 planes in their own colours
+        const teams = room.settings.mode === 'last_plane_teams';
+        engine?.showPodium(
+          room.scoreboard.slice(0, 3).map((e) => ({
+            planeId: e.planeId,
+            paintId: e.paintId,
+            stickerId: room.players.find((p) => p.id === e.playerId)?.cosmetics.stickerId ?? 'star',
+            team: teams ? e.team : 'none',
+          }))
+        );
+      }
     } else {
       document.body.dataset.state = paused ? 'paused' : 'playing';
       engine?.setMode('playing');
