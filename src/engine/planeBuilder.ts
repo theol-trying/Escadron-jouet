@@ -11,6 +11,7 @@ export interface BuiltPlaneRig {
   root: THREE.Group;
   bodyGroup: THREE.Group;
   propellers: THREE.Object3D[];
+  cockpitHidden: THREE.Object3D[];
   windupKey: THREE.Object3D | null;
   hitFlashMaterials: THREE.Material[];
   stickerMesh: THREE.Mesh;
@@ -113,6 +114,8 @@ export function buildToyPlane(
   });
 
   const propellers: THREE.Object3D[] = [];
+  // Parts hidden in cockpit view (they would block the pilot's eye: canopy bubble, visor)
+  const cockpitHidden: THREE.Object3D[] = [];
   let windupKey: THREE.Object3D | null = null;
   const disposables: Array<{ dispose: () => void }> = [
     hullMat,
@@ -163,7 +166,7 @@ export function buildToyPlane(
     // 4. Cockpit canopy bubble
     const canopyGeo = new THREE.SphereGeometry(0.95, 12, 10);
     canopyGeo.scale(0.8, 0.75, 1.85);
-    addPart(canopyGeo, canopyMat, [0, 0.85, -1.0], [0, 0, 0], 1.07);
+    cockpitHidden.push(addPart(canopyGeo, canopyMat, [0, 0.85, -1.0], [0, 0, 0], 1.07));
 
     // 5. Twin tail fins
     const finGeo = new THREE.BoxGeometry(0.28, 1.8, 1.5);
@@ -256,7 +259,7 @@ export function buildToyPlane(
 
     // 4. Painted cockpit visor stripe
     const visorGeo = new THREE.BoxGeometry(1.1, 0.45, 1.8);
-    addPart(visorGeo, canopyMat, [0, 0.55, -1.2]);
+    cockpitHidden.push(addPart(visorGeo, canopyMat, [0, 0.55, -1.2]));
 
     // 5. Twin V-tail stabilizers
     const vTail = new THREE.BoxGeometry(0.22, 1.6, 1.25);
@@ -363,6 +366,7 @@ export function buildToyPlane(
     root,
     bodyGroup,
     propellers,
+    cockpitHidden,
     windupKey,
     hitFlashMaterials: [hullMat, secondaryMat, accentMat],
     stickerMesh,

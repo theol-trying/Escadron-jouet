@@ -3,6 +3,7 @@ import type { AudioSettings } from '../audio/soundEngine';
 import { FR } from '../i18n/fr';
 
 export type ControlScheme = 'mouse' | 'keyboard';
+export type CameraViewSetting = 'chase' | 'cockpit';
 
 export interface GameplaySettings {
   controlScheme: ControlScheme; // 'keyboard' = 100 % clavier (ZQSD), 'mouse' = viser à la souris
@@ -10,6 +11,7 @@ export interface GameplaySettings {
   keyboardSensitivity: number; // 0.5..1.5 (max turn input reached with ZQSD)
   invertY: boolean;
   aimAssist: boolean;
+  cameraView: CameraViewSetting; // vue au lancement (touche V pour changer en vol)
 }
 
 export const DEFAULT_GAMEPLAY: GameplaySettings = {
@@ -18,6 +20,7 @@ export const DEFAULT_GAMEPLAY: GameplaySettings = {
   keyboardSensitivity: 1.0,
   invertY: false,
   aimAssist: true,
+  cameraView: 'chase',
 };
 
 /** Reads saved gameplay settings, ignoring unknown or invalid values. */
@@ -32,6 +35,7 @@ export function loadGameplaySettings(): GameplaySettings {
       keyboardSensitivity: num(raw.keyboardSensitivity, 0.5, 1.5, DEFAULT_GAMEPLAY.keyboardSensitivity),
       invertY: raw.invertY === true,
       aimAssist: raw.aimAssist !== false,
+      cameraView: raw.cameraView === 'cockpit' ? 'cockpit' : 'chase',
     };
   } catch {
     return { ...DEFAULT_GAMEPLAY };
@@ -138,6 +142,29 @@ export function SettingsModal({
           </div>
 
           <div className="border-t-2 border-slate-200 pt-4">
+            <div className="mb-1.5 flex items-baseline justify-between text-sm font-semibold">
+              <span>{FR.camera.label}</span>
+              <span className="text-xs font-medium text-slate-500">{FR.camera.toggleHint}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={FR.camera.label}>
+              {(['chase', 'cockpit'] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  role="radio"
+                  aria-checked={gameplay.cameraView === view}
+                  onClick={() => onChangeGameplay({ cameraView: view })}
+                  className={`toy-btn rounded-xl px-3 py-2 text-sm font-bold ${
+                    gameplay.cameraView === view ? 'bg-sky-400 text-slate-950' : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {view === 'chase' ? FR.camera.chase : FR.camera.cockpit}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
             <div className="mb-1.5 text-sm font-semibold">{FR.settings.controlScheme}</div>
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={FR.settings.controlScheme}>
               {(['mouse', 'keyboard'] as const).map((scheme) => (

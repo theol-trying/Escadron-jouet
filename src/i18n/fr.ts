@@ -94,6 +94,7 @@ export const FR = {
       { key: 'Maj', desc: 'Turbo (jauge rechargeable)' },
       { key: 'Ctrl', desc: 'Missile, bombe ou objet spécial ramassé' },
       { key: 'A / E', desc: 'Tonneau d’esquive vers la gauche / la droite' },
+      { key: 'V', desc: 'Vue poursuite ou vue cockpit' },
       { key: 'Tab', desc: 'Afficher le tableau des scores' },
       { key: 'P / Échap', desc: 'Pause' },
       { key: 'M', desc: 'Couper / rétablir le son' },
@@ -119,6 +120,59 @@ export const FR = {
   },
 
   leaveGuard: 'Quitter la partie en cours ?',
+
+  camera: {
+    label: 'Vue de la caméra',
+    chase: 'Poursuite',
+    cockpit: 'Cockpit',
+    toggleHint: 'V : changer de vue',
+  },
+
+  // Cockpit instrument panels, one personality per plane
+  cockpit: {
+    plastic_jet: {
+      title: 'JET-01 · COMMANDES DE VOL',
+      speed: 'VIT',
+      altitude: 'ALT',
+      climb: 'VARIO',
+      hull: 'COQUE',
+      boost: 'POSTCOMBUSTION',
+      heat: 'CHAUFFE',
+      item: 'SOUTE',
+    },
+    windup_biplane: {
+      title: 'Remontoir n° 7',
+      speed: 'Vitesse',
+      altitude: 'Altitude',
+      climb: 'Montée',
+      hull: 'Fuselage',
+      boost: 'Ressort',
+      heat: 'Canon',
+      item: 'Panier',
+    },
+    foam_glider: {
+      title: 'Planeur en mousse',
+      speed: 'Vitesse',
+      altitude: 'Hauteur',
+      climb: 'Ascendance',
+      hull: 'Mousse',
+      boost: 'Élan',
+      heat: 'Canon',
+      item: 'Poche',
+    },
+    diecast_bomber: {
+      title: 'BOMBARDIER · POSTE DE PILOTAGE',
+      speed: 'VITESSE',
+      altitude: 'ALTITUDE',
+      climb: 'MONTÉE',
+      hull: 'BLINDAGE',
+      boost: 'TURBINES',
+      heat: 'CANONS',
+      item: 'SOUTE',
+    },
+    overheated: 'SURCHAUFFE',
+    noItem: 'vide',
+  },
 
   hud: {
     round: 'Manche',

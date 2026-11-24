@@ -1,4 +1,6 @@
-import { useImperativeHandle, useRef, forwardRef, type MutableRefObject } from 'react';
+import { useImperativeHandle, useRef, useState, forwardRef, type MutableRefObject } from 'react';
+import type { PlaneId } from '../../shared/types';
+import { CockpitDashboard, type CockpitHandle } from './CockpitDashboard';
 import { ChevronLeft, ChevronRight, Pause, Volume2, VolumeX } from 'lucide-react';
 import { MAPS } from '../../shared/maps/index';
 import { POWERUPS } from '../../shared/powerups';
@@ -82,9 +84,25 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const statusBadgesRef = useRef<HTMLDivElement>(null);
   const mobileStatusBadgesRef = useRef<HTMLDivElement>(null);
   const vacuumBannerRef = useRef<HTMLDivElement>(null);
+  const topLeftPanelRef = useRef<HTMLDivElement>(null);
+  const bottomRightPanelRef = useRef<HTMLDivElement>(null);
+  const cockpitRef = useRef<CockpitHandle>(null);
+  // Plane whose instrument panel is shown (null = chase view); changes rarely, so React state is fine
+  const [cockpitPlane, setCockpitPlane] = useState<PlaneId | null>(null);
+  const cockpitPlaneRef = useRef<PlaneId | null>(null);
 
   useImperativeHandle(ref, () => ({
     updateFrame(data: HudFrameData, aimX: number, aimY: number, boosting: boolean) {
+      // Cockpit view: the plane's own instrument panel replaces the status and speed panels
+      const cockpitNow = data.cockpit && data.alive ? data.planeId : null;
+      if (cockpitNow !== cockpitPlaneRef.current) {
+        cockpitPlaneRef.current = cockpitNow;
+        setCockpitPlane(cockpitNow);
+      }
+      if (cockpitNow) cockpitRef.current?.update(data);
+      if (topLeftPanelRef.current) topLeftPanelRef.current.style.display = cockpitNow ? 'none' : '';
+      if (bottomRightPanelRef.current) bottomRightPanelRef.current.style.display = cockpitNow ? 'none' : '';
+
       const hpPct = Math.max(0, Math.min(100, (data.hp / Math.max(1, data.maxHp)) * 100));
       if (hpFillRef.current) {
         hpFillRef.current.style.width = `${hpPct}%`;
@@ -503,6 +521,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
 
       {/* Top-Left (Row 2 Left on <640px): Vitality, Lives, Boost, Overheat */}
       <div
+        ref={topLeftPanelRef}
         data-testid="hud-top-left"
         className="toy-panel-dark fixed left-2 top-14 flex w-36 flex-col gap-1.5 rounded-2xl p-2 text-white sm:left-4 sm:top-4 sm:w-56 sm:gap-2 sm:p-3"
       >
@@ -632,8 +651,12 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         <canvas ref={minimapCanvasRef} width={144} height={108} className="block rounded-xl" />
       </div>
 
+      {/* Cockpit instrument panel (cockpit view only) */}
+      {cockpitPlane && <CockpitDashboard ref={cockpitRef} planeId={cockpitPlane} />}
+
       {/* Bottom-Right: Active Buffs + Secondary Power-Up Slot + Speed (desktop) */}
       <div
+        ref={bottomRightPanelRef}
         className={`${
           touchEnabled ? 'hidden' : 'hidden sm:flex'
         } fixed bottom-4 right-4 flex-col items-end gap-2`}

@@ -7,6 +7,7 @@ import {
 } from '../../shared/constants';
 import {
   getPlaneForward,
+  getPlaneRight,
   quatFromYaw,
   stepPlanePhysics,
 } from '../../shared/flightPhysics';
@@ -38,6 +39,22 @@ import { ParticleAndProjectilePool } from './particlePool';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
 
 // Hangar preview spot on the desk (design units 18, 115, 18), following the arena scale
+export type CameraView = 'chase' | 'cockpit';
+
+// Cockpit view: pilot eye position in the plane's local frame (nose toward -Z) and field of view.
+// The eye sits just above the fuselage so the plane's own nose, wings, propellers or cannons stay
+// in sight; canopies/visors are hidden (BuiltPlaneRig.cockpitHidden).
+const COCKPIT_VIEWS: Record<PlaneId, { x: number; y: number; z: number; fov: number }> = {
+  plastic_jet: { x: 0, y: 1.45, z: -0.7, fov: 78 },
+  windup_biplane: { x: 0, y: 2.6, z: 0.9, fov: 74 }, // above the upper wing (it would fill the view)
+  foam_glider: { x: 0, y: 1.5, z: -0.3, fov: 80 },
+  diecast_bomber: { x: 0, y: 1.55, z: 1.3, fov: 72 },
+};
+
+// Chase view: camera offset behind/above the plane and look-ahead point (plane local frame)
+const CHASE_OFFSET = { y: 6.6, z: 27 };
+const CHASE_LOOK = { y: 2.2, z: -30 };
+
 // Aim assist only engages for targets this close to the nose (radians) and within this range
 const AIM_ASSIST_CONE = 0.2;
 const AIM_ASSIST_RANGE = 320;
@@ -90,6 +107,15 @@ export interface HudFrameData {
   suddenDeath: boolean;
   labels: ProjectedLabel[];
   minimapBlips: MinimapBlip[];
+  /** Cockpit view is on (own plane alive): the HUD shows the plane's instrument panel. */
+  cockpit: boolean;
+  planeId: PlaneId;
+  /** Attitude for the artificial horizon (degrees; bank > 0 = banked right, pitch > 0 = nose up). */
+  bankDeg: number;
+  pitchDeg: number;
+  /** Height above the floor and vertical speed (world units = cm, cm/s). */
+  altitude: number;
+  climbRate: number;
 }
 
 interface RemoteBufferEntry {
@@ -205,6 +231,13 @@ export class ThreeGameEngine {
 
   /** Light aim assist: 0 = off, otherwise the share of the aiming correction applied (≤ 1). */
   public aimAssistStrength = 0;
+
+  private cameraView: CameraView = 'chase';
+  private cockpitActive = false;
+
+  public setCameraView(view: CameraView): void {
+    this.cameraView = view;
+  }
 
   private hudCallback: ((data: HudFrameData) => void) | null = null;
   private resizeObserver: ResizeObserver;
@@ -1100,10 +1133,42 @@ export class ThreeGameEngine {
       this.currentSpectatingName = this.roomPlayersMeta.get(spec.id)?.nickname ?? '';
     }
 
-    if (focusPos && focusQuat) {
+    // Cockpit view only while flying our own plane (spectating always uses the chase view)
+    const cockpitActive =
+      this.cameraView === 'cockpit' && !!localPv && !!this.localSim?.alive && focusPos === localPv.interpPos;
+    if (localPv) {
+      for (const part of localPv.rig.cockpitHidden) part.visible = !cockpitActive;
+    }
+    this.cockpitActive = cockpitActive;
+
+    if (focusPos && focusQuat && cockpitActive) {
+      const eye = COCKPIT_VIEWS[this.localCosmetics.planeId] ?? COCKPIT_VIEWS.plastic_jet;
+      if (this.localSim && this.localSim.turboTimer > 0) isBoosting = true;
+      this._v1.set(eye.x, eye.y, eye.z).applyQuaternion(focusQuat).add(focusPos);
+      this.camPos.copy(this._v1);
+      this.camera.position.copy(this._v1);
+      this.camera.quaternion.copy(focusQuat);
+      // Keep the chase target ahead of the nose so switching back to chase is smooth
+      this.camTarget.set(0, CHASE_LOOK.y, CHASE_LOOK.z).applyQuaternion(focusQuat).add(focusPos);
+
+      // Lighter shake: the pilot's head is attached to the plane
+      if (this.cameraTrauma > 0) {
+        this.cameraTrauma = Math.max(0, this.cameraTrauma - dt * 2.2);
+        const shake = this.cameraTrauma * this.cameraTrauma * 0.35;
+        this.camera.position.x += (Math.random() - 0.5) * shake;
+        this.camera.position.y += (Math.random() - 0.5) * shake;
+      }
+
+      const targetFov = isBoosting ? eye.fov + 10 : eye.fov;
+      if (Math.abs(this.currentFov - targetFov) > 0.05) {
+        this.currentFov += (targetFov - this.currentFov) * (1 - Math.exp(-8 * dt));
+        this.camera.fov = this.currentFov;
+        this.camera.updateProjectionMatrix();
+      }
+    } else if (focusPos && focusQuat) {
       // Desired chase offset behind and slightly above plane
-      this._v1.set(0, 5.4, 21.0).applyQuaternion(focusQuat).add(focusPos);
-      this._v2.set(0, 1.8, -26).applyQuaternion(focusQuat).add(focusPos);
+      this._v1.set(0, CHASE_OFFSET.y, CHASE_OFFSET.z).applyQuaternion(focusQuat).add(focusPos);
+      this._v2.set(0, CHASE_LOOK.y, CHASE_LOOK.z).applyQuaternion(focusQuat).add(focusPos);
 
       const localPv2 = this.localPlayerId ? this.planeVisuals.get(this.localPlayerId) : null;
       if (localPv2 && this.localSim && this.localSim.alive && this.localSim.turboTimer > 0) {
@@ -1127,25 +1192,26 @@ export class ThreeGameEngine {
           return true;
         });
         if (visibleHit && visibleHit.distance < desiredDist) {
-          const safeDist = Math.max(10.5, visibleHit.distance - 2.2);
+          const safeDist = Math.max(12, visibleHit.distance - 2.2);
           this._v1.copy(focusPos).addScaledVector(this._v3, safeDist);
           // Lift camera slightly higher when pulled close so own plane stays framed
-          if (safeDist < 15) {
-            this._v1.y += (15 - safeDist) * 0.75;
+          if (safeDist < 18) {
+            this._v1.y += (18 - safeDist) * 0.75;
           }
         }
       }
 
-      // Clamp camera inside room walls
-      this._v1.x = Math.max(-244, Math.min(244, this._v1.x));
-      this._v1.y = Math.max(8, Math.min(220, this._v1.y));
-      this._v1.z = Math.max(-180, Math.min(180, this._v1.z));
+      // Clamp camera inside the room walls (taken from the map: rooms follow ARENA_SCALE)
+      const hb = this.currentMap.hardBounds;
+      this._v1.x = Math.max(hb.minX + 6, Math.min(hb.maxX - 6, this._v1.x));
+      this._v1.y = Math.max(hb.minY + 2, Math.min(hb.maxY - 2, this._v1.y));
+      this._v1.z = Math.max(hb.minZ + 5, Math.min(hb.maxZ - 5, this._v1.z));
 
       // If wall clamping pushed camera too close to plane, elevate slightly for clear view
       const clampedDist = this._v1.distanceTo(focusPos);
-      if (clampedDist < 12.5) {
-        const lift = 12.5 - clampedDist;
-        this._v1.y = Math.min(220, this._v1.y + lift * 0.9);
+      if (clampedDist < 15) {
+        const lift = 15 - clampedDist;
+        this._v1.y = Math.min(hb.maxY - 2, this._v1.y + lift * 0.9);
       }
 
       if (this.snapCameraNextFrame) {
@@ -1223,7 +1289,24 @@ export class ThreeGameEngine {
       }
 
       const sim = this.localSim;
+      let bankDeg = 0;
+      let pitchDeg = 0;
+      let climbRate = 0;
+      if (sim) {
+        const fwd = getPlaneForward(sim);
+        const right = getPlaneRight(sim);
+        const upY = 1 - 2 * (sim.qx * sim.qx + sim.qz * sim.qz); // local up · world up
+        bankDeg = (-Math.atan2(right.y, upY) * 180) / Math.PI;
+        pitchDeg = (Math.asin(Math.max(-1, Math.min(1, fwd.y))) * 180) / Math.PI;
+        climbRate = fwd.y * sim.speed;
+      }
       this.hudCallback({
+        cockpit: this.cockpitActive,
+        planeId: this.localCosmetics.planeId,
+        bankDeg,
+        pitchDeg,
+        altitude: Math.max(0, (sim?.y ?? 0) - this.currentMap.hardBounds.minY),
+        climbRate,
         hp: Math.round(sim?.hp ?? 0),
         maxHp: sim?.maxHp ?? 100,
         lives: sim?.lives ?? 0,

@@ -8,7 +8,9 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
 1. [x] Contrôles 100 % clavier (réglage « Clavier seul » : ZQSD diriger, ↑/↓ gaz) ; dans les deux modes
        Espace/Entrée tirer, Maj turbo, Ctrl objet spécial, A/E tonneaux ; LB/RB tonneaux à la manette ;
        aide à la visée légère ; réglages enregistrés ; confirmation avant de quitter la page en partie.
-2. [ ] Caméra : poursuite un peu plus éloignée + vue cockpit avec tableau de bord propre à chaque avion (touche V).
+2. [x] Caméra : poursuite plus éloignée (et bornée par la vraie taille de la pièce) + vue cockpit (touche V ou
+       Paramètres) : œil du pilote propre à chaque avion, verrière masquée, tableau de bord à son style
+       (jet numérique, biplan laiton et bois, planeur mousse, bombardier acier riveté) avec horizon artificiel.
 3. [ ] Difficulté des bots, bulle de protection visible, titres de fin de match, lien d'invitation,
        écran « le serveur se réveille ».
 4. [ ] Son : moteur propre à chaque avion + effet de passage, son spatialisé, sons tir absorbé / bouclier,

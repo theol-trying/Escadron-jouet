@@ -135,6 +135,11 @@ export default function App() {
     saveGameplaySettings(gameplaySettings);
   }, [gameplaySettings]);
 
+  // Camera view (chase / cockpit) follows the setting; V toggles it in flight
+  useEffect(() => {
+    engineRef.current?.setCameraView(gameplaySettings.cameraView);
+  }, [gameplaySettings.cameraView]);
+
   // In a match, ask before leaving the page: with AZERTY "Z" = KeyW, pressing Ctrl (special item)
   // while steering triggers Ctrl+W, which browsers never let a page block.
   const inMatchPhase = room?.phase === 'playing' || room?.phase === 'countdown' || room?.phase === 'round_end';
@@ -218,6 +223,7 @@ export default function App() {
       );
     });
     engineRef.current = engine;
+    engine.setCameraView(gameplayRef.current.cameraView);
 
     return () => {
       engine.dispose();
@@ -462,6 +468,15 @@ export default function App() {
       if (e.code === 'KeyP' || e.code === 'Escape') {
         e.preventDefault();
         setPaused((p) => !p);
+        return;
+      }
+
+      if (e.code === 'KeyV' && !e.repeat) {
+        e.preventDefault();
+        setGameplaySettings((prev) => ({
+          ...prev,
+          cameraView: prev.cameraView === 'cockpit' ? 'chase' : 'cockpit',
+        }));
         return;
       }
 
