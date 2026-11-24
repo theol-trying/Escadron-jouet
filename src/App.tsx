@@ -68,13 +68,12 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [paused, setPaused] = useState(false);
   const [showScoreboard, setShowScoreboard] = useState(false);
+  // Touch UI only when the PRIMARY pointer is a finger (phone/tablet). Touchscreen laptops report
+  // maxTouchPoints > 0 but keep a fine primary pointer: they start in mouse mode, and the last
+  // input type used (touch vs mouse) switches the UI afterwards.
   const [touchEnabled, setTouchEnabled] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return (
-      'ontouchstart' in window ||
-      navigator.maxTouchPoints > 0 ||
-      Boolean(window.matchMedia?.('(pointer: coarse)')?.matches)
-    );
+    return Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
   });
 
   // Refs for stable event handlers without re-mounting WebGL
@@ -105,6 +104,9 @@ export default function App() {
     fire: false,
   });
   const wasTouchAimActiveRef = useRef(false);
+  // Browsers emit compatibility mouse events right after a tap: ignore them so a tap on the
+  // 3D view neither jerks the aim nor fires, while a real mouse keeps working everywhere.
+  const lastTouchAtRef = useRef(-Infinity);
 
   // Persist nickname & cosmetics
   useEffect(() => {
@@ -455,7 +457,10 @@ export default function App() {
       keysHeldRef.current.delete(e.code);
     };
 
+    const isCompatMouseEvent = () => performance.now() - lastTouchAtRef.current < 800;
+
     const onMouseMove = (e: MouseEvent) => {
+      if (isCompatMouseEvent()) return;
       if (touchEnabledRef.current && touchInputRef.current.aimActive) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest('[data-touch-control="true"]')) return;
@@ -482,7 +487,7 @@ export default function App() {
       if (roomRef.current?.phase === 'playing' && !pausedRef.current) {
         const target = e.target as HTMLElement | null;
         if (target?.closest('button, input, select, [data-touch-control="true"]')) return;
-        if (touchEnabledRef.current) return;
+        if (isCompatMouseEvent()) return;
         soundEngine.unlock();
         if (e.button === 0) {
           mouseDownRef.current = true;
@@ -494,10 +499,14 @@ export default function App() {
 
     const onPointerDownGlobal = (e: PointerEvent) => {
       if (e.pointerType === 'touch') {
+        lastTouchAtRef.current = performance.now();
         soundEngine.unlock();
         if (!touchEnabledRef.current) {
           setTouchEnabled(true);
         }
+      } else if (e.pointerType === 'mouse' && touchEnabledRef.current) {
+        // Touchscreen laptop: the player went back to the mouse, hide the on-screen controls
+        setTouchEnabled(false);
       }
     };
 
