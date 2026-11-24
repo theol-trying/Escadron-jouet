@@ -9,9 +9,11 @@
  * When a moment has file tracks, they are played in turn (looping if there is only one) and the
  * built-in track becomes the fallback if a file cannot be read.
  *
- * Before committing a file, strip its metadata (ID3, APE, C2PA…), e.g.
- *   ffmpeg -i in.mp3 -map_metadata -1 -c:a copy out.mp3
- * The repository privacy hook rejects audio files that still carry such tags.
+ * Before committing a file, strip its metadata (ID3, APE, C2PA…) — the repository privacy hook rejects
+ * audio files that still carry such tags. See « Ajouter tes propres musiques » in README.md, e.g.
+ *   ffmpeg -i in.wav -map_metadata -1 -fflags +bitexact -c:a libvorbis -q:a 5 public/music/out.ogg
+ *   ffmpeg -i in.mp3 -map_metadata -1 -fflags +bitexact -id3v2_version 0 -write_id3v1 0 -c:a copy public/music/out.mp3
+ * (a plain `-map_metadata -1` still writes an ID3 tag with the encoder name in MP3 files).
  */
 export type MusicMoment = 'menu' | 'match';
 

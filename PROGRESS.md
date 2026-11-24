@@ -31,6 +31,10 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
 10. [x] Vérification finale (25/11) : 56/56 tests, build de production, sondes réseau (messages piégés, reconnexion,
         course, roi du ciel), navigateur (grenier + cockpit), 14 CI vertes, scan garde-fou propre.
 
+11. [x] README en français (25/11) : modes, pièces, commandes, paramètres, ajout de musiques (avec retrait des
+        métadonnées pour le garde-fou), tableau des réglages d’équilibrage, déblocages, mise en ligne.
+12. [ ] Audit complet + propositions (25/11, en cours).
+
 ➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
   réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
 

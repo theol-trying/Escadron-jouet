@@ -155,8 +155,8 @@ export default function App() {
     engineRef.current?.setCameraView(gameplaySettings.cameraView);
   }, [gameplaySettings.cameraView]);
 
-  // In a match, ask before leaving the page: with AZERTY "Z" = KeyW, pressing Ctrl (special item)
-  // while steering triggers Ctrl+W, which browsers never let a page block.
+  // In a match, ask before leaving the page: on a QWERTY keyboard, pressing Ctrl (special item) while
+  // climbing with W triggers Ctrl+W (close tab), which browsers never let a page block.
   const inMatchPhase = room?.phase === 'playing' || room?.phase === 'countdown' || room?.phase === 'round_end';
   useEffect(() => {
     if (!inMatchPhase) return;
