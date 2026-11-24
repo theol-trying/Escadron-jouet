@@ -23,7 +23,7 @@ import type {
   TeamId,
 } from '../shared/types';
 import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
-import { roundDuration } from '../shared/objectives';
+import { isObjectiveMode, roundDuration } from '../shared/objectives';
 import { encodeSnapshot } from '../shared/snapshotCodec';
 import { PROTOCOL_VERSION } from '../shared/constants';
 import {
@@ -57,6 +57,8 @@ function finiteNumber(val: unknown, fallback = 0): number {
 
 export class RoomManager {
   private rooms = new Map<string, ServerRoom>();
+  /** The shared public room quick play sends everyone to */
+  private mainRoomCode: string | null = null;
   private socketToRoom = new Map<string, { roomCode: string; playerId: string }>();
   private rateBuckets = new Map<string, RateBucket>();
   private io: TypedIO;
@@ -101,7 +103,7 @@ export class RoomManager {
             (p) => !p.isBot && (p.connected || (p.disconnectedAt && now - p.disconnectedAt < 30000))
           );
           if (!anyRecentHuman) {
-            this.rooms.delete(room.code);
+            this.deleteRoom(room.code);
             continue;
           }
         }
@@ -351,17 +353,15 @@ export class RoomManager {
         return;
       }
     } else if (mode === 'quick') {
-      for (const candidate of this.rooms.values()) {
-        if (!candidate.settings.isPrivate && candidate.phase === 'lobby') {
-          const humanCount = Array.from(candidate.players.values()).filter((p) => !p.isBot).length;
-          if (humanCount < candidate.settings.maxPlayers) {
-            room = candidate;
-            break;
-          }
-        }
-      }
-      if (!room) {
+      // A single public room for now: quick play always brings everyone to the same one, even
+      // while a match is running (newcomers then wait for the next round as spectators)
+      const main = this.mainRoomCode ? this.rooms.get(this.mainRoomCode) : undefined;
+      const humans = main ? Array.from(main.players.values()).filter((p) => !p.isBot).length : 0;
+      if (main && humans < main.settings.maxPlayers) {
+        room = main;
+      } else {
         room = this.createRoom(false);
+        if (!main) this.mainRoomCode = room.code;
       }
     } else {
       room = this.createRoom(true);
@@ -484,9 +484,14 @@ export class RoomManager {
     room.players.set(playerId, newPlayer);
     this.syncBots(room);
 
-    // If joining mid-match, spawn as spectator or active if lobby
-    if (room.phase === 'playing' || room.phase === 'countdown') {
-      spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, room.settings.livesPerRound);
+    // Joining mid-match: objective modes respawn freely, so fly right away; in elimination modes the
+    // newcomer watches as a spectator and gets a plane at the next round (fair for those still alive)
+    if (room.phase === 'playing' || room.phase === 'countdown' || room.phase === 'round_end') {
+      if (isObjectiveMode(room.settings.mode)) {
+        spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, roundLives(room.settings));
+      } else {
+        spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, 0);
+      }
     }
 
     this.socketToRoom.set(socket.id, { roomCode: room.code, playerId });
@@ -512,12 +517,17 @@ export class RoomManager {
     room.players.delete(playerId);
     const humansLeft = Array.from(room.players.values()).filter((p) => !p.isBot);
     if (humansLeft.length === 0) {
-      this.rooms.delete(room.code);
+      this.deleteRoom(room.code);
       return;
     }
     this.reassignHostIfNeeded(room);
     this.syncBots(room);
     this.broadcastRoomState(room);
+  }
+
+  private deleteRoom(code: string): void {
+    this.rooms.delete(code);
+    if (this.mainRoomCode === code) this.mainRoomCode = null;
   }
 
   private reassignHostIfNeeded(room: ServerRoom): void {

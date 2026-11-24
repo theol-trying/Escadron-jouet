@@ -839,6 +839,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
           <div className="text-sm font-extrabold">
             {FR.hud.spectating} <span ref={spectatorNameRef}>—</span>
           </div>
+          <div className="text-[10px] font-semibold text-slate-300">{FR.hud.spectatorNextRound}</div>
         </div>
         <button
           type="button"

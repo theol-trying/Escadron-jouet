@@ -333,3 +333,32 @@ test('RoomManager with 2 humans in Red and bots disabled rebalances on launch so
   }
 });
 
+
+test('quick play: a single shared public room, newcomers mid-match wait for the next round', () => {
+  const { rm, connect } = createHarness();
+  const cos = { planeId: 'plastic_jet', paintId: 'red', stickerId: 'star' };
+  const a = connect('sock_a');
+  let first: { room?: RoomState; playerId?: string } = {};
+  a.trigger('room:join', { mode: 'quick', nickname: 'Alice', cosmetics: cos, sessionToken: 'ta' }, (res: typeof first) => {
+    first = res;
+  });
+  assert.ok(first.room);
+  a.trigger('room:startMatch');
+
+  const b = connect('sock_b');
+  let second: { room?: RoomState; playerId?: string } = {};
+  b.trigger('room:join', { mode: 'quick', nickname: 'Bruno', cosmetics: cos, sessionToken: 'tb' }, (res: typeof second) => {
+    second = res;
+  });
+  assert.equal(second.room?.code, first.room?.code, 'same room for everyone');
+  assert.notEqual(second.room?.phase, 'lobby', 'joined while the match runs');
+
+  // Bruno spectates this round (no plane yet in an elimination mode)
+  const room = (rm as unknown as { rooms: Map<string, { players: Map<string, { sim: { alive: boolean; lives: number } }> }> }).rooms.get(
+    first.room!.code
+  )!;
+  const bruno = room.players.get(second.playerId!)!;
+  assert.equal(bruno.sim.alive, false);
+  assert.equal(bruno.sim.lives, 0);
+  rm.dispose();
+});

@@ -258,6 +258,7 @@ export const FR = {
     countdownGo: 'DÉCOLLAGE !',
     spectatorMode: 'Mode spectateur — Caméra embarquée',
     spectating: 'Vous suivez :',
+    spectatorNextRound: 'Prochaine manche : tu reprends l’air !',
     spectatorPrev: 'Précédent [Q]',
     spectatorNext: 'Suivant [D]',
     pauseTitle: 'Menu — Vol actif en ligne',

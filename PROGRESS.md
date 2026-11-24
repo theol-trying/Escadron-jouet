@@ -26,7 +26,8 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
        4e pièce « Le grenier » (shared/maps/attic.ts + src/engine/maps/buildAtticScene.ts).
 8. [x] Technique : chargement découpé (interface 123 Ko compressés d'abord, 3D ensuite, pièces à la demande) et
        mises à jour réseau binaires (3,5 Ko → 0,8 Ko, -78 %) avec version de protocole.
-9. [ ] Salon unique.
+9. [x] Salon unique : « Partie rapide » mène toujours au même salon public, même en cours de match (spectateur
+       jusqu'à la manche suivante en mode élimination, en vol tout de suite en course / roi du ciel).
 10. [ ] Vérification finale.
 
 ### Chantier précédent (terminé) : correctifs d'audit + arènes ×1,4 / avions ×0,85
