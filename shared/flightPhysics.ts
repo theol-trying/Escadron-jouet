@@ -443,7 +443,7 @@ export function stepPlanePhysics(
       const dirX = -Math.sin(fanYaw);
       const dirZ = -Math.cos(fanYaw);
       const dot = (dx * dirX + dz * dirZ) / dist;
-      if (dot > Math.cos(wz.coneHalfAngle) && Math.abs(dy) < 35) {
+      if (dot > Math.cos(wz.coneHalfAngle) && Math.abs(dy) < (wz.verticalHalfExtent ?? 35)) {
         const falloff = 1 - dist / wz.range;
         nx += dirX * wz.pushStrength * falloff * dt;
         nz += dirZ * wz.pushStrength * falloff * dt;

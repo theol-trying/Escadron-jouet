@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DESK_MAP } from '../../../shared/maps/desk';
+import { ARENA_SCALE } from '../../../shared/constants';
+import { DESK_MAP_DESIGN } from '../../../shared/maps/desk';
 import { getFanYawAtTime } from '../../../shared/flightPhysics';
 import type { MapSceneHandles } from './types';
 import {
@@ -17,6 +18,8 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHa
   const destructibleGroups = new Map<string, THREE.Object3D>();
   const powerUpZoneRings: THREE.Mesh[] = [];
   const rootGroup = new THREE.Group();
+  // Built in design units; the whole room is enlarged by ARENA_SCALE (planes keep their size)
+  rootGroup.scale.setScalar(ARENA_SCALE);
   scene.add(rootGroup);
 
   const woodTex = createWoodGrainTexture(maxAniso);
@@ -169,7 +172,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHa
   addStaticBox(-252, 124, -108, -246, 128, 108, whiteTrimMat, false, false);
   addStaticBox(-252, 68, -2, -246, 186, 2, whiteTrimMat, false, false);
 
-  // Desk tabletop & pedestals (exact DESK_MAP colliders!)
+  // Desk tabletop & pedestals (exact DESK_MAP_DESIGN colliders!)
   addStaticBox(-195, 70, -120, 145, 76, 35, woodMat);
   addStaticBox(-190, 0, -115, -135, 70, 28, darkWoodMat);
   addStaticBox(45, 0, -115, 140, 40, 28, darkWoodMat);
@@ -420,7 +423,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHa
     opacity: 0.55,
   });
   disposables.push(zoneRingGeo, zoneRingMat);
-  for (const sp of DESK_MAP.powerUpSpots) {
+  for (const sp of DESK_MAP_DESIGN.powerUpSpots) {
     const ring = new THREE.Mesh(zoneRingGeo, zoneRingMat);
     ring.position.set(sp.x, sp.y - 5, sp.z);
     rootGroup.add(ring);
@@ -523,7 +526,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHa
   fanHead.add(fanBlades);
 
   // Soft translucent wind cone indicator attached to fan head
-  const windZoneCfg = DESK_MAP.windZones[0];
+  const windZoneCfg = DESK_MAP_DESIGN.windZones[0];
   const windGeo = new THREE.ConeGeometry(34, windZoneCfg.range * 0.75, 12, 1, true);
   windGeo.rotateX(Math.PI / 2);
   windGeo.translate(0, 0, -windZoneCfg.range * 0.375 - 10);
@@ -562,7 +565,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHa
     destructibleGroups,
     powerUpZoneRings,
     updateAnimations: (elapsedTime: number, dt: number) => {
-      const wz = DESK_MAP.windZones[0];
+      const wz = DESK_MAP_DESIGN.windZones[0];
       if (wz) {
         fanHead.rotation.y = getFanYawAtTime(
           wz.baseYaw,

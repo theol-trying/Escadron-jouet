@@ -10,7 +10,8 @@ restaurer avec `git checkout refs/autosave/latest -- .`). Commit + push à chaqu
        (`ensureBothTeams` : on déplace le moins de pilotes possible, bots d'abord ; seul pilote → fin de match).
 3. [x] Détails : commandes tactiles masquées en spectateur, tirs absorbés (protection d'apparition, bouclier,
        ruban) sans son ni secousse, favicon, config Vite sans `__dirname`, esbuild 0.28.2 (0 vulnérabilité).
-4. [ ] Arènes agrandies et avions ralentis (réglage demandé après essai : cartes trop petites, avions trop rapides).
+4. [x] Arènes agrandies ×1,4 (700 × 518 au lieu de 500 × 370) et avions ralentis ×0,85 (croisière 58 au lieu de 68) :
+       traversée ~11 s au lieu de ~6,7 s. Réglages dans `shared/constants.ts` (`ARENA_SCALE`, `PLANE_SPEED_SCALE`).
 5. [ ] Vérification complète (lint, tests, build, sondes réseau, navigateur bureau + mobile), puis propositions.
 
 ## Completed Milestones

@@ -119,28 +119,30 @@ export function computeVacuumState(
   suddenDeathElapsed: number,
   map: MapDefinition
 ): VacuumState {
+  // Distances are authored for the design-size room and follow the arena scale
+  const A = map.arenaScale ?? 1;
   if (suddenDeathElapsed <= 0) {
     return {
       active: false,
       elapsed: 0,
-      nozzleX: map.hardBounds.maxX + 60,
-      nozzleY: 120,
+      nozzleX: map.hardBounds.maxX + 60 * A,
+      nozzleY: 120 * A,
       nozzleZ: 0,
-      safeRadius: 340,
-      suctionRadius: 42,
+      safeRadius: 340 * A,
+      suctionRadius: 42 * A,
     };
   }
 
   // Sweeps in spirals from room perimeter inward over 48 seconds
   const progress = Math.min(1, suddenDeathElapsed / 48);
-  const startRadius = 235;
-  const minRadius = 26;
+  const startRadius = 235 * A;
+  const minRadius = 26 * A;
   const safeRadius = startRadius - (startRadius - minRadius) * progress;
 
   const angle = suddenDeathElapsed * 0.72;
   const nozzleX = Math.cos(angle) * safeRadius * 0.85;
   const nozzleZ = Math.sin(angle) * safeRadius * 0.7;
-  const nozzleY = 108 + Math.sin(suddenDeathElapsed * 1.3) * 32;
+  const nozzleY = (108 + Math.sin(suddenDeathElapsed * 1.3) * 32) * A;
 
   return {
     active: true,
@@ -149,6 +151,6 @@ export function computeVacuumState(
     nozzleY,
     nozzleZ,
     safeRadius,
-    suctionRadius: 40,
+    suctionRadius: 40 * A,
   };
 }

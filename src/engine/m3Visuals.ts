@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ARENA_SCALE } from '../../shared/constants';
 import { POWERUPS } from '../../shared/powerups';
 import type {
   PowerUpId,
@@ -201,6 +202,8 @@ export class MatchExtrasRenderer {
       this.vacuumGroup.add(seg);
       this.vacuumHoseSegments.push(seg);
     }
+    // Giant room-scale prop: grows with the arena (its suction radius does too)
+    this.vacuumGroup.scale.setScalar(ARENA_SCALE);
     scene.add(this.vacuumGroup);
 
     // Shrinking safe-zone perimeter danger ring
@@ -213,7 +216,7 @@ export class MatchExtrasRenderer {
     });
     this.disposables.push(ringGeo, ringMat);
     this.vacuumRingMesh = new THREE.Mesh(ringGeo, ringMat);
-    this.vacuumRingMesh.position.y = 82;
+    this.vacuumRingMesh.position.y = 82 * ARENA_SCALE;
     this.vacuumRingMesh.visible = false;
     scene.add(this.vacuumRingMesh);
   }
@@ -283,7 +286,7 @@ export class MatchExtrasRenderer {
 
       this.vacuumRingMesh.visible = true;
       this.vacuumRingMesh.scale.setScalar(Math.max(12, vacuum.safeRadius));
-      this.vacuumRingMesh.position.y = 82 + Math.sin(elapsedTime * 3) * 4;
+      this.vacuumRingMesh.position.y = (82 + Math.sin(elapsedTime * 3) * 4) * ARENA_SCALE;
     } else {
       this.vacuumGroup.visible = false;
       this.vacuumRingMesh.visible = false;

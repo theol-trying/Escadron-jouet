@@ -17,3 +17,10 @@
 - Never trust client `dt`, `cosmetics` mid-match, or unvalidated socket payloads.
 - Always use `Object.hasOwn(...)` when indexing lookup maps with untrusted keys (`PLANE_ARCHETYPES`, `MAPS`, etc.).
 - Keep `KeyboardEvent.code` for AZERTY/QWERTY physical key compatibility.
+- **Scale tuning lives in `shared/constants.ts`**: `ARENA_SCALE` (room size) and `PLANE_SPEED_SCALE` (plane speeds).
+  Maps are authored in *design units* (`DESK_MAP_DESIGN`…) and the gameplay exports (`DESK_MAP`, `MAPS`) are
+  scaled by `scaleMapDefinition`; the 3D scene builders use the design data inside a group scaled by
+  `ARENA_SCALE`. Any new room-related distance (heights, patrol points, vacuum…) must use `map.arenaScale`;
+  plane-scale distances (combat ranges, hitboxes, pickup radius) must not.
+- Commits: French messages, noreply identity `theol-trying`, privacy hooks via `core.hooksPath ~/.garde-git/hooks`
+  (never `--no-verify`). Local autosave: `npm run autosave` (every 2 min on `refs/autosave/latest`).

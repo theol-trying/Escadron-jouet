@@ -1,3 +1,4 @@
+import { scaleMapDefinition } from './scale';
 import type { MapCollider, MapDefinition } from './types';
 
 function box(
@@ -40,7 +41,8 @@ function capsule(
 
 // 1 unit = 1 cm. Playable bedroom corner "Le bureau".
 // Desk surface at Y = 76 cm; room floor at Y = 0; ceiling at Y = 230.
-export const DESK_MAP: MapDefinition = {
+/** Map authored in design units — the 3D scene is built from this version. */
+export const DESK_MAP_DESIGN: MapDefinition = {
   id: 'desk',
   nameFr: 'Le bureau',
   subtitleFr: 'Coin bureau géant : clavier canyon, tiroir tunnel, tours de briques et ventilateur oscillant.',
@@ -249,3 +251,6 @@ export const DESK_MAP: MapDefinition = {
     { id: 'pu_keyboard_canyon', x: -55, y: 102, z: -28 },
   ],
 };
+
+/** Gameplay version (server + client prediction), enlarged by ARENA_SCALE. */
+export const DESK_MAP: MapDefinition = scaleMapDefinition(DESK_MAP_DESIGN);

@@ -1,3 +1,4 @@
+import { scaleMapDefinition } from './scale';
 import type { BoxCollider, HingeDoorAnimation, MapCollider, MapDefinition } from './types';
 
 function box(
@@ -41,7 +42,8 @@ function capsule(
 
 // 1 unit = 1 cm. Playable kitchen "La cuisine".
 // Main back counter top at Y = 88 cm; central island top at Y = 84 cm; floor at Y = 0.
-export const KITCHEN_MAP: MapDefinition = {
+/** Map authored in design units — the 3D scene is built from this version. */
+export const KITCHEN_MAP_DESIGN: MapDefinition = {
   id: 'kitchen',
   nameFr: 'La cuisine',
   subtitleFr: 'Îlot tunnel, frigo animé, courant chaud des plaques et mixeur géant mortel.',
@@ -231,3 +233,6 @@ export const KITCHEN_MAP: MapDefinition = {
     { id: 'pu_fridge_corner', x: 128, y: 115, z: -65 },
   ],
 };
+
+/** Gameplay version (server + client prediction), enlarged by ARENA_SCALE. */
+export const KITCHEN_MAP: MapDefinition = scaleMapDefinition(KITCHEN_MAP_DESIGN);

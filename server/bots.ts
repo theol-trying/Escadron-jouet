@@ -106,11 +106,15 @@ export function computeBotInput(
   const up = getPlaneUp(sim);
   const personality = bot.botPersonality ?? 'hunter';
 
+  // Room-related distances (patrol circle, altitudes, floor/ceiling) follow the arena scale;
+  // combat distances (to enemies, power-ups, obstacle probes) stay at plane scale.
+  const A = map.arenaScale ?? 1;
+
   // Default patrol point circling central airspace
   const orbitPhase = elapsedTime * 0.45 + (bot.id.charCodeAt(0) % 7);
-  let targetX = Math.cos(orbitPhase) * 115;
-  let targetY = personality === 'ambusher' ? 158 : 122 + Math.sin(orbitPhase * 1.4) * 18;
-  let targetZ = Math.sin(orbitPhase) * 90;
+  let targetX = Math.cos(orbitPhase) * 115 * A;
+  let targetY = (personality === 'ambusher' ? 158 : 122 + Math.sin(orbitPhase * 1.4) * 18) * A;
+  let targetZ = Math.sin(orbitPhase) * 90 * A;
 
   let enemyDist = Infinity;
   let nearestEnemy: ServerPlayer | null = null;
@@ -157,7 +161,7 @@ export function computeBotInput(
     if (personality === 'evader' && enemyDist < 65) {
       // Evader breaks away laterally & climbs
       targetX = sim.x - (nearestEnemy.sim.x - sim.x) + right.x * 55;
-      targetY = Math.min(185, sim.y + 30);
+      targetY = Math.min(185 * A, sim.y + 30);
       targetZ = sim.z - (nearestEnemy.sim.z - sim.z) + right.z * 55;
       wantsBoost = sim.boost > 30;
       if (sim.barrelRollCooldown <= 0 && enemyDist < 55) {
@@ -166,7 +170,7 @@ export function computeBotInput(
     } else if (personality === 'ambusher' && enemyDist > 110) {
       // Ambusher climbs above the enemy first
       targetX = nearestEnemy.sim.x;
-      targetY = Math.min(190, nearestEnemy.sim.y + 42);
+      targetY = Math.min(190 * A, nearestEnemy.sim.y + 42);
       targetZ = nearestEnemy.sim.z;
     } else {
       // Lead target slightly
@@ -182,7 +186,7 @@ export function computeBotInput(
   // Soft boundary priority recovery
   if (isOutsideSoftBounds(sim.x, sim.y, sim.z, map)) {
     targetX = 0;
-    targetY = 128;
+    targetY = 128 * A;
     targetZ = 0;
   }
 
@@ -215,10 +219,10 @@ export function computeBotInput(
         break;
       }
     }
-    if (py < 36) {
+    if (py < 36 * A) {
       obstacleAhead = true;
       avoidY += 1.2;
-    } else if (py > 192) {
+    } else if (py > 192 * A) {
       obstacleAhead = true;
       avoidY -= 1.2;
     }

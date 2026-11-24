@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { ARENA_SCALE as S } from './constants';
 import { DESK_MAP } from './maps/desk';
 import { PLANE_ARCHETYPES } from './planes';
 import {
@@ -91,8 +92,8 @@ test('boost increases speed and drains boost gauge', () => {
 });
 
 test('collision with desk pushes plane out and applies bounded damage', () => {
-  // Desk tabletop is Y: 70..76, X: -195..145, Z: -120..35
-  const sim = makeSim({ x: 0, y: 74, z: 0, invulnTimer: 0 });
+  // Desk tabletop (design units) is Y: 70..76, X: -195..145, Z: -120..35 — scaled by ARENA_SCALE
+  const sim = makeSim({ x: 0, y: 74 * S, z: 0, invulnTimer: 0 });
   const res = stepPlanePhysics(
     sim,
     makeInput(),
@@ -102,14 +103,14 @@ test('collision with desk pushes plane out and applies bounded damage', () => {
   );
   assert.equal(res.collided, true);
   assert.ok(res.collisionDamage > 0 && res.collisionDamage <= 20);
-  assert.ok(sim.y >= 76 || sim.z > 35);
+  assert.ok(sim.y >= 76 * S || sim.z > 35 * S);
 });
 
 test('soft bounds detection triggers out-of-bounds timer outside margin', () => {
-  assert.equal(isOutsideSoftBounds(0, 120, 0, DESK_MAP), false);
-  assert.equal(isOutsideSoftBounds(240, 120, 0, DESK_MAP), true);
+  assert.equal(isOutsideSoftBounds(0, 120 * S, 0, DESK_MAP), false);
+  assert.equal(isOutsideSoftBounds(240 * S, 120 * S, 0, DESK_MAP), true);
 
-  const sim = makeSim({ x: 242, y: 120, z: 0 });
+  const sim = makeSim({ x: 242 * S, y: 120 * S, z: 0 });
   stepPlanePhysics(sim, makeInput(), PLANE_ARCHETYPES.plastic_jet, DESK_MAP, 0);
   assert.ok(sim.outOfBoundsTimer > 0);
 });
@@ -158,13 +159,13 @@ test('turbo_battery timer forces high speed and full boost; glueTimer slows plan
 });
 
 test('destroyedColliderIds allows plane to fly cleanly through shattered prop', () => {
-  // snack_box collider: 108..134, 76..108, 4..24
-  const simSolid = makeSim({ x: 121, y: 92, z: 14 });
+  // snack_box collider (design units): 108..134, 76..108, 4..24 — scaled by ARENA_SCALE
+  const simSolid = makeSim({ x: 121 * S, y: 92 * S, z: 14 * S });
   const hitSolid = stepPlanePhysics(simSolid, makeInput(), PLANE_ARCHETYPES.plastic_jet, DESK_MAP, 0);
   assert.equal(hitSolid.collided, true);
   assert.equal(hitSolid.collidedColliderId, 'snack_box');
 
-  const simBroken = makeSim({ x: 121, y: 92, z: 14 });
+  const simBroken = makeSim({ x: 121 * S, y: 92 * S, z: 14 * S });
   const hitBroken = stepPlanePhysics(
     simBroken,
     makeInput(),

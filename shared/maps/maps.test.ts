@@ -7,6 +7,9 @@ import {
   resolveSphereVsCollider,
   stepPlanePhysics,
 } from '../flightPhysics';
+import { ARENA_SCALE as S, PLANE_SPEED_SCALE } from '../constants';
+import { computeVacuumState } from '../powerups';
+import { DESK_MAP_DESIGN } from './desk';
 import { MAP_ORDER, MAPS } from './index';
 import { PLANE_ARCHETYPES } from '../planes';
 import type { PlaneSimState, PlayerInputState } from '../types';
@@ -126,29 +129,29 @@ test('kitchen hinged fridge door rotates and shifts collision volume dynamically
   const fridgeDoor = MAPS.kitchen.colliders.find((c) => c.id === 'fridge_door');
   assert.ok(fridgeDoor && fridgeDoor.kind === 'box' && fridgeDoor.hinge);
 
-  // At t=0, door is closed along Z = -90, X = 158..240
+  // At t=0, door is closed along Z = -90, X = 158..240 (design units, scaled by ARENA_SCALE)
   assert.equal(getHingeDoorAngleAtTime(-1.18, 10, 0), 0);
-  const closedHit = resolveSphereVsCollider(200, 100, -88, 6, fridgeDoor, 0);
+  const closedHit = resolveSphereVsCollider(200 * S, 100 * S, -88 * S, 6, fridgeDoor, 0);
   assert.ok(closedHit !== null, 'closed fridge door should block X=200, Z=-88');
 
   // At t=5 (half cycle), door is wide open toward +Z; X=230, Z=-88 is clear while X=188, Z=-24 is blocked
   const openAngle = getHingeDoorAngleAtTime(-1.18, 10, 5);
   assert.ok(openAngle < -1.1);
-  const clearedOldSpot = resolveSphereVsCollider(230, 100, -88, 6, fridgeDoor, 5);
+  const clearedOldSpot = resolveSphereVsCollider(230 * S, 100 * S, -88 * S, 6, fridgeDoor, 5);
   assert.equal(clearedOldSpot, null, 'open fridge door should clear X=230, Z=-88');
-  const openDoorHit = resolveSphereVsCollider(188, 100, -24, 8, fridgeDoor, 5);
+  const openDoorHit = resolveSphereVsCollider(188 * S, 100 * S, -24 * S, 8, fridgeDoor, 5);
   assert.ok(openDoorHit !== null, 'open fridge door should block swung door wing');
 });
 
 test('kitchen stove updraft lifts plane upward and blender hazard triggers lethal hit', () => {
-  // Stove updraft at (8, 92..212, -142)
-  const stoveSim = makeSim({ x: 8, y: 120, z: -142, invulnTimer: 0 });
+  // Stove updraft at (8, 92..212, -142) in design units, scaled by ARENA_SCALE
+  const stoveSim = makeSim({ x: 8 * S, y: 120 * S, z: -142 * S, invulnTimer: 0 });
   const beforeY = stoveSim.y;
   stepPlanePhysics(stoveSim, makeInput(), PLANE_ARCHETYPES.plastic_jet, MAPS.kitchen, 0);
   assert.ok(stoveSim.y > beforeY, 'stove updraft should push plane upward');
 
-  // Blender hazard at (44, 112..148, 44)
-  const blenderSim = makeSim({ x: 44, y: 124, z: 44, invulnTimer: 0 });
+  // Blender hazard at (44, 112..148, 44) in design units, scaled by ARENA_SCALE
+  const blenderSim = makeSim({ x: 44 * S, y: 124 * S, z: 44 * S, invulnTimer: 0 });
   const res = stepPlanePhysics(
     blenderSim,
     makeInput(),
@@ -168,10 +171,44 @@ test('garden spinning lawn sprinkler rotates 360 degrees continuously and pushes
   assert.ok(yaw3 - yaw0 > 3.0, 'continuousSpin should rotate monotonically beyond pi');
 
   // Place plane directly in front of Arm 1 at t=0 (yaw=0 -> blows toward -Z from (18,22,18))
-  const gardenSim = makeSim({ x: 18, y: 26, z: -40 });
+  const gardenSim = makeSim({ x: 18 * S, y: 26 * S, z: -40 * S });
   const calmMap = { ...MAPS.garden, windZones: [] };
-  const calmSim = makeSim({ x: 18, y: 26, z: -40 });
+  const calmSim = makeSim({ x: 18 * S, y: 26 * S, z: -40 * S });
   stepPlanePhysics(gardenSim, makeInput(), PLANE_ARCHETYPES.plastic_jet, MAPS.garden, 0);
   stepPlanePhysics(calmSim, makeInput(), PLANE_ARCHETYPES.plastic_jet, calmMap, 0);
   assert.ok(gardenSim.z < calmSim.z, 'sprinkler jet should push plane further along -Z');
+});
+
+test('arena scale enlarges gameplay map data uniformly and keeps the 3D design version untouched', () => {
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+  const design = DESK_MAP_DESIGN;
+  const play = MAPS.desk;
+  assert.equal(play.arenaScale, S);
+  assert.equal(design.arenaScale ?? 1, 1);
+  assert.ok(near(play.hardBounds.maxX, design.hardBounds.maxX * S));
+  assert.ok(near(play.softBounds.minZ, design.softBounds.minZ * S));
+  assert.ok(near(play.spawns[3].y, design.spawns[3].y * S));
+  assert.equal(play.spawns[3].yaw, design.spawns[3].yaw);
+  assert.ok(near(play.powerUpSpots[0].x, design.powerUpSpots[0].x * S));
+
+  // Fan: bigger reach and airflow band, push speed follows the slowed planes
+  const wd = design.windZones[0];
+  const wp = play.windZones[0];
+  assert.ok(near(wp.range, wd.range * S));
+  assert.ok(near(wp.verticalHalfExtent ?? 0, (wd.verticalHalfExtent ?? 35) * S));
+  assert.ok(near(wp.pushStrength, wd.pushStrength * PLANE_SPEED_SCALE));
+  assert.equal(wp.coneHalfAngle, wd.coneHalfAngle);
+
+  // Sudden-death vacuum follows the room size
+  assert.ok(near(computeVacuumState(10, play).safeRadius, computeVacuumState(10, design).safeRadius * S));
+
+  // Every collider keeps its id and kind, scaled consistently
+  for (let i = 0; i < design.colliders.length; i++) {
+    const a = design.colliders[i];
+    const b = play.colliders[i];
+    assert.equal(b.id, a.id);
+    assert.equal(b.kind, a.kind);
+    if (a.kind === 'box' && b.kind === 'box') assert.ok(near(b.maxY, a.maxY * S));
+    if (a.kind !== 'box' && b.kind !== 'box') assert.ok(near(b.radius, a.radius * S));
+  }
 });

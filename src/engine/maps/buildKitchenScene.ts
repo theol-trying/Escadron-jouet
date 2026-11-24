@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getHingeDoorAngleAtTime } from '../../../shared/flightPhysics';
-import { KITCHEN_MAP } from '../../../shared/maps/kitchen';
+import { ARENA_SCALE } from '../../../shared/constants';
+import { KITCHEN_MAP_DESIGN } from '../../../shared/maps/kitchen';
 import type { MapSceneHandles } from './types';
 import {
   addCartoonOutline,
@@ -16,6 +17,8 @@ export function buildKitchenScene(scene: THREE.Scene, maxAniso: number): MapScen
   const destructibleGroups = new Map<string, THREE.Object3D>();
   const powerUpZoneRings: THREE.Mesh[] = [];
   const rootGroup = new THREE.Group();
+  // Built in design units; the whole room is enlarged by ARENA_SCALE (planes keep their size)
+  rootGroup.scale.setScalar(ARENA_SCALE);
   scene.add(rootGroup);
 
   const floorTex = createTileTexture(maxAniso, '#FFFBEB', '#FDBA74', 10, 8);
@@ -426,7 +429,7 @@ export function buildKitchenScene(scene: THREE.Scene, maxAniso: number): MapScen
     opacity: 0.55,
   });
   disposables.push(zoneRingGeo, zoneRingMat);
-  for (const sp of KITCHEN_MAP.powerUpSpots) {
+  for (const sp of KITCHEN_MAP_DESIGN.powerUpSpots) {
     const ring = new THREE.Mesh(zoneRingGeo, zoneRingMat);
     ring.position.set(sp.x, sp.y - 5, sp.z);
     rootGroup.add(ring);

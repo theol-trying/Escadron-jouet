@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getFanYawAtTime } from '../../../shared/flightPhysics';
-import { GARDEN_MAP } from '../../../shared/maps/garden';
+import { ARENA_SCALE } from '../../../shared/constants';
+import { GARDEN_MAP_DESIGN } from '../../../shared/maps/garden';
 import type { MapSceneHandles } from './types';
 import {
   addCartoonOutline,
@@ -16,6 +17,8 @@ export function buildGardenScene(scene: THREE.Scene, maxAniso: number): MapScene
   const destructibleGroups = new Map<string, THREE.Object3D>();
   const powerUpZoneRings: THREE.Mesh[] = [];
   const rootGroup = new THREE.Group();
+  // Built in design units; the whole room is enlarged by ARENA_SCALE (planes keep their size)
+  rootGroup.scale.setScalar(ARENA_SCALE);
   scene.add(rootGroup);
 
   const grassTex = createGrassTexture(maxAniso);
@@ -407,7 +410,7 @@ export function buildGardenScene(scene: THREE.Scene, maxAniso: number): MapScene
     opacity: 0.55,
   });
   disposables.push(zoneRingGeo, zoneRingMat);
-  for (const sp of GARDEN_MAP.powerUpSpots) {
+  for (const sp of GARDEN_MAP_DESIGN.powerUpSpots) {
     const ring = new THREE.Mesh(zoneRingGeo, zoneRingMat);
     ring.position.set(sp.x, sp.y - 5, sp.z);
     rootGroup.add(ring);
@@ -419,7 +422,7 @@ export function buildGardenScene(scene: THREE.Scene, maxAniso: number): MapScene
     destructibleGroups,
     powerUpZoneRings,
     updateAnimations: (elapsedTime: number) => {
-      const wz = GARDEN_MAP.windZones[0];
+      const wz = GARDEN_MAP_DESIGN.windZones[0];
       if (wz) {
         sprinklerRotor.rotation.y = getFanYawAtTime(
           wz.baseYaw,

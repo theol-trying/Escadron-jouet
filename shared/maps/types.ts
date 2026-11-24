@@ -68,8 +68,10 @@ export interface WindZoneConfig {
   baseYaw: number;
   sweepAmplitude: number;
   sweepSpeed: number;
-  pushStrength: number; // cm/s^2 acceleration
+  pushStrength: number; // lateral push speed (cm/s) at the origin, fading with distance
   continuousSpin?: boolean;
+  /** Vertical half-thickness of the airflow around originY (defaults to 35 design units). */
+  verticalHalfExtent?: number;
 }
 
 export interface UpdraftZoneConfig {
@@ -128,6 +130,8 @@ export interface MapDefinition {
   nameFr: string;
   subtitleFr: string;
   available: boolean;
+  /** Factor applied to the design-unit data (1 or absent = design units). See ARENA_SCALE. */
+  arenaScale?: number;
   hardBounds: {
     minX: number;
     maxX: number;

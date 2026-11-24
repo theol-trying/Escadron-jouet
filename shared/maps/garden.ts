@@ -1,3 +1,4 @@
+import { scaleMapDefinition } from './scale';
 import type { MapCollider, MapDefinition } from './types';
 
 function box(
@@ -39,7 +40,8 @@ function capsule(
 }
 
 // 1 unit = 1 cm. Playable outdoor backyard "Le jardin".
-export const GARDEN_MAP: MapDefinition = {
+/** Map authored in design units — the 3D scene is built from this version. */
+export const GARDEN_MAP_DESIGN: MapDefinition = {
   id: 'garden',
   nameFr: 'Le jardin',
   subtitleFr: 'Plein air : niche tunnel, balançoire géante, pots de fleurs, bac à sable et arroseur rotatif.',
@@ -216,3 +218,6 @@ export const GARDEN_MAP: MapDefinition = {
     { id: 'pu_flower_corridor', x: 142, y: 88, z: -18 },
   ],
 };
+
+/** Gameplay version (server + client prediction), enlarged by ARENA_SCALE. */
+export const GARDEN_MAP: MapDefinition = scaleMapDefinition(GARDEN_MAP_DESIGN);

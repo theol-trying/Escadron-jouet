@@ -1,4 +1,8 @@
-import { computeLagCompensationMs, MAX_LAG_COMPENSATION_MS } from '../shared/constants';
+import {
+  computeLagCompensationMs,
+  MAX_LAG_COMPENSATION_MS,
+  PLANE_SPEED_SCALE,
+} from '../shared/constants';
 import {
   getFanYawAtTime,
   getPlaneForward,
@@ -812,10 +816,11 @@ export function stepRoomTick(
       if (!player.sim.alive) continue;
       const distCenter = Math.hypot(player.sim.x, player.sim.z);
       if (distCenter > vac.safeRadius && distCenter > 1) {
-        const pull = 55 * dt;
+        // Pull speed follows the (slower) planes, the damage margin follows the room size
+        const pull = 55 * PLANE_SPEED_SCALE * dt;
         player.sim.x -= (player.sim.x / distCenter) * pull;
         player.sim.z -= (player.sim.z / distCenter) * pull;
-        if (distCenter > vac.safeRadius + 24) {
+        if (distCenter > vac.safeRadius + 24 * (map.arenaScale ?? 1)) {
           handlePlaneCrashDamage(room, player, 22 * dt, 'vacuum', callbacks);
           if (!player.sim.alive) continue;
         }

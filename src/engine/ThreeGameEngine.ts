@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { REMOTE_INTERP_DELAY_MS } from '../../shared/constants';
+import {
+  ARENA_SCALE,
+  PLANE_SPEED_SCALE,
+  REMOTE_INTERP_DELAY_MS,
+} from '../../shared/constants';
 import {
   getPlaneForward,
   quatFromYaw,
@@ -32,6 +36,9 @@ import { buildKitchenScene } from './maps/buildKitchenScene';
 import type { MapSceneHandles } from './maps/types';
 import { ParticleAndProjectilePool } from './particlePool';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
+
+// Hangar preview spot on the desk (design units 18, 115, 18), following the arena scale
+const HANGAR_SPOT = { x: 18 * ARENA_SCALE, y: 115 * ARENA_SCALE, z: 18 * ARENA_SCALE };
 
 export type EngineMode = 'title_tour' | 'hangar_preview' | 'playing';
 
@@ -233,30 +240,31 @@ export class ThreeGameEngine {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.currentMap.skyColor);
-    this.scene.fog = new THREE.Fog(this.currentMap.fogColor, 240, 560);
+    this.scene.fog = new THREE.Fog(this.currentMap.fogColor, 240 * ARENA_SCALE, 560 * ARENA_SCALE);
 
     // Mandatory studio environment reflection (RoomEnvironment)
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
 
-    this.camera = new THREE.PerspectiveCamera(70, width / height, 0.5, 950);
+    this.camera = new THREE.PerspectiveCamera(70, width / height, 0.5, 950 * ARENA_SCALE);
 
     // Warm sunny window directional key light + cool HemisphereLight fill
     const hemi = new THREE.HemisphereLight(0xdbeafe, 0xfde68a, 0.95);
     this.scene.add(hemi);
 
     const sunKey = new THREE.DirectionalLight(0xfff1d6, 1.45);
-    sunKey.position.set(-220, 240, 60);
+    sunKey.position.set(-220 * ARENA_SCALE, 240 * ARENA_SCALE, 60 * ARENA_SCALE);
     sunKey.castShadow = !this.isSoftwareGl;
-    sunKey.shadow.mapSize.width = 1024;
-    sunKey.shadow.mapSize.height = 1024;
-    sunKey.shadow.camera.near = 20;
-    sunKey.shadow.camera.far = 650;
-    sunKey.shadow.camera.left = -240;
-    sunKey.shadow.camera.right = 240;
-    sunKey.shadow.camera.top = 220;
-    sunKey.shadow.camera.bottom = -220;
+    // The shadow frustum covers the enlarged room: a bigger map keeps shadows as crisp as before
+    sunKey.shadow.mapSize.width = 2048;
+    sunKey.shadow.mapSize.height = 2048;
+    sunKey.shadow.camera.near = 20 * ARENA_SCALE;
+    sunKey.shadow.camera.far = 650 * ARENA_SCALE;
+    sunKey.shadow.camera.left = -240 * ARENA_SCALE;
+    sunKey.shadow.camera.right = 240 * ARENA_SCALE;
+    sunKey.shadow.camera.top = 220 * ARENA_SCALE;
+    sunKey.shadow.camera.bottom = -220 * ARENA_SCALE;
     sunKey.shadow.bias = -0.0005;
     sunKey.shadow.normalBias = 0.02;
     this.scene.add(sunKey);
@@ -280,7 +288,8 @@ export class ThreeGameEngine {
     for (const [cos, phase, radius, y] of tourConfigs) {
       const rig = buildToyPlane(cos.planeId, cos.paintId, cos.stickerId);
       this.scene.add(rig.root);
-      this.tourPlanes.push({ rig, phase, radius, y });
+      // Orbits are authored for the design-size room: they follow the arena scale
+      this.tourPlanes.push({ rig, phase, radius: radius * ARENA_SCALE, y: y * ARENA_SCALE });
     }
 
     if (!this.isSoftwareGl) {
@@ -322,8 +331,8 @@ export class ThreeGameEngine {
     this.scene.background = new THREE.Color(this.currentMap.skyColor);
     this.scene.fog = new THREE.Fog(
       this.currentMap.fogColor,
-      mapId === 'garden' ? 320 : 240,
-      mapId === 'garden' ? 760 : 560
+      (mapId === 'garden' ? 320 : 240) * ARENA_SCALE,
+      (mapId === 'garden' ? 760 : 560) * ARENA_SCALE
     );
     this.destroyedColliderIds.clear();
     this.knownDestroyedProps.clear();
@@ -377,7 +386,7 @@ export class ThreeGameEngine {
       cosmetics.paintId,
       cosmetics.stickerId
     );
-    this.hangarPlane.root.position.set(18, 114, 18);
+    this.hangarPlane.root.position.set(HANGAR_SPOT.x, HANGAR_SPOT.y - 1, HANGAR_SPOT.z);
     this.hangarPlane.root.scale.setScalar(1.45);
     this.hangarPlane.root.visible = this.mode === 'hangar_preview';
     this.hangarCosmeticsKey = key;
@@ -862,22 +871,25 @@ export class ThreeGameEngine {
 
     if (this.mode === 'title_tour') {
       const t = this.elapsedTime * 0.18;
+      const s = ARENA_SCALE;
       this.camera.position.set(
-        Math.cos(t) * 190,
-        142 + Math.sin(t * 1.4) * 18,
-        Math.sin(t) * 145
+        Math.cos(t) * 190 * s,
+        (142 + Math.sin(t * 1.4) * 18) * s,
+        Math.sin(t) * 145 * s
       );
-      this.camera.lookAt(-15, 96, -20);
+      this.camera.lookAt(-15 * s, 96 * s, -20 * s);
       if (this.camera.fov !== 62) {
         this.camera.fov = 62;
         this.camera.updateProjectionMatrix();
       }
 
+      // Larger orbits flown at the slowed plane speed: angular rate = 0.72 × speed / room scale
+      const tourAngularRate = 0.72 * (PLANE_SPEED_SCALE / ARENA_SCALE);
       for (const tp of this.tourPlanes) {
-        const a = this.elapsedTime * 0.72 + tp.phase;
+        const a = this.elapsedTime * tourAngularRate + tp.phase;
         const x = Math.cos(a) * tp.radius;
         const z = Math.sin(a) * tp.radius * 0.78;
-        const y = tp.y + Math.sin(a * 2) * 8;
+        const y = tp.y + Math.sin(a * 2) * 8 * ARENA_SCALE;
         tp.rig.root.position.set(x, y, z);
         const dx = -Math.sin(a) * tp.radius;
         const dz = Math.cos(a) * tp.radius * 0.78;
@@ -890,11 +902,15 @@ export class ThreeGameEngine {
 
     if (this.mode === 'hangar_preview' && this.hangarPlane) {
       this.hangarPlane.root.rotation.y = this.elapsedTime * 0.75;
-      this.hangarPlane.root.position.y = 115 + Math.sin(this.elapsedTime * 2.2) * 1.5;
+      // Plane sits at its usual spot on the (enlarged) desk; the camera keeps the same close framing
+      const hx = HANGAR_SPOT.x;
+      const hy = HANGAR_SPOT.y;
+      const hz = HANGAR_SPOT.z;
+      this.hangarPlane.root.position.y = hy + Math.sin(this.elapsedTime * 2.2) * 1.5;
       for (const prop of this.hangarPlane.propellers) prop.rotation.z += dt * 24;
       if (this.hangarPlane.windupKey) this.hangarPlane.windupKey.rotation.y += dt * 6;
-      this.camera.position.set(42, 121, 45);
-      this.camera.lookAt(11, 114, 22);
+      this.camera.position.set(hx + 24, hy + 6, hz + 27);
+      this.camera.lookAt(hx - 7, hy - 1, hz + 4);
       if (this.camera.fov !== 50) {
         this.camera.fov = 50;
         this.camera.updateProjectionMatrix();

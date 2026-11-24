@@ -1,3 +1,4 @@
+import { PLANE_SPEED_SCALE } from './constants';
 import type { PaintId, PlaneId, StickerId } from './types';
 
 export interface PlaneArchetype {
@@ -29,7 +30,8 @@ export interface PlaneArchetype {
   };
 }
 
-export const PLANE_ARCHETYPES: Record<PlaneId, PlaneArchetype> = {
+/** Reference values (speeds before PLANE_SPEED_SCALE). */
+const PLANE_ARCHETYPES_DESIGN: Record<PlaneId, PlaneArchetype> = {
   plastic_jet: {
     id: 'plastic_jet',
     nameFr: 'Jet en plastique',
@@ -119,6 +121,22 @@ export const PLANE_ARCHETYPES: Record<PlaneId, PlaneArchetype> = {
     statsDisplay: { speed: 2, agility: 1, armor: 5, firepower: 4 },
   },
 };
+
+
+/** Gameplay archetypes: every speed is multiplied by PLANE_SPEED_SCALE (turn rates, weapons and
+ * hit points unchanged), so planes cross the enlarged rooms in a comfortable amount of time. */
+export const PLANE_ARCHETYPES: Record<PlaneId, PlaneArchetype> = Object.fromEntries(
+  Object.entries(PLANE_ARCHETYPES_DESIGN).map(([id, a]) => [
+    id,
+    {
+      ...a,
+      minSpeed: a.minSpeed * PLANE_SPEED_SCALE,
+      cruiseSpeed: a.cruiseSpeed * PLANE_SPEED_SCALE,
+      maxSpeed: a.maxSpeed * PLANE_SPEED_SCALE,
+      boostSpeed: a.boostSpeed * PLANE_SPEED_SCALE,
+    },
+  ])
+) as Record<PlaneId, PlaneArchetype>;
 
 export const PLANE_ORDER: PlaneId[] = [
   'plastic_jet',
