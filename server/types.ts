@@ -101,6 +101,9 @@ export interface ServerPlayer {
   ping: number;
   sim: PlaneSimState;
   inputQueue: PlayerInputState[];
+  lastInput: PlayerInputState | null;
+  idleRepeatTime: number;
+  dtBudget: number;
   lastProcessedSeq: number;
   kills: number;
   deaths: number;

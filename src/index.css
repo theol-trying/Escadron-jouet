@@ -9,7 +9,7 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     user-select: none;
   }
 
@@ -17,11 +17,11 @@
   h2,
   h3,
   .font-display {
-    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-family: 'Trebuchet MS', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
   }
 
   .font-mono-num {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
     font-variant-numeric: tabular-nums;
   }
 }

@@ -190,6 +190,9 @@ export function spawnPlayerAtIndex(
   };
   player.sim = sim;
   player.inputQueue.length = 0;
+  player.lastInput = null;
+  player.idleRepeatTime = 0;
+  player.dtBudget = 0.05;
 }
 
 export interface LoopCallbacks {
@@ -550,22 +553,96 @@ export function stepRoomTick(
         room.powerUps
       );
       player.lastProcessedSeq = latestInput.seq;
-    } else if (player.inputQueue.length > 0) {
-      const steps = player.inputQueue.splice(0, 4);
-      for (const inp of steps) {
-        const clampedInp: PlayerInputState = {
-          ...inp,
-          dt: Math.min(0.05, Math.max(0.005, inp.dt)),
+    } else {
+      // Authoritative time budget prevents dt/packet-flood speed & cooldown cheats
+      player.dtBudget = Math.min(0.06, player.dtBudget + dt);
+
+      if (player.inputQueue.length > 0) {
+        let firedInTick = false;
+        let usedSecondaryInTick = false;
+        while (player.inputQueue.length > 0 && player.dtBudget >= 0.004) {
+          const inp = player.inputQueue.shift()!;
+          const reqDt = Math.min(0.05, Math.max(0.005, inp.dt));
+          const stepDt = Math.min(reqDt, player.dtBudget);
+          player.dtBudget -= stepDt;
+
+          const clampedInp: PlayerInputState = {
+            ...inp,
+            dt: stepDt,
+          };
+          const res = stepPlanePhysics(
+            player.sim,
+            clampedInp,
+            arch,
+            map,
+            room.elapsedTime,
+            room.destroyedColliderIds
+          );
+          player.lastProcessedSeq = clampedInp.seq;
+          player.lastInput = {
+            ...clampedInp,
+            fire: false,
+            useSecondary: false,
+            barrelRollDir: 0,
+          };
+          player.idleRepeatTime = 0;
+          if (clampedInp.fire) firedInTick = true;
+          if (clampedInp.useSecondary) usedSecondaryInTick = true;
+
+          if (res.collidedColliderId) {
+            damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+          }
+          if (res.triggeredHazard) {
+            handlePlaneCrashDamage(
+              room,
+              player,
+              res.triggeredHazard.damage,
+              'hazard',
+              callbacks,
+              res.triggeredHazard.nameFr
+            );
+          } else if (res.collisionDamage > 0) {
+            handlePlaneCrashDamage(room, player, res.collisionDamage, 'crash', callbacks);
+          }
+          latestInput = clampedInp;
+        }
+        // Discard stale excess queue if client flooded inputs beyond budget
+        if (player.inputQueue.length > 6) {
+          player.inputQueue.splice(0, player.inputQueue.length - 6);
+        }
+        if (latestInput) {
+          latestInput = {
+            ...latestInput,
+            fire: firedInTick,
+            useSecondary: usedSecondaryInTick,
+          };
+        }
+      } else {
+        // Packet-loss smoothing: hold steering/throttle briefly (<=220ms) before returning to neutral
+        player.idleRepeatTime += dt;
+        const stepDt = Math.min(dt, player.dtBudget);
+        player.dtBudget = Math.max(0, player.dtBudget - stepDt);
+        const holdLast = player.lastInput !== null && player.idleRepeatTime <= 0.22;
+        latestInput = {
+          seq: player.lastProcessedSeq,
+          dt: stepDt > 0 ? stepDt : dt,
+          aimX: holdLast ? player.lastInput!.aimX : 0,
+          aimY: holdLast ? player.lastInput!.aimY : 0,
+          throttle: holdLast ? player.lastInput!.throttle : 0,
+          roll: holdLast ? player.lastInput!.roll : 0,
+          boost: holdLast ? player.lastInput!.boost : false,
+          fire: false,
+          useSecondary: false,
+          barrelRollDir: 0,
         };
         const res = stepPlanePhysics(
           player.sim,
-          clampedInp,
+          latestInput,
           arch,
           map,
           room.elapsedTime,
           room.destroyedColliderIds
         );
-        player.lastProcessedSeq = clampedInp.seq;
         if (res.collidedColliderId) {
           damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
         }
@@ -581,43 +658,6 @@ export function stepRoomTick(
         } else if (res.collisionDamage > 0) {
           handlePlaneCrashDamage(room, player, res.collisionDamage, 'crash', callbacks);
         }
-        latestInput = clampedInp;
-      }
-    } else {
-      latestInput = {
-        seq: player.lastProcessedSeq,
-        dt,
-        aimX: 0,
-        aimY: 0,
-        throttle: 0,
-        roll: 0,
-        boost: false,
-        fire: false,
-        useSecondary: false,
-        barrelRollDir: 0,
-      };
-      const res = stepPlanePhysics(
-        player.sim,
-        latestInput,
-        arch,
-        map,
-        room.elapsedTime,
-        room.destroyedColliderIds
-      );
-      if (res.collidedColliderId) {
-        damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
-      }
-      if (res.triggeredHazard) {
-        handlePlaneCrashDamage(
-          room,
-          player,
-          res.triggeredHazard.damage,
-          'hazard',
-          callbacks,
-          res.triggeredHazard.nameFr
-        );
-      } else if (res.collisionDamage > 0) {
-        handlePlaneCrashDamage(room, player, res.collisionDamage, 'crash', callbacks);
       }
     }
 
@@ -758,11 +798,8 @@ export function stepRoomTick(
         player.sim.x -= (player.sim.x / distCenter) * pull;
         player.sim.z -= (player.sim.z / distCenter) * pull;
         if (distCenter > vac.safeRadius + 24) {
-          const res = applyDamageToSim(player.sim, 22 * dt);
-          if (res.eliminated) {
-            handlePlaneCrashDamage(room, player, 9999, 'vacuum', callbacks);
-            continue;
-          }
+          handlePlaneCrashDamage(room, player, 22 * dt, 'vacuum', callbacks);
+          if (!player.sim.alive) continue;
         }
       }
       const distNozzle = Math.hypot(
@@ -1024,7 +1061,7 @@ export function stepRoomTick(
       sp.kind === 'water_bomb'
         ? sp.ttl <= 0 || hitWallOrFloor || hitProp || directTarget !== null
         : sp.kind === 'glue_mine'
-          ? directTarget !== null
+          ? sp.ttl <= 0 || directTarget !== null
           : hitWallOrFloor || hitProp || directTarget !== null || sp.ttl <= 0;
 
     if (!shouldDetonate) continue;
@@ -1199,12 +1236,7 @@ export function buildCompactSnapshot(room: ServerRoom): SnapshotPayload {
   for (const p of room.players.values()) {
     planes.push({
       id: p.id,
-      nickname: p.nickname,
-      isBot: p.isBot,
       team: p.team,
-      planeId: p.cosmetics.planeId,
-      paintId: p.cosmetics.paintId,
-      stickerId: p.cosmetics.stickerId,
       x: round2(p.sim.x),
       y: round2(p.sim.y),
       z: round2(p.sim.z),
@@ -1214,7 +1246,6 @@ export function buildCompactSnapshot(room: ServerRoom): SnapshotPayload {
       qw: round3(p.sim.qw),
       speed: round2(p.sim.speed),
       hp: Math.round(p.sim.hp),
-      maxHp: p.sim.maxHp,
       boost: Math.round(p.sim.boost),
       heat: Math.round(p.sim.heat),
       overheated: p.sim.overheated,

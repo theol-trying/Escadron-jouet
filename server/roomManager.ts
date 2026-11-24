@@ -1,21 +1,25 @@
 import type { Server, Socket } from 'socket.io';
 import { MAPS } from '../shared/maps/index';
-import { PLANE_ARCHETYPES } from '../shared/planes';
+import { PAINT_PALETTES, PLANE_ARCHETYPES, STICKERS } from '../shared/planes';
 import {
   assignBalancedTeam,
   autoBalanceTeams,
   generateRoomCode,
+  pickBotToRemoveForBalance,
+  rebalanceBotTeams,
   sanitizeNickname,
 } from '../shared/rules';
 import type {
   ClientToServerEvents,
-  JoinRoomPayload,
   MatchScoreEntry,
+  PaintId,
+  PlaneId,
   PlayerCosmetics,
   PlayerLobbyInfo,
   RoomSettings,
   RoomState,
   ServerToClientEvents,
+  StickerId,
   TeamId,
 } from '../shared/types';
 import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
@@ -32,9 +36,25 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 const TARGET_BOT_FILL = 6; // Fill up to 6 planes by default when bots enabled (or up to maxPlayers)
 
+interface RateBucket {
+  windowStart: number;
+  controlCount: number;
+  inputCount: number;
+}
+
+function isPlainObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val);
+}
+
+function finiteNumber(val: unknown, fallback = 0): number {
+  const n = typeof val === 'number' ? val : Number(val);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export class RoomManager {
   private rooms = new Map<string, ServerRoom>();
   private socketToRoom = new Map<string, { roomCode: string; playerId: string }>();
+  private rateBuckets = new Map<string, RateBucket>();
   private io: TypedIO;
   private tickInterval: NodeJS.Timeout | null = null;
   private snapshotCounter = 0;
@@ -96,6 +116,22 @@ export class RoomManager {
           }
         }
       }
+      // Periodic server-initiated RTT measurement (~every 2s) for lag compensation
+      if (this.snapshotCounter % 60 === 0) {
+        for (const room of this.rooms.values()) {
+          for (const player of room.players.values()) {
+            if (player.isBot || !player.connected || !player.socketId) continue;
+            const sock = this.io.sockets?.sockets?.get(player.socketId);
+            if (!sock) continue;
+            const sentAt = Date.now();
+            sock.timeout(2000).emit('net:probe', (err: unknown) => {
+              if (err) return;
+              const rtt = Math.max(1, Math.min(400, Date.now() - sentAt));
+              player.ping = Math.round(player.ping * 0.4 + rtt * 0.6);
+            });
+          }
+        }
+      }
     }, TICK_MS);
   }
 
@@ -103,20 +139,46 @@ export class RoomManager {
     if (this.tickInterval) clearInterval(this.tickInterval);
   }
 
+  private checkRateLimit(socketId: string, kind: 'control' | 'input'): boolean {
+    const now = Date.now();
+    let bucket = this.rateBuckets.get(socketId);
+    if (!bucket || now - bucket.windowStart >= 1000) {
+      bucket = { windowStart: now, controlCount: 0, inputCount: 0 };
+      this.rateBuckets.set(socketId, bucket);
+    }
+    if (kind === 'control') {
+      bucket.controlCount++;
+      return bucket.controlCount <= 25;
+    }
+    bucket.inputCount++;
+    return bucket.inputCount <= 90;
+  }
+
   public handleConnection(socket: TypedSocket): void {
     socket.on('net:ping', (clientSentAt, ack) => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
+      if (typeof clientSentAt !== 'number' || !Number.isFinite(clientSentAt)) return;
       if (typeof ack === 'function') ack(clientSentAt);
     });
 
     socket.on('room:join', (payload, ack) => {
+      if (!this.checkRateLimit(socket.id, 'control')) {
+        if (typeof ack === 'function') {
+          ack({ ok: false, error: 'Trop de requêtes. Patiente un instant.' });
+        }
+        return;
+      }
       this.handleJoin(socket, payload, ack);
     });
 
     socket.on('room:leave', () => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
       this.handleLeaveSocket(socket);
     });
 
     socket.on('room:updateSettings', (partial) => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
+      if (!isPlainObject(partial)) return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
@@ -124,48 +186,55 @@ export class RoomManager {
       const player = room.players.get(binding.playerId);
       if (!player || !player.isHost || room.phase !== 'lobby') return;
 
-      this.applySettings(room, partial);
+      this.applySettings(room, partial as Partial<RoomSettings>);
       this.syncBots(room);
       this.broadcastRoomState(room);
     });
 
     socket.on('room:setReady', (ready) => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
+      if (typeof ready !== 'boolean') return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
       if (!room) return;
       const player = room.players.get(binding.playerId);
       if (!player) return;
-      player.ready = Boolean(ready);
+      player.ready = ready;
       this.broadcastRoomState(room);
     });
 
     socket.on('room:switchTeam', (team) => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
+      if (team !== 'red' && team !== 'blue') return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
       if (!room || room.phase !== 'lobby' || room.settings.mode !== 'last_plane_teams') return;
       const player = room.players.get(binding.playerId);
       if (!player) return;
-      if (team === 'red' || team === 'blue') {
-        player.team = team;
-        this.broadcastRoomState(room);
-      }
+      player.team = team;
+      this.syncBots(room);
+      this.broadcastRoomState(room);
     });
 
     socket.on('room:updateCosmetics', (cosmetics) => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
+      if (!isPlainObject(cosmetics)) return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
-      if (!room) return;
+      if (!room || room.phase !== 'lobby') return;
       const player = room.players.get(binding.playerId);
       if (!player) return;
-      player.cosmetics = this.sanitizeCosmetics(cosmetics);
+      player.cosmetics = this.sanitizeCosmetics(cosmetics as Partial<PlayerCosmetics>);
       player.sim.maxHp = PLANE_ARCHETYPES[player.cosmetics.planeId].maxHp;
+      player.sim.hp = player.sim.maxHp;
       this.broadcastRoomState(room);
     });
 
     socket.on('room:startMatch', () => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
@@ -177,16 +246,19 @@ export class RoomManager {
     });
 
     socket.on('room:playAgain', () => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
-      if (!room) return;
+      if (!room || room.phase !== 'match_end') return;
       const player = room.players.get(binding.playerId);
       if (!player || !player.isHost) return;
       this.startMatch(room);
     });
 
     socket.on('game:input', (input) => {
+      if (!this.checkRateLimit(socket.id, 'input')) return;
+      if (!isPlainObject(input)) return;
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       const room = this.rooms.get(binding.roomCode);
@@ -194,18 +266,18 @@ export class RoomManager {
       const player = room.players.get(binding.playerId);
       if (!player || player.isBot) return;
 
-      // Update approximate RTT if client reports ping or track queue
       if (player.inputQueue.length < 16) {
+        const seq = Math.max(0, Math.floor(finiteNumber(input.seq, 0)));
         player.inputQueue.push({
-          seq: Number(input.seq) || 0,
-          dt: Math.min(0.05, Math.max(0.005, Number(input.dt) || 1 / 60)),
-          aimX: Math.max(-1, Math.min(1, Number(input.aimX) || 0)),
-          aimY: Math.max(-1, Math.min(1, Number(input.aimY) || 0)),
-          throttle: Math.max(-1, Math.min(1, Number(input.throttle) || 0)),
-          roll: Math.max(-1, Math.min(1, Number(input.roll) || 0)),
-          boost: Boolean(input.boost),
-          fire: Boolean(input.fire),
-          useSecondary: Boolean(input.useSecondary),
+          seq,
+          dt: Math.min(0.05, Math.max(0.005, finiteNumber(input.dt, 1 / 60))),
+          aimX: Math.max(-1, Math.min(1, finiteNumber(input.aimX, 0))),
+          aimY: Math.max(-1, Math.min(1, finiteNumber(input.aimY, 0))),
+          throttle: Math.max(-1, Math.min(1, finiteNumber(input.throttle, 0))),
+          roll: Math.max(-1, Math.min(1, finiteNumber(input.roll, 0))),
+          boost: input.boost === true,
+          fire: input.fire === true,
+          useSecondary: input.useSecondary === true,
           barrelRollDir:
             input.barrelRollDir === -1 ? -1 : input.barrelRollDir === 1 ? 1 : 0,
         });
@@ -213,6 +285,7 @@ export class RoomManager {
     });
 
     socket.on('disconnect', () => {
+      this.rateBuckets.delete(socket.id);
       const binding = this.socketToRoom.get(socket.id);
       if (!binding) return;
       this.socketToRoom.delete(socket.id);
@@ -231,31 +304,48 @@ export class RoomManager {
 
   private handleJoin(
     socket: TypedSocket,
-    payload: JoinRoomPayload,
-    ack: (res: { ok: boolean; room?: RoomState; playerId?: string; error?: string }) => void
+    payload: unknown,
+    ack?: unknown
   ): void {
-    // Leave previous room if any
-    this.handleLeaveSocket(socket);
+    const respond = (res: { ok: boolean; room?: RoomState; playerId?: string; error?: string }) => {
+      if (typeof ack === 'function') {
+        ack(res);
+      }
+    };
 
-    const nickname = sanitizeNickname(payload.nickname || 'Pilote');
-    const cosmetics = this.sanitizeCosmetics(payload.cosmetics);
-    const sessionToken = payload.sessionToken || socket.id;
+    if (!isPlainObject(payload)) {
+      respond({ ok: false, error: 'Requête de connexion invalide.' });
+      return;
+    }
+
+    const mode =
+      payload.mode === 'quick' || payload.mode === 'create' || payload.mode === 'join'
+        ? payload.mode
+        : 'quick';
+    const rawRoomCode = typeof payload.roomCode === 'string' ? payload.roomCode : '';
+    const nickname = sanitizeNickname(payload.nickname);
+    const cosmetics = this.sanitizeCosmetics(
+      isPlainObject(payload.cosmetics) ? (payload.cosmetics as Partial<PlayerCosmetics>) : undefined
+    );
+    const sessionToken =
+      typeof payload.sessionToken === 'string' && payload.sessionToken.trim().length > 0
+        ? payload.sessionToken.trim().slice(0, 64)
+        : socket.id;
 
     let room: ServerRoom | undefined;
 
-    if (payload.mode === 'join') {
-      const code = (payload.roomCode || '').trim().toUpperCase();
+    if (mode === 'join') {
+      const code = rawRoomCode.trim().toUpperCase();
       if (!/^[A-Z]{5}$/.test(code)) {
-        ack({ ok: false, error: 'Entre un code valide à 5 lettres.' });
+        respond({ ok: false, error: 'Entre un code valide à 5 lettres.' });
         return;
       }
       room = this.rooms.get(code);
       if (!room) {
-        ack({ ok: false, error: 'Salon introuvable. Vérifie le code à 5 lettres.' });
+        respond({ ok: false, error: 'Salon introuvable. Vérifie le code à 5 lettres.' });
         return;
       }
-    } else if (payload.mode === 'quick') {
-      // Find an open public room in lobby with available human capacity
+    } else if (mode === 'quick') {
       for (const candidate of this.rooms.values()) {
         if (!candidate.settings.isPrivate && candidate.phase === 'lobby') {
           const humanCount = Array.from(candidate.players.values()).filter((p) => !p.isBot).length;
@@ -272,18 +362,36 @@ export class RoomManager {
       room = this.createRoom(true);
     }
 
+    // Leave any previous room AFTER validating the new join request
+    const prevBinding = this.socketToRoom.get(socket.id);
+    if (prevBinding && prevBinding.roomCode !== room.code) {
+      this.handleLeaveSocket(socket);
+    }
+
     // Check reconnect by sessionToken
     for (const existing of room.players.values()) {
       if (!existing.isBot && existing.sessionToken === sessionToken) {
+        if (existing.socketId && existing.socketId !== socket.id) {
+          this.socketToRoom.delete(existing.socketId);
+        }
         existing.connected = true;
         existing.socketId = socket.id;
         existing.disconnectedAt = null;
         existing.nickname = nickname;
-        existing.cosmetics = cosmetics;
+        // Preserve match plane archetype if match is already underway
+        if (room.phase === 'lobby') {
+          existing.cosmetics = cosmetics;
+          existing.sim.maxHp = PLANE_ARCHETYPES[cosmetics.planeId].maxHp;
+          existing.sim.hp = existing.sim.maxHp;
+        }
+        existing.dtBudget = 0.05;
         this.socketToRoom.set(socket.id, { roomCode: room.code, playerId: existing.id });
         socket.join(room.code);
         this.broadcastRoomState(room);
-        ack({ ok: true, room: this.serializeRoomState(room), playerId: existing.id });
+        respond({ ok: true, room: this.serializeRoomState(room), playerId: existing.id });
+        if (room.phase === 'playing' || room.phase === 'countdown') {
+          socket.emit('game:snapshot', buildCompactSnapshot(room));
+        }
         return;
       }
     }
@@ -291,7 +399,7 @@ export class RoomManager {
     // Remove a bot if room is full of bots + humans
     const humanCount = Array.from(room.players.values()).filter((p) => !p.isBot).length;
     if (humanCount >= room.settings.maxPlayers) {
-      ack({ ok: false, error: 'Ce salon est complet.' });
+      respond({ ok: false, error: 'Ce salon est complet.' });
       return;
     }
 
@@ -351,6 +459,9 @@ export class RoomManager {
         magnetTimer: 0,
       },
       inputQueue: [],
+      lastInput: null,
+      idleRepeatTime: 0,
+      dtBudget: 0.05,
       lastProcessedSeq: 0,
       kills: 0,
       deaths: 0,
@@ -371,7 +482,10 @@ export class RoomManager {
     this.socketToRoom.set(socket.id, { roomCode: room.code, playerId });
     socket.join(room.code);
     this.broadcastRoomState(room);
-    ack({ ok: true, room: this.serializeRoomState(room), playerId });
+    respond({ ok: true, room: this.serializeRoomState(room), playerId });
+    if (room.phase === 'playing' || room.phase === 'countdown') {
+      socket.emit('game:snapshot', buildCompactSnapshot(room));
+    }
   }
 
   private handleLeaveSocket(socket: TypedSocket): void {
@@ -454,16 +568,20 @@ export class RoomManager {
     if (partial.mode === 'last_plane_ffa' || partial.mode === 'last_plane_teams') {
       room.settings.mode = partial.mode;
     }
-    if (partial.mapId && MAPS[partial.mapId]?.available) {
+    if (
+      typeof partial.mapId === 'string' &&
+      Object.hasOwn(MAPS, partial.mapId) &&
+      MAPS[partial.mapId].available
+    ) {
       room.settings.mapId = partial.mapId;
     }
-    if (typeof partial.livesPerRound === 'number') {
+    if (typeof partial.livesPerRound === 'number' && Number.isFinite(partial.livesPerRound)) {
       room.settings.livesPerRound = Math.max(1, Math.min(5, Math.round(partial.livesPerRound)));
     }
     if (typeof partial.botsEnabled === 'boolean') {
       room.settings.botsEnabled = partial.botsEnabled;
     }
-    if (typeof partial.maxPlayers === 'number') {
+    if (typeof partial.maxPlayers === 'number' && Number.isFinite(partial.maxPlayers)) {
       room.settings.maxPlayers = Math.max(4, Math.min(16, Math.round(partial.maxPlayers)));
     }
     if (typeof partial.friendlyFire === 'boolean') {
@@ -491,17 +609,22 @@ export class RoomManager {
 
     const desiredTotal = Math.min(room.settings.maxPlayers, TARGET_BOT_FILL);
     const humans = Array.from(room.players.values()).filter((p) => !p.isBot);
-    const bots = Array.from(room.players.values()).filter((p) => p.isBot);
+    let currentBots = Array.from(room.players.values()).filter((p) => p.isBot);
 
     const targetBotCount = Math.max(0, desiredTotal - humans.length);
 
-    while (bots.length > targetBotCount) {
-      const removed = bots.pop();
-      if (removed) room.players.delete(removed.id);
+    while (currentBots.length > targetBotCount) {
+      const removed = pickBotToRemoveForBalance(
+        Array.from(room.players.values()),
+        room.settings.mode
+      );
+      if (!removed) break;
+      room.players.delete(removed.id);
+      currentBots = Array.from(room.players.values()).filter((p) => p.isBot);
     }
 
     const usedNames = new Set(Array.from(room.players.values()).map((p) => p.nickname));
-    let botIndex = bots.length;
+    let botIndex = currentBots.length;
     while (room.players.size < desiredTotal) {
       const botId = `bot_${Math.random().toString(36).slice(2, 9)}`;
       const name = pickBotName(usedNames, botIndex);
@@ -562,6 +685,9 @@ export class RoomManager {
           magnetTimer: 0,
         },
         inputQueue: [],
+        lastInput: null,
+        idleRepeatTime: 0,
+        dtBudget: 0.05,
         lastProcessedSeq: 0,
         kills: 0,
         deaths: 0,
@@ -572,6 +698,10 @@ export class RoomManager {
       };
       room.players.set(botId, botPlayer);
       botIndex++;
+    }
+
+    if (room.settings.mode === 'last_plane_teams') {
+      rebalanceBotTeams(Array.from(room.players.values()));
     }
   }
 
@@ -603,12 +733,18 @@ export class RoomManager {
   }
 
   private sanitizeCosmetics(raw?: Partial<PlayerCosmetics>): PlayerCosmetics {
-    const planeId =
-      raw?.planeId && PLANE_ARCHETYPES[raw.planeId] ? raw.planeId : 'plastic_jet';
-    const validPaints = new Set(['red', 'blue', 'yellow', 'green', 'orange', 'white']);
-    const validStickers = new Set(['star', 'lightning', 'target', 'flame']);
-    const paintId = raw?.paintId && validPaints.has(raw.paintId) ? raw.paintId : 'red';
-    const stickerId = raw?.stickerId && validStickers.has(raw.stickerId) ? raw.stickerId : 'star';
+    const planeId: PlaneId =
+      typeof raw?.planeId === 'string' && Object.hasOwn(PLANE_ARCHETYPES, raw.planeId)
+        ? (raw.planeId as PlaneId)
+        : 'plastic_jet';
+    const paintId: PaintId =
+      typeof raw?.paintId === 'string' && Object.hasOwn(PAINT_PALETTES, raw.paintId)
+        ? (raw.paintId as PaintId)
+        : 'red';
+    const stickerId: StickerId =
+      typeof raw?.stickerId === 'string' && Object.hasOwn(STICKERS, raw.stickerId)
+        ? (raw.stickerId as StickerId)
+        : 'star';
     return { planeId, paintId, stickerId };
   }
 

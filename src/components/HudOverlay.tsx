@@ -703,6 +703,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         >
           <div className="toy-panel w-full max-w-sm rounded-2xl p-6 text-center text-slate-900">
             <h2 className="font-display text-2xl font-extrabold">{FR.hud.pauseTitle}</h2>
+            <p className="mt-1.5 text-xs font-semibold text-slate-600">{FR.hud.pauseSubtitle}</p>
             <div className="mt-5 flex flex-col gap-3">
               <button
                 type="button"

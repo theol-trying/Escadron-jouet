@@ -7,23 +7,48 @@ import {
   checkRoundWinner,
   generateRoomCode,
   isMatchOver,
+  pickBotToRemoveForBalance,
+  rebalanceBotTeams,
   sanitizeNickname,
 } from './rules';
-import type { PlaneSimState } from './types';
+import type { PlaneSimState, TeamId } from './types';
 
 test('generateRoomCode returns 5 uppercase letters', () => {
   const code = generateRoomCode();
   assert.match(code, /^[A-Z]{5}$/);
 });
 
-test('sanitizeNickname enforces clean readable names', () => {
+test('sanitizeNickname enforces clean readable names and handles non-strings', () => {
   assert.equal(sanitizeNickname('  As du Ciel!  '), 'As du Ciel');
   assert.equal(sanitizeNickname(''), 'Pilote');
+  assert.equal(sanitizeNickname(12345), 'Pilote');
+  assert.equal(sanitizeNickname(null), 'Pilote');
 });
 
 test('assignBalancedTeam keeps red and blue balanced', () => {
   assert.equal(assignBalancedTeam([{ team: 'red' }, { team: 'red' }, { team: 'blue' }]), 'blue');
   assert.equal(assignBalancedTeam([{ team: 'red' }, { team: 'blue' }]), 'red');
+});
+
+test('pickBotToRemoveForBalance removes bots from oversized team first and rebalanceBotTeams evens teams', () => {
+  const players = [
+    { id: 'h1', isBot: false, team: 'red' as const },
+    { id: 'h2', isBot: false, team: 'red' as const },
+    { id: 'b1', isBot: true, team: 'red' as const },
+    { id: 'b2', isBot: true, team: 'blue' as const },
+  ];
+  const removed = pickBotToRemoveForBalance(players, 'last_plane_teams');
+  assert.equal(removed?.id, 'b1');
+
+  const skewed: Array<{ isBot: boolean; team: TeamId }> = [
+    { isBot: false, team: 'red' },
+    { isBot: false, team: 'red' },
+    { isBot: true, team: 'red' },
+    { isBot: true, team: 'red' },
+  ];
+  rebalanceBotTeams(skewed);
+  assert.equal(skewed.filter((p) => p.team === 'red').length, 2);
+  assert.equal(skewed.filter((p) => p.team === 'blue').length, 2);
 });
 
 test('canDamageTarget blocks friendly fire in teams mode when disabled', () => {
@@ -33,7 +58,7 @@ test('canDamageTarget blocks friendly fire in teams mode when disabled', () => {
   assert.equal(canDamageTarget('last_plane_ffa', false, 'a', 'none', 'b', 'none'), true);
 });
 
-test('checkRoundWinner detects last plane standing in FFA and Teams', () => {
+test('checkRoundWinner detects last plane standing in FFA and Teams including empty opposing team', () => {
   const ffaWin = checkRoundWinner(
     'last_plane_ffa',
     [
@@ -56,6 +81,17 @@ test('checkRoundWinner detects last plane standing in FFA and Teams', () => {
   );
   assert.equal(teamWin.finished, true);
   assert.equal(teamWin.winnerTeam, 'red');
+
+  const allSameTeamWin = checkRoundWinner(
+    'last_plane_teams',
+    [
+      { id: '1', nickname: 'A', team: 'red', alive: true, lives: 3 },
+      { id: '2', nickname: 'B', team: 'red', alive: true, lives: 3 },
+    ],
+    240
+  );
+  assert.equal(allSameTeamWin.finished, true);
+  assert.equal(allSameTeamWin.winnerTeam, 'red');
 });
 
 test('applyDamageToSim decrements lives and marks final elimination', () => {

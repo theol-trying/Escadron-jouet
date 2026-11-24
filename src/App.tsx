@@ -102,7 +102,8 @@ export default function App() {
       // ignore storage errors
     }
     engineRef.current?.updateHangarPlane(cosmetics);
-    if (roomRef.current) {
+    if (roomRef.current?.phase === 'lobby') {
+      engineRef.current?.updateLocalCosmetics(cosmetics);
       getSocket().emit('room:updateCosmetics', cosmetics);
     }
   }, [cosmetics]);
@@ -193,11 +194,15 @@ export default function App() {
           const targetMap = preferredMap ?? res.room.settings.mapId;
           engineRef.current?.setMap(targetMap);
           engineRef.current?.resetMatchVisuals();
-          engineRef.current?.setLocalPlayer(res.playerId, cosmeticsRef.current);
+          engineRef.current?.syncRoomPlayers(res.room.players);
+          const authoritativeMe = res.room.players.find((p) => p.id === res.playerId);
+          engineRef.current?.setLocalPlayer(
+            res.playerId,
+            authoritativeMe?.cosmetics ?? cosmeticsRef.current
+          );
 
           if (autoStartIfHost) {
-            const me = res.room.players.find((p) => p.id === res.playerId);
-            if (me?.isHost) {
+            if (authoritativeMe?.isHost) {
               if (preferredMap && preferredMap !== res.room.settings.mapId) {
                 socket.emit('room:updateSettings', { mapId: preferredMap });
               }
@@ -218,6 +223,42 @@ export default function App() {
       setConnected(true);
       setErrorMessage(null);
 
+      // Automatically rejoin active room after transient network/Wi-Fi drop
+      if (roomRef.current) {
+        socket.emit(
+          'room:join',
+          {
+            mode: 'join',
+            roomCode: roomRef.current.code,
+            nickname: nicknameRef.current,
+            cosmetics: cosmeticsRef.current,
+            sessionToken: getSessionToken(),
+          },
+          (res) => {
+            if (res.ok && res.room && res.playerId) {
+              setLocalPlayerId(res.playerId);
+              setRoom(res.room);
+              engineRef.current?.syncRoomPlayers(res.room.players);
+              const me = res.room.players.find((p) => p.id === res.playerId);
+              engineRef.current?.setLocalPlayer(
+                res.playerId,
+                me?.cosmetics ?? cosmeticsRef.current,
+                {
+                  preserveSim:
+                    res.room.phase === 'playing' || res.room.phase === 'countdown',
+                }
+              );
+            } else {
+              setRoom(null);
+              setLocalPlayerId('');
+              setPaused(false);
+              setErrorMessage(res.error || FR.errors.disconnected);
+            }
+          }
+        );
+        return;
+      }
+
       // ?autostart=1 (&map=kitchen|garden) immediately launches solo/bot flight
       const params = new URLSearchParams(window.location.search);
       if (params.get('autostart') === '1' && !autostartDoneRef.current && !roomRef.current) {
@@ -235,6 +276,7 @@ export default function App() {
 
     const onRoomState = (nextRoom: RoomState) => {
       setRoom(nextRoom);
+      engineRef.current?.syncRoomPlayers(nextRoom.players);
       if (nextRoom.phase === 'countdown') {
         setPaused(false);
         setShowHangar(false);
@@ -259,6 +301,10 @@ export default function App() {
       setErrorMessage(msg);
     };
 
+    const onNetProbe = (ack: () => void) => {
+      if (typeof ack === 'function') ack();
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('room:state', onRoomState);
@@ -266,6 +312,7 @@ export default function App() {
     socket.on('game:hit', onHit);
     socket.on('game:killfeed', onKillFeed);
     socket.on('room:error', onRoomError);
+    socket.on('net:probe', onNetProbe);
 
     if (socket.connected) {
       onConnect();
@@ -288,6 +335,7 @@ export default function App() {
       socket.off('game:hit', onHit);
       socket.off('game:killfeed', onKillFeed);
       socket.off('room:error', onRoomError);
+      socket.off('net:probe', onNetProbe);
     };
   }, [joinRoom]);
 

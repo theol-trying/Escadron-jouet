@@ -1,6 +1,6 @@
 # Escadrille Jouet
 
-Jeu de combat aérien arcade 3D multijoueur en ligne aux commandes d’avions jouets miniatures (envergure ~10 cm), dans l’esprit Micro Machines.
+Jeu de combat aérien arcade 3D multijoueur en ligne aux commandes d’avions jouets miniatures (envergure ~10 cm), à travers des décors du quotidien à taille géante.
 
 ## Démarrage local
 
@@ -15,7 +15,7 @@ Ouvre ensuite `http://localhost:3000` dans plusieurs onglets pour tester le mult
 
 - `npm run dev` : lance le serveur Express + Socket.io + Vite sur le port 3000.
 - `npm run lint` : vérifie les types TypeScript.
-- `npm test` : exécute les tests unitaires de la physique de vol et des règles de manche.
+- `npm test` : exécute les tests unitaires (physique de vol, règles, bonus, cartes, serveur).
 - `npm run build` : compile le client dans `dist/` et le serveur dans `dist-server/server.js`.
 - `npm start` : démarre le serveur de production sur `process.env.PORT` (ou `3000` par défaut).
 
@@ -30,7 +30,7 @@ Ce projet se déploie en **un seul Web Service Node.js** (client statique + API 
    - Sélectionne ton dépôt GitHub.
 3. **Configurer le service (si création manuelle)**
    - **Runtime** : `Node`
-   - **Build Command** : `npm install && npm run build`
+   - **Build Command** : `npm ci --include=dev && npm run build`
    - **Start Command** : `npm start`
    - **Health Check Path** : `/healthz`
    - **Environment Variables** :

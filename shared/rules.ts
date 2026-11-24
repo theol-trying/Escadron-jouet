@@ -16,7 +16,8 @@ export function generateRoomCode(rng: () => number = Math.random): string {
   return code;
 }
 
-export function sanitizeNickname(raw: string): string {
+export function sanitizeNickname(raw: unknown): string {
+  if (typeof raw !== 'string') return 'Pilote';
   const cleaned = raw.replace(/[^\p{L}\p{N}_\-\s]/gu, '').trim().slice(0, 16);
   return cleaned.length >= 2 ? cleaned : 'Pilote';
 }
@@ -36,6 +37,57 @@ export function autoBalanceTeams<T extends { id: string; team: TeamId }>(players
   for (const p of players) {
     p.team = toggle % 2 === 0 ? 'red' : 'blue';
     toggle++;
+  }
+}
+
+export function pickBotToRemoveForBalance<T extends { isBot: boolean; team: TeamId }>(
+  players: T[],
+  mode: GameModeId
+): T | undefined {
+  const bots = players.filter((p) => p.isBot);
+  if (bots.length === 0) return undefined;
+  if (mode !== 'last_plane_teams') return bots[bots.length - 1];
+
+  let redCount = 0;
+  let blueCount = 0;
+  for (const p of players) {
+    if (p.team === 'red') redCount++;
+    else if (p.team === 'blue') blueCount++;
+  }
+
+  if (redCount > blueCount) {
+    for (let i = bots.length - 1; i >= 0; i--) {
+      if (bots[i].team === 'red') return bots[i];
+    }
+  } else if (blueCount > redCount) {
+    for (let i = bots.length - 1; i >= 0; i--) {
+      if (bots[i].team === 'blue') return bots[i];
+    }
+  }
+  return bots[bots.length - 1];
+}
+
+export function rebalanceBotTeams<T extends { isBot: boolean; team: TeamId }>(players: T[]): void {
+  let redCount = 0;
+  let blueCount = 0;
+  const bots: T[] = [];
+  for (const p of players) {
+    if (p.isBot) {
+      bots.push(p);
+    } else if (p.team === 'red') {
+      redCount++;
+    } else if (p.team === 'blue') {
+      blueCount++;
+    }
+  }
+  for (const bot of bots) {
+    if (redCount <= blueCount) {
+      bot.team = 'red';
+      redCount++;
+    } else {
+      bot.team = 'blue';
+      blueCount++;
+    }
   }
 }
 
@@ -93,10 +145,8 @@ export function checkRoundWinner(
   // last_plane_teams
   const redAlive = activeContenders.some((p) => p.team === 'red');
   const blueAlive = activeContenders.some((p) => p.team === 'blue');
-  const hasRed = players.some((p) => p.team === 'red');
-  const hasBlue = players.some((p) => p.team === 'blue');
 
-  if (hasRed && hasBlue && (!redAlive || !blueAlive)) {
+  if (players.length > 1 && (!redAlive || !blueAlive)) {
     const winningTeam: TeamId = redAlive ? 'red' : blueAlive ? 'blue' : 'none';
     return {
       finished: true,

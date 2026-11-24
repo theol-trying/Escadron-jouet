@@ -43,7 +43,7 @@ function capsule(
 export const DESK_MAP: MapDefinition = {
   id: 'desk',
   nameFr: 'Le bureau',
-  subtitleFr: 'Coin bureau géant : clavier canyon, tiroir tunnel, tours Lego et ventilateur oscillant.',
+  subtitleFr: 'Coin bureau géant : clavier canyon, tiroir tunnel, tours de briques et ventilateur oscillant.',
   available: true,
   hardBounds: {
     minX: -250,
@@ -135,7 +135,7 @@ export const DESK_MAP: MapDefinition = {
     {
       id: 'lego_desk_tower_top',
       colliderId: 'lego_desk_tower_top',
-      nameFr: 'Sommet Lego',
+      nameFr: 'Sommet en briques',
       kind: 'lego',
       x: 105,
       y: 129,
@@ -147,7 +147,7 @@ export const DESK_MAP: MapDefinition = {
     {
       id: 'lego_desk_tower_base',
       colliderId: 'lego_desk_tower_base',
-      nameFr: 'Tour Lego',
+      nameFr: 'Tour de briques',
       kind: 'lego',
       x: 105,
       y: 96,
@@ -159,7 +159,7 @@ export const DESK_MAP: MapDefinition = {
     {
       id: 'lego_arch_bridge',
       colliderId: 'lego_arch_bridge',
-      nameFr: 'Arche Lego',
+      nameFr: 'Arche en briques',
       kind: 'lego',
       x: 173,
       y: 72,

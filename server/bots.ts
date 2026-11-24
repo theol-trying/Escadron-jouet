@@ -12,7 +12,7 @@ import type { PlayerCosmetics, PlayerInputState, RoomSettings } from '../shared/
 import type { BotPersonality, ServerPlayer } from './types';
 
 const BOT_NAMES = [
-  'Capitaine Légo',
+  'Capitaine Brique',
   'As en Carton',
   'Moustique',
   'Baroudeur',

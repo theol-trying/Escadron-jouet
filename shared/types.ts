@@ -168,12 +168,7 @@ export interface PlaneSimState {
 
 export interface SnapshotPlane {
   id: string;
-  nickname: string;
-  isBot: boolean;
   team: TeamId;
-  planeId: PlaneId;
-  paintId: PaintId;
-  stickerId: StickerId;
   x: number;
   y: number;
   z: number;
@@ -183,7 +178,6 @@ export interface SnapshotPlane {
   qw: number;
   speed: number;
   hp: number;
-  maxHp: number;
   boost: number;
   heat: number;
   overheated: boolean;
@@ -317,4 +311,5 @@ export interface ServerToClientEvents {
   'game:hit': (event: HitFeedbackEvent) => void;
   'game:killfeed': (entry: KillFeedEntry) => void;
   'room:error': (message: string) => void;
+  'net:probe': (ack: () => void) => void;
 }

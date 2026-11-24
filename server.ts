@@ -14,10 +14,54 @@ async function bootstrap() {
   const app = express();
   const server = http.createServer(app);
 
+  const isProd = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
+  const allowedOrigins = new Set(
+    (process.env.CORS_ORIGIN || process.env.APP_URL || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+
   const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(server, {
     cors: {
-      origin: '*',
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+          return callback(null, true);
+        }
+        if (allowedOrigins.has(origin)) {
+          return callback(null, true);
+        }
+        if (process.env.RENDER_EXTERNAL_URL && origin === process.env.RENDER_EXTERNAL_URL) {
+          return callback(null, true);
+        }
+        callback(null, false);
+      },
       methods: ['GET', 'POST'],
+    },
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      if (!origin) return callback(null, true);
+      if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+      if (process.env.RENDER_EXTERNAL_URL && origin === process.env.RENDER_EXTERNAL_URL) {
+        return callback(null, true);
+      }
+      // Always allow same-origin requests behind reverse proxies (Render, Cloud Run, preview)
+      const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+      try {
+        const originHost = new URL(origin).host;
+        if (hostHeader && originHost === hostHeader) {
+          return callback(null, true);
+        }
+      } catch {
+        // invalid origin URL
+      }
+      return callback('Origine non autorisée', false);
     },
     transports: ['websocket', 'polling'],
   });
@@ -34,8 +78,6 @@ async function bootstrap() {
       uptime: Math.round(process.uptime()),
     });
   });
-
-  const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');

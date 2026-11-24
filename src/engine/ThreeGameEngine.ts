@@ -11,12 +11,16 @@ import { PLANE_ARCHETYPES } from '../../shared/planes';
 import type {
   HitFeedbackEvent,
   MapId,
+  PaintId,
+  PlaneId,
   PlaneSimState,
   PlayerCosmetics,
   PlayerInputState,
+  PlayerLobbyInfo,
   PowerUpId,
   SnapshotPayload,
   SnapshotPlane,
+  StickerId,
   TeamId,
 } from '../../shared/types';
 import { soundEngine } from '../audio/soundEngine';
@@ -147,6 +151,18 @@ export class ThreeGameEngine {
   private localFireVisualCooldown = 0;
 
   private planeVisuals = new Map<string, ActivePlaneVisual>();
+  private roomPlayersMeta = new Map<
+    string,
+    {
+      nickname: string;
+      isBot: boolean;
+      team: TeamId;
+      planeId: PlaneId;
+      paintId: PaintId;
+      stickerId: StickerId;
+      maxHp: number;
+    }
+  >();
   private latestSnapshot: SnapshotPayload | null = null;
   private spectatorIndex = 0;
   private currentSpectatingName = '';
@@ -367,11 +383,46 @@ export class ThreeGameEngine {
     this.scene.add(this.hangarPlane.root);
   }
 
-  public setLocalPlayer(playerId: string | null, cosmetics: PlayerCosmetics): void {
+  public setLocalPlayer(
+    playerId: string | null,
+    cosmetics: PlayerCosmetics,
+    options?: { preserveSim?: boolean }
+  ): void {
     this.localPlayerId = playerId;
     this.localCosmetics = { ...cosmetics };
-    this.localSim = null;
-    this.pendingInputs.length = 0;
+    if (!options?.preserveSim) {
+      this.localSim = null;
+      this.pendingInputs.length = 0;
+    }
+  }
+
+  public updateLocalCosmetics(cosmetics: PlayerCosmetics): void {
+    this.localCosmetics = { ...cosmetics };
+  }
+
+  public syncRoomPlayers(players: PlayerLobbyInfo[]): void {
+    const validIds = new Set<string>();
+    for (const p of players) {
+      validIds.add(p.id);
+      const arch = PLANE_ARCHETYPES[p.cosmetics.planeId] ?? PLANE_ARCHETYPES.plastic_jet;
+      this.roomPlayersMeta.set(p.id, {
+        nickname: p.nickname,
+        isBot: p.isBot,
+        team: p.team,
+        planeId: p.cosmetics.planeId,
+        paintId: p.cosmetics.paintId,
+        stickerId: p.cosmetics.stickerId,
+        maxHp: arch.maxHp,
+      });
+      if (p.id === this.localPlayerId) {
+        this.localCosmetics = { ...p.cosmetics };
+      }
+    }
+    for (const id of Array.from(this.roomPlayersMeta.keys())) {
+      if (!validIds.has(id)) {
+        this.roomPlayersMeta.delete(id);
+      }
+    }
   }
 
   public resetMatchVisuals(): void {
@@ -403,7 +454,14 @@ export class ThreeGameEngine {
     const seenIds = new Set<string>();
     for (const pData of snapshot.planes) {
       seenIds.add(pData.id);
-      const cosmeticsKey = `${pData.planeId}_${pData.paintId}_${pData.stickerId}_${pData.team}`;
+      const meta = this.roomPlayersMeta.get(pData.id);
+      const planeId =
+        meta?.planeId ?? (pData.id === this.localPlayerId ? this.localCosmetics.planeId : 'plastic_jet');
+      const paintId =
+        meta?.paintId ?? (pData.id === this.localPlayerId ? this.localCosmetics.paintId : 'red');
+      const stickerId =
+        meta?.stickerId ?? (pData.id === this.localPlayerId ? this.localCosmetics.stickerId : 'star');
+      const cosmeticsKey = `${planeId}_${paintId}_${stickerId}_${pData.team}`;
       let pv = this.planeVisuals.get(pData.id);
 
       if (!pv || pv.cosmeticsKey !== cosmeticsKey) {
@@ -411,7 +469,7 @@ export class ThreeGameEngine {
           this.scene.remove(pv.rig.root);
           pv.rig.dispose();
         }
-        const rig = buildToyPlane(pData.planeId, pData.paintId, pData.stickerId, pData.team);
+        const rig = buildToyPlane(planeId, paintId, stickerId, pData.team);
         rig.root.visible = this.mode === 'playing';
         this.scene.add(rig.root);
         pv = {
@@ -526,7 +584,15 @@ export class ThreeGameEngine {
   }
 
   private reconcileLocal(auth: SnapshotPlane): void {
-    const arch = PLANE_ARCHETYPES[auth.planeId];
+    const meta = this.roomPlayersMeta.get(auth.id);
+    if (meta) {
+      this.localCosmetics = {
+        planeId: meta.planeId,
+        paintId: meta.paintId,
+        stickerId: meta.stickerId,
+      };
+    }
+    const arch = PLANE_ARCHETYPES[this.localCosmetics.planeId];
     if (!this.localSim || (!this.localSim.alive && auth.alive)) {
       this.snapCameraNextFrame = true;
       this.localSim = {
@@ -539,7 +605,7 @@ export class ThreeGameEngine {
         qw: auth.qw,
         speed: auth.speed,
         hp: auth.hp,
-        maxHp: auth.maxHp,
+        maxHp: arch.maxHp,
         boost: auth.boost,
         heat: auth.heat,
         overheated: auth.overheated,
@@ -572,7 +638,7 @@ export class ThreeGameEngine {
 
     // Authoritative health, lives, boost, heat, power-up & status buffs
     this.localSim.hp = auth.hp;
-    this.localSim.maxHp = auth.maxHp;
+    this.localSim.maxHp = arch.maxHp;
     this.localSim.lives = auth.lives;
     this.localSim.alive = auth.alive;
     this.localSim.invulnTimer = auth.invuln ? 0.5 : 0;
@@ -900,11 +966,12 @@ export class ThreeGameEngine {
       }
 
       // Damage smoke trail when HP < 45%
-      if (pv.rig.root.visible && latest.hp < latest.maxHp * 0.45) {
+      const metaMaxHp = this.roomPlayersMeta.get(pv.id)?.maxHp ?? 100;
+      if (pv.rig.root.visible && latest.hp < metaMaxHp * 0.45) {
         pv.smokeTimer -= dt;
         if (pv.smokeTimer <= 0) {
           pv.smokeTimer = 0.08;
-          this.pool.spawnSmokePuff(pv.interpPos.x, pv.interpPos.y, pv.interpPos.z, latest.hp < latest.maxHp * 0.25);
+          this.pool.spawnSmokePuff(pv.interpPos.x, pv.interpPos.y, pv.interpPos.z, latest.hp < metaMaxHp * 0.25);
         }
       }
 
@@ -941,8 +1008,7 @@ export class ThreeGameEngine {
       const spec = livingPlanes[idx];
       focusPos = spec.interpPos;
       focusQuat = spec.interpQuat;
-      const specData = spec.buffer[spec.buffer.length - 1]?.data;
-      this.currentSpectatingName = specData?.nickname ?? '';
+      this.currentSpectatingName = this.roomPlayersMeta.get(spec.id)?.nickname ?? '';
     }
 
     if (focusPos && focusQuat) {
@@ -1051,11 +1117,12 @@ export class ThreeGameEngine {
         const screenY = (-ny * 0.5 + 0.5) * height;
         const angle = Math.atan2(-ny, nx);
 
+        const meta = this.roomPlayersMeta.get(pv.id);
         labels.push({
           id: pv.id,
-          nickname: data.nickname,
+          nickname: meta?.nickname ?? 'Pilote',
           team: data.team,
-          hpRatio: Math.max(0, data.hp / Math.max(1, data.maxHp)),
+          hpRatio: Math.max(0, data.hp / Math.max(1, meta?.maxHp ?? 100)),
           screenX,
           screenY,
           inFront,
