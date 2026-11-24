@@ -391,7 +391,7 @@ export default function App() {
         autostartDoneRef.current = true;
         const rawMap = params.get('map');
         const mapParam: MapId | undefined =
-          rawMap === 'desk' || rawMap === 'kitchen' || rawMap === 'garden' ? rawMap : undefined;
+          rawMap === 'desk' || rawMap === 'kitchen' || rawMap === 'garden' || rawMap === 'attic' ? rawMap : undefined;
         joinRoom('create', undefined, true, mapParam);
       }
     };

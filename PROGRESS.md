@@ -22,7 +22,8 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
        peintures/autocollants à débloquer (3 nouvelles peintures, Cœur et Couronne ; src/progression.ts).
 6. [x] Modes : Course d'anneaux (2 tours, sans tir, record par pièce sur l'appareil) et Roi du ciel (zone tenue seul,
        40 s, zone qui bouge toutes les 30 s) ; règles dans shared/objectives.ts, repères 3D et HUD dédiés.
-7. [ ] Pièces : événements (chat, lumière, frigo), 4e pièce « Le grenier ».
+7. [x] Pièces : événements (chat qui traverse, panne de courant, frigo capricieux ; shared/roomEvents.ts) et
+       4e pièce « Le grenier » (shared/maps/attic.ts + src/engine/maps/buildAtticScene.ts).
 8. [ ] Technique : chargement découpé (Three.js à part, cartes à la demande), données réseau compactes.
 9. [ ] Salon unique.
 10. [ ] Vérification finale.

@@ -69,8 +69,8 @@ function makeInput(overrides: Partial<PlayerInputState> = {}): PlayerInputState 
   };
 }
 
-test('all 3 maps are available with 16 spawns, 5 power-up spots, and valid destructible colliders', () => {
-  assert.deepEqual(MAP_ORDER, ['desk', 'kitchen', 'garden']);
+test('all 4 maps are available with 16 spawns, 5 power-up spots, and valid destructible colliders', () => {
+  assert.deepEqual(MAP_ORDER, ['desk', 'kitchen', 'garden', 'attic']);
   for (const mapId of MAP_ORDER) {
     const map = MAPS[mapId];
     assert.equal(map.available, true, `${mapId} should be available`);
@@ -85,8 +85,8 @@ test('all 3 maps are available with 16 spawns, 5 power-up spots, and valid destr
   }
 });
 
-test('all 16 spawns on kitchen and garden fly 4.5s unobstructed and in-bounds', () => {
-  for (const mapId of ['kitchen', 'garden'] as const) {
+test('all 16 spawns on kitchen, garden and attic fly 4.5s unobstructed and in-bounds', () => {
+  for (const mapId of ['kitchen', 'garden', 'attic'] as const) {
     const map = MAPS[mapId];
     for (let idx = 0; idx < map.spawns.length; idx++) {
       const sp = map.spawns[idx];

@@ -33,6 +33,7 @@ import type {
 import { music } from '../audio/music';
 import { soundEngine } from '../audio/soundEngine';
 import { MatchExtrasRenderer } from './m3Visuals';
+import { buildAtticScene } from './maps/buildAtticScene';
 import { buildDeskScene } from './maps/buildDeskScene';
 import { buildGardenScene } from './maps/buildGardenScene';
 import { buildKitchenScene } from './maps/buildKitchenScene';
@@ -432,6 +433,7 @@ export class ThreeGameEngine {
   private buildMapScene(mapId: MapId): MapSceneHandles {
     if (mapId === 'kitchen') return buildKitchenScene(this.scene, this.maxAniso);
     if (mapId === 'garden') return buildGardenScene(this.scene, this.maxAniso);
+    if (mapId === 'attic') return buildAtticScene(this.scene, this.maxAniso);
     return buildDeskScene(this.scene, this.maxAniso);
   }
 
