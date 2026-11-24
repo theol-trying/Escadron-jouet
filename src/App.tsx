@@ -25,7 +25,7 @@ import { ServerWakeBanner } from './components/ServerWakeBanner';
 import { loadProgress, recordMatch, saveProgress, type PlayerProgress, type UnlockedItem } from './progression';
 import { TitleScreen } from './components/TitleScreen';
 import type { TouchInputState } from './components/TouchControls';
-import { ThreeGameEngine, type HudFrameData } from './engine/ThreeGameEngine';
+import type { HudFrameData, ThreeGameEngine } from './engine/ThreeGameEngine';
 import { FR } from './i18n/fr';
 import { getSessionToken, getSocket } from './net/socketClient';
 
@@ -90,6 +90,7 @@ export default function App() {
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [localPlayerId, setLocalPlayerId] = useState<string>('');
+  const [engineReady, setEngineReady] = useState(false);
   const localPlayerIdRef = useRef('');
   localPlayerIdRef.current = localPlayerId;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -253,26 +254,40 @@ export default function App() {
         soundEngine.stopFlightAudio();
       }
     }
-  }, [room, showHangar, paused]);
+  }, [room, showHangar, paused, engineReady]);
 
-  // Mount imperative Three.js engine ONCE
+  // Mount the imperative Three.js engine ONCE. Its code (Three.js included) is a separate file
+  // loaded after the interface, so the menus show up right away and the 3D a moment later.
   useEffect(() => {
     const mount = canvasMountRef.current;
     if (!mount) return;
+    let cancelled = false;
 
-    const engine = new ThreeGameEngine(mount, (hudData: HudFrameData) => {
-      hudRef.current?.updateFrame(
-        hudData,
-        engine.inputState.aimX,
-        engine.inputState.aimY,
-        engine.inputState.boost
-      );
+    void import('./engine/ThreeGameEngine').then(({ ThreeGameEngine }) => {
+      if (cancelled) return;
+      const engine = new ThreeGameEngine(mount, (hudData: HudFrameData) => {
+        hudRef.current?.updateFrame(
+          hudData,
+          engine.inputState.aimX,
+          engine.inputState.aimY,
+          engine.inputState.boost
+        );
+      });
+      engineRef.current = engine;
+      engine.setCameraView(gameplayRef.current.cameraView);
+      // Catch up with anything that happened while loading (invite link, quick auto-start…)
+      const currentRoom = roomRef.current;
+      if (currentRoom) {
+        engine.syncRoomPlayers(currentRoom.players);
+        const me = currentRoom.players.find((p) => p.id === localPlayerIdRef.current);
+        if (me) engine.setLocalPlayer(me.id, me.cosmetics);
+      }
+      setEngineReady(true);
     });
-    engineRef.current = engine;
-    engine.setCameraView(gameplayRef.current.cameraView);
 
     return () => {
-      engine.dispose();
+      cancelled = true;
+      engineRef.current?.dispose();
       engineRef.current = null;
     };
   }, []);

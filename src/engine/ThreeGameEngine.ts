@@ -33,10 +33,16 @@ import type {
 import { music } from '../audio/music';
 import { soundEngine } from '../audio/soundEngine';
 import { MatchExtrasRenderer } from './m3Visuals';
-import { buildAtticScene } from './maps/buildAtticScene';
 import { buildDeskScene } from './maps/buildDeskScene';
-import { buildGardenScene } from './maps/buildGardenScene';
-import { buildKitchenScene } from './maps/buildKitchenScene';
+
+type SceneBuilder = (scene: THREE.Scene, maxAniso: number) => MapSceneHandles;
+// The desk (title screen) ships with the engine; the other rooms are separate files loaded on demand
+const SCENE_LOADERS: Record<MapId, () => Promise<SceneBuilder>> = {
+  desk: async () => buildDeskScene,
+  kitchen: () => import('./maps/buildKitchenScene').then((m) => m.buildKitchenScene),
+  garden: () => import('./maps/buildGardenScene').then((m) => m.buildGardenScene),
+  attic: () => import('./maps/buildAtticScene').then((m) => m.buildAtticScene),
+};
 import type { MapSceneHandles } from './maps/types';
 import { ParticleAndProjectilePool } from './particlePool';
 import { WingTrails, type TrailInput } from './wingTrails';
@@ -215,6 +221,7 @@ export class ThreeGameEngine {
   private debris: DebrisField;
   private podium: Podium | null = null;
   private objectives3d: ObjectiveRenderer;
+  private sceneBuilders = new Map<MapId, SceneBuilder>([['desk', buildDeskScene]]);
   /** Room events: lights dimmed during a blackout, the giant cat */
   private lights: Array<{ light: THREE.Light; base: number }> = [];
   private lightLevel = 1;
@@ -418,6 +425,8 @@ export class ThreeGameEngine {
     this.renderer.render(this.scene, this.camera);
 
     this.startLoop();
+    // Fetch the other rooms' code once the first screen is up
+    window.setTimeout(() => this.preloadScenes(), 2500);
   }
 
   private handleResize(): void {
@@ -431,27 +440,49 @@ export class ThreeGameEngine {
   }
 
   private buildMapScene(mapId: MapId): MapSceneHandles {
-    if (mapId === 'kitchen') return buildKitchenScene(this.scene, this.maxAniso);
-    if (mapId === 'garden') return buildGardenScene(this.scene, this.maxAniso);
-    if (mapId === 'attic') return buildAtticScene(this.scene, this.maxAniso);
-    return buildDeskScene(this.scene, this.maxAniso);
+    return (this.sceneBuilders.get(mapId) ?? buildDeskScene)(this.scene, this.maxAniso);
+  }
+
+  /** Loads the other rooms' scene code in the background so switching rooms is instant. */
+  private preloadScenes(): void {
+    for (const id of Object.keys(SCENE_LOADERS) as MapId[]) {
+      if (this.sceneBuilders.has(id)) continue;
+      void SCENE_LOADERS[id]()
+        .then((b) => this.sceneBuilders.set(id, b))
+        .catch(() => {
+          // offline or blocked: loaded again when the room is actually needed
+        });
+    }
   }
 
   public setMap(mapId: MapId): void {
     if (this.currentMapId === mapId) return;
-    this.mapHandles.dispose();
+    // Gameplay data (prediction, objectives, events) switches right away…
     this.currentMapId = mapId;
     this.currentMap = MAPS[mapId] ?? MAPS.desk;
-    this.mapHandles = this.buildMapScene(mapId);
     this.objectives3d.configure(this.gameMode, this.currentMap);
+    this.destroyedColliderIds.clear();
+    this.knownDestroyedProps.clear();
+    // …the 3D scene as soon as its code is loaded (usually already preloaded)
+    if (this.sceneBuilders.has(mapId)) {
+      this.applyMapScene(mapId);
+    } else {
+      void SCENE_LOADERS[mapId]().then((builder) => {
+        this.sceneBuilders.set(mapId, builder);
+        if (!this.disposed && this.currentMapId === mapId) this.applyMapScene(mapId);
+      });
+    }
+  }
+
+  private applyMapScene(mapId: MapId): void {
+    this.mapHandles.dispose();
+    this.mapHandles = this.buildMapScene(mapId);
     this.scene.background = new THREE.Color(this.currentMap.skyColor);
     this.scene.fog = new THREE.Fog(
       this.currentMap.fogColor,
       (mapId === 'garden' ? 320 : 240) * ARENA_SCALE,
       (mapId === 'garden' ? 760 : 560) * ARENA_SCALE
     );
-    this.destroyedColliderIds.clear();
-    this.knownDestroyedProps.clear();
     if (!this.isSoftwareGl) {
       this.renderer.compile(this.scene, this.camera);
     }

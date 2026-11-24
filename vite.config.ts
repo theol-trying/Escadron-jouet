@@ -11,6 +11,20 @@ export default defineConfig(() => {
         '@': path.resolve(import.meta.dirname, '.'),
       },
     },
+    build: {
+      // Three.js alone is ~590 kB (147 kB gzipped); it is loaded after the interface
+      chunkSizeWarningLimit: 650,
+      rollupOptions: {
+        output: {
+          // Long-lived libraries in their own files: browsers keep them cached across game updates
+          manualChunks(id: string) {
+            if (id.includes('node_modules/three/')) return 'three';
+            if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) return 'react';
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
