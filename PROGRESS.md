@@ -24,7 +24,8 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
        40 s, zone qui bouge toutes les 30 s) ; règles dans shared/objectives.ts, repères 3D et HUD dédiés.
 7. [x] Pièces : événements (chat qui traverse, panne de courant, frigo capricieux ; shared/roomEvents.ts) et
        4e pièce « Le grenier » (shared/maps/attic.ts + src/engine/maps/buildAtticScene.ts).
-8. [ ] Technique : chargement découpé (Three.js à part, cartes à la demande), données réseau compactes.
+8. [x] Technique : chargement découpé (interface 123 Ko compressés d'abord, 3D ensuite, pièces à la demande) et
+       mises à jour réseau binaires (3,5 Ko → 0,8 Ko, -78 %) avec version de protocole.
 9. [ ] Salon unique.
 10. [ ] Vérification finale.
 

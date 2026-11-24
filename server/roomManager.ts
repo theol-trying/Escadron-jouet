@@ -24,6 +24,8 @@ import type {
 } from '../shared/types';
 import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
 import { roundDuration } from '../shared/objectives';
+import { encodeSnapshot } from '../shared/snapshotCodec';
+import { PROTOCOL_VERSION } from '../shared/constants';
 import {
   buildCompactSnapshot,
   initRoundEntities,
@@ -107,14 +109,14 @@ export class RoomManager {
         if (room.phase === 'countdown' || room.phase === 'playing' || room.phase === 'round_end') {
           stepRoomTick(room, dt, {
             emitRoomState: (r) => this.broadcastRoomState(r),
-            emitSnapshot: (r, snap) => this.io.to(r.code).emit('game:snapshot', snap),
+            emitSnapshot: (r, snap) => this.io.to(r.code).emit('game:snapshot', encodeSnapshot(snap)),
             emitHit: (r, ev) => this.io.to(r.code).emit('game:hit', ev),
             emitKillFeed: (r, kf) => this.io.to(r.code).emit('game:killfeed', kf),
           });
 
           if (shouldSendSnapshot && (room.phase === 'playing' || room.phase === 'countdown')) {
             const snap = buildCompactSnapshot(room);
-            this.io.to(room.code).emit('game:snapshot', snap);
+            this.io.to(room.code).emit('game:snapshot', encodeSnapshot(snap));
           }
         }
       }
@@ -157,6 +159,7 @@ export class RoomManager {
   }
 
   public handleConnection(socket: TypedSocket): void {
+    socket.emit('server:hello', { protocol: PROTOCOL_VERSION });
     socket.on('net:ping', (clientSentAt, ack) => {
       if (!this.checkRateLimit(socket.id, 'control')) return;
       if (typeof clientSentAt !== 'number' || !Number.isFinite(clientSentAt)) return;
@@ -392,7 +395,7 @@ export class RoomManager {
         this.broadcastRoomState(room);
         respond({ ok: true, room: this.serializeRoomState(room), playerId: existing.id });
         if (room.phase === 'playing' || room.phase === 'countdown') {
-          socket.emit('game:snapshot', buildCompactSnapshot(room));
+          socket.emit('game:snapshot', encodeSnapshot(buildCompactSnapshot(room)));
         }
         return;
       }
@@ -491,7 +494,7 @@ export class RoomManager {
     this.broadcastRoomState(room);
     respond({ ok: true, room: this.serializeRoomState(room), playerId });
     if (room.phase === 'playing' || room.phase === 'countdown') {
-      socket.emit('game:snapshot', buildCompactSnapshot(room));
+      socket.emit('game:snapshot', encodeSnapshot(buildCompactSnapshot(room)));
     }
   }
 
@@ -785,7 +788,7 @@ export class RoomManager {
     room.countdownTimer = 2.2;
     this.broadcastRoomState(room);
     // Immediately send initial snapshot so 3D engine positions planes during countdown
-    this.io.to(room.code).emit('game:snapshot', buildCompactSnapshot(room));
+    this.io.to(room.code).emit('game:snapshot', encodeSnapshot(buildCompactSnapshot(room)));
   }
 
   private sanitizeCosmetics(raw?: Partial<PlayerCosmetics>): PlayerCosmetics {

@@ -9,6 +9,13 @@ export const ARENA_SCALE = 1.4;
 // are scaled by the same factor to keep their effect relative to the planes' speed.
 export const PLANE_SPEED_SCALE = 0.85;
 
+/**
+ * Network protocol version: bump it whenever the messages change shape. The server announces it on
+ * connection; a page still running an older build reloads itself instead of misreading updates.
+ * 2 = binary snapshots (shared/snapshotCodec.ts).
+ */
+export const PROTOCOL_VERSION = 2;
+
 export const REMOTE_INTERP_DELAY_MS = 95;
 export const MAX_LAG_COMPENSATION_MS = 250;
 

@@ -22,5 +22,8 @@
   scaled by `scaleMapDefinition`; the 3D scene builders use the design data inside a group scaled by
   `ARENA_SCALE`. Any new room-related distance (heights, patrol points, vacuum…) must use `map.arenaScale`;
   plane-scale distances (combat ranges, hitboxes, pickup radius) must not.
+- Network: snapshots travel in the compact binary format of `shared/snapshotCodec.ts` (encode on the server,
+  decode in `App.tsx`). Any change to a message shape must bump `PROTOCOL_VERSION` (shared/constants.ts) so
+  open pages reload after a deploy.
 - Commits: French messages, noreply identity `theol-trying`, privacy hooks via `core.hooksPath ~/.garde-git/hooks`
   (never `--no-verify`). Local autosave: `npm run autosave` (every 2 min on `refs/autosave/latest`).

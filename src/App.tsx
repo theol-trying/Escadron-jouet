@@ -22,6 +22,8 @@ import {
   type GameplaySettings,
 } from './components/SettingsModal';
 import { ServerWakeBanner } from './components/ServerWakeBanner';
+import { decodeSnapshot, type WireSnapshot } from '../shared/snapshotCodec';
+import { PROTOCOL_VERSION } from '../shared/constants';
 import { loadProgress, recordMatch, saveProgress, type PlayerProgress, type UnlockedItem } from './progression';
 import { TitleScreen } from './components/TitleScreen';
 import type { TouchInputState } from './components/TouchControls';
@@ -426,8 +428,9 @@ export default function App() {
       }
     };
 
-    const onSnapshot = (snap: Parameters<ThreeGameEngine['ingestSnapshot']>[0]) => {
-      engineRef.current?.ingestSnapshot(snap);
+    const onSnapshot = (wire: WireSnapshot) => {
+      // Compact binary updates (shared/snapshotCodec.ts) back to the full snapshot
+      engineRef.current?.ingestSnapshot(decodeSnapshot(wire));
     };
 
     const onHit = (ev: Parameters<ThreeGameEngine['ingestHitEvent']>[0]) => {
@@ -442,6 +445,18 @@ export default function App() {
       setErrorMessage(msg);
     };
 
+    // A server running a newer build: reload once to get the matching client (after a deploy)
+    const onServerHello = (info: { protocol: number }) => {
+      if (info?.protocol === PROTOCOL_VERSION) return;
+      try {
+        if (sessionStorage.getItem('ej_reloaded_for') === String(info?.protocol)) return;
+        sessionStorage.setItem('ej_reloaded_for', String(info?.protocol));
+      } catch {
+        // storage unavailable: reload anyway
+      }
+      window.location.reload();
+    };
+
     const onNetProbe = (ack: () => void) => {
       if (typeof ack === 'function') ack();
     };
@@ -454,6 +469,7 @@ export default function App() {
     socket.on('game:killfeed', onKillFeed);
     socket.on('room:error', onRoomError);
     socket.on('net:probe', onNetProbe);
+    socket.on('server:hello', onServerHello);
 
     if (socket.connected) {
       onConnect();
@@ -477,6 +493,7 @@ export default function App() {
       socket.off('game:killfeed', onKillFeed);
       socket.off('room:error', onRoomError);
       socket.off('net:probe', onNetProbe);
+      socket.off('server:hello', onServerHello);
     };
   }, [joinRoom]);
 

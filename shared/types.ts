@@ -1,3 +1,5 @@
+import type { WireSnapshot } from './snapshotCodec';
+
 export type PlaneId =
   | 'plastic_jet'
   | 'windup_biplane'
@@ -321,9 +323,10 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   'room:state': (state: RoomState) => void;
-  'game:snapshot': (snapshot: SnapshotPayload) => void;
+  'game:snapshot': (snapshot: WireSnapshot) => void;
   'game:hit': (event: HitFeedbackEvent) => void;
   'game:killfeed': (entry: KillFeedEntry) => void;
   'room:error': (message: string) => void;
   'net:probe': (ack: () => void) => void;
+  'server:hello': (info: { protocol: number }) => void;
 }
