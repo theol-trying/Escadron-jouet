@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { quatFromYaw } from '../shared/flightPhysics';
 import { PLANE_ARCHETYPES } from '../shared/planes';
 import type { KillFeedEntry, PlayerInputState } from '../shared/types';
+import { MAPS } from '../shared/maps/index';
+import { getKingZone, getRaceCourse } from '../shared/objectives';
 import { initRoundEntities, stepRoomTick, type LoopCallbacks } from './gameLoop';
 import { DEFAULT_ROOM_SETTINGS, type ServerPlayer, type ServerRoom } from './types';
 
@@ -65,6 +67,8 @@ function makePlayer(id: string, overrides: Partial<ServerPlayer> = {}): ServerPl
     crashes: 0,
     pickups: 0,
     propsBroken: 0,
+    objective: 0,
+    finishTime: null,
     deaths: 0,
     roundWins: 0,
     score: 0,
@@ -98,6 +102,7 @@ function makeRoom(players: ServerPlayer[]): ServerRoom {
     suddenDeath: false,
     suddenDeathElapsed: 0,
     roundHadBothTeams: false,
+    raceFirstFinishAt: null,
     teamRoundWins: { red: 0, blue: 0 },
     lastRoundWinner: null,
     rewindHistory: [],
@@ -314,3 +319,41 @@ test('lag compensation rewinds by ping/2 + REMOTE_INTERP_DELAY_MS (95ms)', () =>
   assert.ok(target.sim.hp < initialHp, 'shot aimed at 135ms rewound position must hit target');
 });
 
+
+test('ring race: flying through the next ring counts it, shooting is disabled', () => {
+  const racer = makePlayer('racer');
+  const room = makeRoom([racer]);
+  room.settings.mode = 'ring_race';
+  room.roundTimer = 170;
+  const course = getRaceCourse(MAPS[room.settings.mapId]);
+  racer.sim.x = course[0].x;
+  racer.sim.y = course[0].y;
+  racer.sim.z = course[0].z;
+  racer.inputQueue.push(makeInput(1, 1 / 30, { fire: true }));
+  stepRoomTick(room, 1 / 30, makeCallbacks());
+  assert.equal(racer.objective, 1);
+  assert.equal(room.projectiles.length, 0, 'no pellets in the race');
+});
+
+test('king of the sky: only a lone pilot inside the zone scores', () => {
+  const a = makePlayer('a');
+  const b = makePlayer('b');
+  const room = makeRoom([a, b]);
+  room.settings.mode = 'king_of_sky';
+  room.roundTimer = 175; // 5 s into the round
+  const zone = getKingZone(MAPS[room.settings.mapId], 5);
+  a.sim.x = zone.x;
+  a.sim.y = zone.y;
+  a.sim.z = zone.z;
+  b.sim.x = zone.x + zone.radius * 3;
+  stepRoomTick(room, 1 / 30, makeCallbacks());
+  assert.ok(a.objective > 0, 'alone in the zone: scores');
+  assert.equal(b.objective, 0);
+
+  const before = a.objective;
+  b.sim.x = zone.x + 2;
+  b.sim.y = zone.y;
+  b.sim.z = zone.z;
+  stepRoomTick(room, 1 / 30, makeCallbacks());
+  assert.equal(a.objective, before, 'contested: nobody scores');
+});

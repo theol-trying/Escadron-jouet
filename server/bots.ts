@@ -7,6 +7,7 @@ import {
 } from '../shared/flightPhysics';
 import type { MapCollider, MapDefinition } from '../shared/maps/types';
 import { PLANE_ARCHETYPES, PAINT_ORDER, PLANE_ORDER, STICKER_ORDER } from '../shared/planes';
+import { getKingZone, getRaceCourse } from '../shared/objectives';
 import { canDamageTarget } from '../shared/rules';
 import type { BotDifficulty, PlayerCosmetics, PlayerInputState, RoomSettings } from '../shared/types';
 import type { BotPersonality, ServerPlayer } from './types';
@@ -116,7 +117,9 @@ export function computeBotInput(
   map: MapDefinition,
   dt: number,
   elapsedTime: number,
-  powerUps: ServerPowerUpPickup[] = []
+  powerUps: ServerPowerUpPickup[] = [],
+  /** Seconds since the round started (objective modes: zone schedule) */
+  roundElapsed = 0
 ): PlayerInputState {
   const sim = bot.sim;
   const fwd = getPlaneForward(sim);
@@ -209,6 +212,26 @@ export function computeBotInput(
       if (enemyDist > 150 && sim.boost > 45) {
         wantsBoost = true;
       }
+    }
+  }
+
+  // Objective modes: race through the rings / head for the king zone
+  if (settings.mode === 'ring_race') {
+    const course = getRaceCourse(map);
+    const ring = course[bot.objective % course.length];
+    // Aim a little past the centre so the bot flies through the ring, not at its edge
+    targetX = ring.x + ring.nx * 12;
+    targetY = ring.y + ring.ny * 12;
+    targetZ = ring.z + ring.nz * 12;
+    wantsBoost = sim.boost > 40 && Math.hypot(ring.x - sim.x, ring.y - sim.y, ring.z - sim.z) > 90;
+  } else if (settings.mode === 'king_of_sky') {
+    const zone = getKingZone(map, roundElapsed);
+    const toZone = Math.hypot(zone.x - sim.x, zone.y - sim.y, zone.z - sim.z);
+    const enemyClose = nearestEnemy !== null && enemyDist < 70;
+    if (toZone > zone.radius * 0.6 && !enemyClose) {
+      targetX = zone.x;
+      targetY = zone.y;
+      targetZ = zone.z;
     }
   }
 
@@ -320,6 +343,12 @@ export function computeBotInput(
     ) {
       wantsSecondary = true;
     }
+  }
+
+  if (settings.mode === 'ring_race') {
+    // No shooting in the race
+    wantsFire = false;
+    wantsSecondary = false;
   }
 
   return {

@@ -111,6 +111,10 @@ export interface ServerPlayer {
   crashes: number;
   pickups: number;
   propsBroken: number;
+  /** Objective modes: rings passed (race) or seconds held (king of the sky) this round */
+  objective: number;
+  /** Race: round time when the last ring was passed (null = still racing) */
+  finishTime: number | null;
   roundWins: number;
   score: number;
   lastHitBy: string | null;
@@ -140,6 +144,8 @@ export interface ServerRoom {
   suddenDeath: boolean;
   suddenDeathElapsed: number;
   roundHadBothTeams: boolean;
+  /** Race: round time of the first finisher (starts the finish grace period) */
+  raceFirstFinishAt: number | null;
   teamRoundWins: { red: number; blue: number };
   lastRoundWinner: {
     winnerId: string | null;

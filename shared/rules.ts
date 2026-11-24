@@ -225,6 +225,8 @@ export function canDamageTarget(
   targetTeam: TeamId
 ): boolean {
   if (attackerId === targetId) return false;
+  // Ring race: planes cannot hurt each other
+  if (mode === 'ring_race') return false;
   if (mode === 'last_plane_teams' && !friendlyFire && attackerTeam !== 'none' && attackerTeam === targetTeam) {
     return false;
   }

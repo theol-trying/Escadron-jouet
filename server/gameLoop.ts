@@ -11,6 +11,19 @@ import {
   stepPlanePhysics,
 } from '../shared/flightPhysics';
 import { MAPS } from '../shared/maps/index';
+import {
+  KING_TARGET,
+  OBJECTIVE_LIVES,
+  RACE_LAPS,
+  RACE_RESPAWN_DELAY,
+  RING_RADIUS,
+  canShoot,
+  checkObjectiveRound,
+  getKingZone,
+  getRaceCourse,
+  isObjectiveMode,
+  roundDuration,
+} from '../shared/objectives';
 import type { MapCollider } from '../shared/maps/types';
 import { PLANE_ARCHETYPES } from '../shared/planes';
 import { POWERUPS, computeVacuumState, pickRandomPowerUp } from '../shared/powerups';
@@ -36,6 +49,11 @@ import type {
 } from '../shared/types';
 import { computeBotInput } from './bots';
 import type { RewindFrame, ServerPlayer, ServerRoom } from './types';
+
+/** Lives at round start: objective modes respawn without limit. */
+export function roundLives(settings: ServerRoom['settings']): number {
+  return isObjectiveMode(settings.mode) ? OBJECTIVE_LIVES : settings.livesPerRound;
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -492,13 +510,16 @@ export function stepRoomTick(
         room.phase = 'match_end';
       } else {
         room.roundNumber++;
-        room.roundTimer = 240;
+        room.roundTimer = roundDuration(room.settings.mode);
         room.lastRoundWinner = null;
         room.roundHadBothTeams = isTeams;
+        room.raceFirstFinishAt = null;
         initRoundEntities(room);
         let idx = 0;
         for (const player of room.players.values()) {
-          spawnPlayerAtIndex(player, idx++, room.settings.mapId, room.settings.livesPerRound);
+          player.objective = 0;
+          player.finishTime = null;
+          spawnPlayerAtIndex(player, idx++, room.settings.mapId, roundLives(room.settings));
         }
         room.phase = 'countdown';
         room.countdownTimer = 2.4;
@@ -513,7 +534,10 @@ export function stepRoomTick(
   }
 
   // Round timer & Sudden Death ("L'aspirateur arrive !")
-  if (room.roundTimer > 0) {
+  const objectiveMode = isObjectiveMode(room.settings.mode);
+  const isRace = room.settings.mode === 'ring_race';
+  if (room.roundTimer > 0 || objectiveMode) {
+    // Objective modes have no vacuum sudden death: the round simply ends on the timer
     room.roundTimer = Math.max(0, room.roundTimer - dt);
   } else {
     if (!room.suddenDeath) {
@@ -527,7 +551,7 @@ export function stepRoomTick(
   const allPlayers = Array.from(room.players.values());
 
   // 0. Contested glowing power-up spawn zones
-  for (const spot of room.powerUpSpots) {
+  for (const spot of isRace ? [] : room.powerUpSpots) {
     const occupied = room.powerUps.some((p) => p.spotId === spot.id);
     if (!occupied) {
       spot.respawnTimer -= dt;
@@ -552,6 +576,8 @@ export function stepRoomTick(
 
     if (!player.sim.alive) {
       if (player.sim.lives > 0 && player.sim.respawnTimer > 0) {
+        // Race: a crash only costs a short delay
+        if (isRace) player.sim.respawnTimer = Math.min(player.sim.respawnTimer, RACE_RESPAWN_DELAY);
         player.sim.respawnTimer -= dt;
         if (player.sim.respawnTimer <= 0) {
           spawnPlayerAtIndex(
@@ -560,6 +586,7 @@ export function stepRoomTick(
             room.settings.mapId,
             null
           );
+          if (isRace && player.objective > 0) placeAtLastRing(player, map);
         }
       }
       continue;
@@ -574,7 +601,8 @@ export function stepRoomTick(
         map,
         dt,
         room.elapsedTime,
-        room.powerUps
+        room.powerUps,
+        roundDuration(room.settings.mode) - room.roundTimer
       );
       player.lastProcessedSeq = latestInput.seq;
     } else {
@@ -777,7 +805,7 @@ export function stepRoomTick(
     }
 
     // Activate secondary power-up
-    if (player.sim.alive && latestInput?.useSecondary) {
+    if (player.sim.alive && latestInput?.useSecondary && canShoot(room.settings.mode)) {
       activateSecondaryPowerUp(room, player, callbacks);
     }
 
@@ -785,6 +813,7 @@ export function stepRoomTick(
     if (
       player.sim.alive &&
       latestInput?.fire &&
+      canShoot(room.settings.mode) &&
       !player.sim.overheated &&
       player.sim.fireCooldown <= 0
     ) {
@@ -1160,8 +1189,59 @@ export function stepRoomTick(
     room.secondaryProjectiles.splice(i, 1);
   }
 
+  // 3b. Objectives: rings passed (race) / sole control of the zone (king of the sky)
+  const roundElapsed = roundDuration(room.settings.mode) - room.roundTimer;
+  if (isRace) {
+    const course = getRaceCourse(map);
+    const total = course.length * RACE_LAPS;
+    for (const p of allPlayers) {
+      if (!p.sim.alive || p.finishTime !== null) continue;
+      const ring = course[p.objective % course.length];
+      if (Math.hypot(p.sim.x - ring.x, p.sim.y - ring.y, p.sim.z - ring.z) < RING_RADIUS) {
+        p.objective++;
+        p.score += 10;
+        if (p.objective >= total) {
+          p.finishTime = roundElapsed;
+          p.score += room.raceFirstFinishAt === null ? 150 : 75;
+          if (room.raceFirstFinishAt === null) room.raceFirstFinishAt = roundElapsed;
+          callbacks.emitRoomState(room);
+        }
+      }
+    }
+  } else if (room.settings.mode === 'king_of_sky') {
+    const zone = getKingZone(map, roundElapsed);
+    const inside = allPlayers.filter(
+      (p) => p.sim.alive && Math.hypot(p.sim.x - zone.x, p.sim.y - zone.y, p.sim.z - zone.z) < zone.radius
+    );
+    // Points only while holding the zone alone (contested = nobody scores)
+    if (inside.length === 1) {
+      const king = inside[0];
+      king.objective = Math.min(KING_TARGET, king.objective + dt);
+      king.score += dt * 10;
+    }
+  }
+
   // 4. Check round victory condition
-  const outcome = checkRoundWinner(
+  const outcome = objectiveMode
+    ? {
+        winnerTeam: 'none' as const,
+        ...checkObjectiveRound(
+          room.settings.mode,
+          allPlayers.map((p) => ({
+            id: p.id,
+            nickname: p.nickname,
+            isBot: p.isBot,
+            connected: p.connected,
+            objective: p.objective,
+            finishTime: p.finishTime,
+          })),
+          room.roundTimer,
+          roundElapsed,
+          getRaceCourse(map).length * RACE_LAPS,
+          room.raceFirstFinishAt
+        ),
+      }
+    : checkRoundWinner(
     room.settings.mode,
     allPlayers.map((p) => ({
       id: p.id,
@@ -1203,6 +1283,20 @@ export function stepRoomTick(
 
     callbacks.emitRoomState(room);
   }
+}
+
+/** Race respawn: back at the last ring passed, facing the next one. */
+function placeAtLastRing(player: ServerPlayer, map: (typeof MAPS)[keyof typeof MAPS]): void {
+  const course = getRaceCourse(map);
+  const ring = course[(player.objective - 1) % course.length];
+  player.sim.x = ring.x;
+  player.sim.y = ring.y;
+  player.sim.z = ring.z;
+  const [qx, qy, qz, qw] = quatFromYaw(Math.atan2(-ring.nx, -ring.nz));
+  player.sim.qx = qx;
+  player.sim.qy = qy;
+  player.sim.qz = qz;
+  player.sim.qw = qw;
 }
 
 function handlePlaneCrashDamage(
@@ -1293,6 +1387,7 @@ export function buildCompactSnapshot(room: ServerRoom): SnapshotPayload {
       glued: p.sim.glueTimer > 0,
       magnetActive: p.sim.magnetTimer > 0,
       lastAckSeq: p.lastProcessedSeq,
+      objective: Math.round(p.objective * 10) / 10,
     });
   }
 

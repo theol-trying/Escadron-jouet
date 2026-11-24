@@ -33,7 +33,7 @@ export type SecondaryProjectileKind =
   | 'firecracker'
   | 'glue_mine';
 
-export type GameModeId = 'last_plane_ffa' | 'last_plane_teams';
+export type GameModeId = 'last_plane_ffa' | 'last_plane_teams' | 'ring_race' | 'king_of_sky';
 
 export type MapId = 'desk' | 'kitchen' | 'garden';
 
@@ -205,6 +205,8 @@ export interface SnapshotPlane {
   glued: boolean;
   magnetActive: boolean;
   lastAckSeq: number;
+  /** Objective modes: rings passed (race) or seconds held (king of the sky) */
+  objective: number;
 }
 
 export interface SnapshotProjectile {

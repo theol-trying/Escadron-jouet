@@ -23,9 +23,11 @@ import type {
   TeamId,
 } from '../shared/types';
 import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
+import { roundDuration } from '../shared/objectives';
 import {
   buildCompactSnapshot,
   initRoundEntities,
+  roundLives,
   spawnPlayerAtIndex,
   stepRoomTick,
 } from './gameLoop';
@@ -467,6 +469,8 @@ export class RoomManager {
       crashes: 0,
       pickups: 0,
       propsBroken: 0,
+      objective: 0,
+      finishTime: null,
       deaths: 0,
       roundWins: 0,
       score: 0,
@@ -558,6 +562,7 @@ export class RoomManager {
       suddenDeath: false,
       suddenDeathElapsed: 0,
       roundHadBothTeams: false,
+      raceFirstFinishAt: null,
       teamRoundWins: { red: 0, blue: 0 },
       lastRoundWinner: null,
       rewindHistory: [],
@@ -569,7 +574,12 @@ export class RoomManager {
 
   private applySettings(room: ServerRoom, partial: Partial<RoomSettings>): void {
     const prevMode = room.settings.mode;
-    if (partial.mode === 'last_plane_ffa' || partial.mode === 'last_plane_teams') {
+    if (
+      partial.mode === 'last_plane_ffa' ||
+      partial.mode === 'last_plane_teams' ||
+      partial.mode === 'ring_race' ||
+      partial.mode === 'king_of_sky'
+    ) {
       room.settings.mode = partial.mode;
     }
     if (
@@ -704,6 +714,8 @@ export class RoomManager {
         crashes: 0,
         pickups: 0,
         propsBroken: 0,
+        objective: 0,
+        finishTime: null,
         deaths: 0,
         roundWins: 0,
         score: 0,
@@ -747,7 +759,8 @@ export class RoomManager {
 
     room.roundNumber = 1;
     room.maxRounds = 3;
-    room.roundTimer = 240;
+    room.roundTimer = roundDuration(room.settings.mode);
+    room.raceFirstFinishAt = null;
     room.teamRoundWins = { red: 0, blue: 0 };
     room.lastRoundWinner = null;
     room.rewindHistory.length = 0;
@@ -763,7 +776,9 @@ export class RoomManager {
       player.roundWins = 0;
       player.score = 0;
       player.lastHitBy = null;
-      spawnPlayerAtIndex(player, idx++, room.settings.mapId, room.settings.livesPerRound);
+      player.objective = 0;
+      player.finishTime = null;
+      spawnPlayerAtIndex(player, idx++, room.settings.mapId, roundLives(room.settings));
     }
 
     room.phase = 'countdown';
