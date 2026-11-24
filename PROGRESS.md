@@ -28,7 +28,11 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
        mises à jour réseau binaires (3,5 Ko → 0,8 Ko, -78 %) avec version de protocole.
 9. [x] Salon unique : « Partie rapide » mène toujours au même salon public, même en cours de match (spectateur
        jusqu'à la manche suivante en mode élimination, en vol tout de suite en course / roi du ciel).
-10. [ ] Vérification finale.
+10. [x] Vérification finale (25/11) : 56/56 tests, build de production, sondes réseau (messages piégés, reconnexion,
+        course, roi du ciel), navigateur (grenier + cockpit), 14 CI vertes, scan garde-fou propre.
+
+➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
+  réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
 
 ### Chantier précédent (terminé) : correctifs d'audit + arènes ×1,4 / avions ×0,85
 1. [x] Tir à la souris rétabli sur les PC à écran tactile (interface tactile seulement si le pointeur principal
