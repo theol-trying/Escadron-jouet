@@ -19,7 +19,12 @@ import type {
   TeamId,
 } from '../shared/types';
 import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
-import { buildCompactSnapshot, spawnPlayerAtIndex, stepRoomTick } from './gameLoop';
+import {
+  buildCompactSnapshot,
+  initRoundEntities,
+  spawnPlayerAtIndex,
+  stepRoomTick,
+} from './gameLoop';
 import { DEFAULT_ROOM_SETTINGS, type ServerPlayer, type ServerRoom } from './types';
 
 type TypedIO = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -200,6 +205,7 @@ export class RoomManager {
           roll: Math.max(-1, Math.min(1, Number(input.roll) || 0)),
           boost: Boolean(input.boost),
           fire: Boolean(input.fire),
+          useSecondary: Boolean(input.useSecondary),
           barrelRollDir:
             input.barrelRollDir === -1 ? -1 : input.barrelRollDir === 1 ? 1 : 0,
         });
@@ -333,8 +339,16 @@ export class RoomManager {
         lives: room.settings.livesPerRound,
         respawnTimer: 0,
         fireCooldown: 0,
+        secondaryCooldown: 0,
         hitFlashTimer: 0,
         collideCooldown: 0,
+        secondaryPowerUp: null,
+        secondaryUses: 0,
+        shieldTimer: 0,
+        shieldHp: 0,
+        turboTimer: 0,
+        glueTimer: 0,
+        magnetTimer: 0,
       },
       inputQueue: [],
       lastProcessedSeq: 0,
@@ -410,7 +424,13 @@ export class RoomManager {
       },
       players: new Map(),
       projectiles: [],
+      secondaryProjectiles: [],
+      powerUps: [],
+      powerUpSpots: [],
+      destructibles: [],
+      destroyedColliderIds: new Set(),
       nextProjectileId: 1,
+      nextPowerUpId: 1,
       tick: 0,
       elapsedTime: 0,
       roundNumber: 1,
@@ -418,6 +438,8 @@ export class RoomManager {
       roundTimer: 240,
       countdownTimer: 0,
       roundEndTimer: 0,
+      suddenDeath: false,
+      suddenDeathElapsed: 0,
       teamRoundWins: { red: 0, blue: 0 },
       lastRoundWinner: null,
       rewindHistory: [],
@@ -528,8 +550,16 @@ export class RoomManager {
           lives: room.settings.livesPerRound,
           respawnTimer: 0,
           fireCooldown: 0,
+          secondaryCooldown: 0,
           hitFlashTimer: 0,
           collideCooldown: 0,
+          secondaryPowerUp: null,
+          secondaryUses: 0,
+          shieldTimer: 0,
+          shieldHp: 0,
+          turboTimer: 0,
+          glueTimer: 0,
+          magnetTimer: 0,
         },
         inputQueue: [],
         lastProcessedSeq: 0,
@@ -552,8 +582,8 @@ export class RoomManager {
     room.roundTimer = 240;
     room.teamRoundWins = { red: 0, blue: 0 };
     room.lastRoundWinner = null;
-    room.projectiles.length = 0;
     room.rewindHistory.length = 0;
+    initRoundEntities(room);
 
     let idx = 0;
     for (const player of room.players.values()) {
@@ -626,6 +656,7 @@ export class RoomManager {
       maxRounds: room.maxRounds,
       roundTimer: room.roundTimer,
       countdownTimer: room.countdownTimer,
+      suddenDeath: room.suddenDeath,
       teamRoundWins: { ...room.teamRoundWins },
       lastRoundWinner: room.lastRoundWinner,
       scoreboard,

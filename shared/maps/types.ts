@@ -1,6 +1,15 @@
-import type { MapId } from '../types';
+import type { MapId, PowerUpId } from '../types';
 
 export type ColliderTier = 'static' | 'medium' | 'small';
+
+export interface HingeDoorAnimation {
+  pivotX: number;
+  pivotZ: number;
+  lengthX: number;
+  thicknessZ: number;
+  maxAngle: number; // radians, sweeps from 0 to maxAngle
+  cycleSeconds: number;
+}
 
 export interface BoxCollider {
   id: string;
@@ -13,6 +22,7 @@ export interface BoxCollider {
   maxY: number;
   maxZ: number;
   damageOnHit?: number;
+  hinge?: HingeDoorAnimation;
 }
 
 export interface SphereCollider {
@@ -59,6 +69,28 @@ export interface WindZoneConfig {
   sweepAmplitude: number;
   sweepSpeed: number;
   pushStrength: number; // cm/s^2 acceleration
+  continuousSpin?: boolean;
+}
+
+export interface UpdraftZoneConfig {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  height: number;
+  liftStrength: number;
+}
+
+export interface HazardZoneConfig {
+  id: string;
+  nameFr: string;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  height: number;
+  damage: number;
 }
 
 export interface PowerUpSpotConfig {
@@ -66,6 +98,29 @@ export interface PowerUpSpotConfig {
   x: number;
   y: number;
   z: number;
+}
+
+export interface DestructiblePropConfig {
+  id: string;
+  colliderId: string;
+  nameFr: string;
+  kind:
+    | 'lego'
+    | 'book'
+    | 'piggy_bank'
+    | 'snack_box'
+    | 'cereal_box'
+    | 'toaster'
+    | 'flower_pot'
+    | 'gnome'
+    | 'sandcastle';
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  maxHp: number;
+  dropsPowerUp: boolean;
+  rewardPool?: PowerUpId[];
 }
 
 export interface MapDefinition {
@@ -92,7 +147,10 @@ export interface MapDefinition {
   skyColor: string;
   fogColor: string;
   colliders: MapCollider[];
+  destructibles: DestructiblePropConfig[];
   spawns: SpawnPoint[];
   windZones: WindZoneConfig[];
+  updraftZones: UpdraftZoneConfig[];
+  hazardZones: HazardZoneConfig[];
   powerUpSpots: PowerUpSpotConfig[];
 }

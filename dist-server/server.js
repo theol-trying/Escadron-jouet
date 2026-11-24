@@ -90,7 +90,86 @@ var DESK_MAP = {
     capsule("fan_stem", -164, 82, 6, -164, 108, 6, 3.5),
     sphere("fan_cage", -164, 112, 6, 16),
     // Bedside lamp / mug near front-left floor/corner
-    capsule("floor_mug", -22, 0, 118, -22, 24, 118, 14)
+    capsule("floor_mug", -22, 0, 118, -22, 24, 118, 14),
+    // Interactive/destructible piggy bank on wall shelf & cereal/biscuit box on desk
+    sphere("piggy_bank", -32, 166, -158, 12, "small"),
+    box("snack_box", 108, 76, 4, 134, 108, 24, "small")
+  ],
+  destructibles: [
+    {
+      id: "lego_desk_tower_top",
+      colliderId: "lego_desk_tower_top",
+      nameFr: "Sommet Lego",
+      kind: "lego",
+      x: 105,
+      y: 129,
+      z: -51,
+      radius: 16,
+      maxHp: 35,
+      dropsPowerUp: true
+    },
+    {
+      id: "lego_desk_tower_base",
+      colliderId: "lego_desk_tower_base",
+      nameFr: "Tour Lego",
+      kind: "lego",
+      x: 105,
+      y: 96,
+      z: -51,
+      radius: 22,
+      maxHp: 55,
+      dropsPowerUp: true
+    },
+    {
+      id: "lego_arch_bridge",
+      colliderId: "lego_arch_bridge",
+      nameFr: "Arche Lego",
+      kind: "lego",
+      x: 173,
+      y: 72,
+      z: 92,
+      radius: 28,
+      maxHp: 45,
+      dropsPowerUp: true
+    },
+    {
+      id: "desk_books_3",
+      colliderId: "desk_books_3",
+      nameFr: "Livre du haut",
+      kind: "book",
+      x: -151,
+      y: 112,
+      z: -52,
+      radius: 16,
+      maxHp: 60,
+      dropsPowerUp: true
+    },
+    {
+      id: "piggy_bank",
+      colliderId: "piggy_bank",
+      nameFr: "Tirelire cochon",
+      kind: "piggy_bank",
+      x: -32,
+      y: 166,
+      z: -158,
+      radius: 13,
+      maxHp: 30,
+      dropsPowerUp: true,
+      rewardPool: ["bubble_shield", "rubber_missile", "magnet", "repair_tape"]
+    },
+    {
+      id: "snack_box",
+      colliderId: "snack_box",
+      nameFr: "Bo\xEEte de biscuits",
+      kind: "snack_box",
+      x: 121,
+      y: 92,
+      z: 14,
+      radius: 17,
+      maxHp: 28,
+      dropsPowerUp: true,
+      rewardPool: ["firecracker", "water_bomb", "turbo_battery", "glue_mine"]
+    }
   ],
   spawns: [
     // Open upper-mid airspace along clear perimeter/desk lanes (5s+ unobstructed)
@@ -125,45 +204,395 @@ var DESK_MAP = {
       pushStrength: 68
     }
   ],
+  updraftZones: [],
+  hazardZones: [],
   powerUpSpots: [
-    { id: "pu_under_monitor", x: -45, y: 86, z: -87 },
+    { id: "pu_under_monitor", x: -45, y: 85, z: -87 },
     { id: "pu_drawer_tunnel", x: 92, y: 58, z: 62 },
     { id: "pu_lego_arch", x: 173, y: 34, z: 92 },
-    { id: "pu_wall_shelf", x: -15, y: 168, z: -156 }
+    { id: "pu_wall_shelf", x: -15, y: 168, z: -156 },
+    { id: "pu_keyboard_canyon", x: -55, y: 102, z: -28 }
+  ]
+};
+
+// shared/maps/kitchen.ts
+function box2(id, minX, minY, minZ, maxX, maxY, maxZ, tier = "static", hinge) {
+  return { id, kind: "box", tier, minX, minY, minZ, maxX, maxY, maxZ, hinge };
+}
+function sphere2(id, x, y, z, radius, tier = "static") {
+  return { id, kind: "sphere", tier, x, y, z, radius };
+}
+function capsule2(id, ax, ay, az, bx, by, bz, radius, tier = "static") {
+  return { id, kind: "capsule", tier, ax, ay, az, bx, by, bz, radius };
+}
+var KITCHEN_MAP = {
+  id: "kitchen",
+  nameFr: "La cuisine",
+  subtitleFr: "\xCElot tunnel, frigo anim\xE9, courant chaud des plaques et mixeur g\xE9ant mortel.",
+  available: true,
+  hardBounds: {
+    minX: -250,
+    maxX: 250,
+    minY: 6,
+    maxY: 222,
+    minZ: -185,
+    maxZ: 185
+  },
+  softBounds: {
+    minX: -236,
+    maxX: 236,
+    minY: 8,
+    maxY: 210,
+    minZ: -174,
+    maxZ: 174
+  },
+  skyColor: "#FFF3D6",
+  fogColor: "#FFF7E5",
+  colliders: [
+    // Main back counter along -Z wall (Y: 0..88)
+    box2("counter_back", -225, 0, -182, 110, 88, -102),
+    // Central island with open fly-through tunnel underneath (X: -56..56, Y: 0..74)
+    box2("island_top", -94, 74, 10, 94, 84, 78),
+    box2("island_leg_left", -90, 0, 14, -56, 74, 74),
+    box2("island_leg_right", 56, 0, 14, 90, 74, 74),
+    // Dish rack on left back counter
+    box2("dish_rack", -185, 88, -162, -135, 118, -118, "medium"),
+    // Tall arched chrome sink faucet
+    capsule2("faucet_post", -95, 88, -158, -95, 142, -158, 3.5),
+    capsule2("faucet_arch", -95, 142, -158, -95, 142, -128, 3.2),
+    capsule2("faucet_nozzle", -95, 142, -128, -95, 128, -128, 2.8),
+    // Stove burner base (updraft sits directly above)
+    box2("stove_base", -24, 88, -168, 40, 95, -116),
+    // Giant fridge + animated swinging door
+    box2("fridge_body", 158, 0, -178, 244, 202, -92),
+    box2("fridge_door", 158, 4, -92, 240, 198, -84, "static", {
+      pivotX: 158,
+      pivotZ: -90,
+      lengthX: 82,
+      thicknessZ: 8,
+      maxAngle: -1.18,
+      cycleSeconds: 10
+    }),
+    // Overhead hanging pan rack & 3 giant hanging pans
+    box2("pan_rack_bar", -130, 194, -48, 45, 200, -40),
+    capsule2("pan_1", -105, 194, -44, -105, 162, -44, 14, "medium"),
+    capsule2("pan_2", -42, 194, -44, -42, 158, -44, 16, "medium"),
+    capsule2("pan_3", 20, 194, -44, 20, 164, -44, 14, "medium"),
+    // Blender base & jar on island (deadly spinning blades inside hazardZone)
+    capsule2("blender_body", 44, 84, 44, 44, 108, 44, 14),
+    // Left window sill
+    box2("kitchen_window_sill", -248, 84, -70, -214, 94, 95),
+    // Destructible props
+    box2("cereal_box_1", -74, 84, 28, -46, 124, 52, "small"),
+    box2("cereal_box_2", -212, 88, -158, -184, 128, -132, "small"),
+    box2("toaster", 68, 88, -156, 96, 112, -130, "small"),
+    box2("milk_carton", -240, 94, 15, -218, 124, 37, "small"),
+    sphere2("spice_jar", -118, 98, 44, 11, "small")
+  ],
+  destructibles: [
+    {
+      id: "cereal_box_1",
+      colliderId: "cereal_box_1",
+      nameFr: "Bo\xEEte de c\xE9r\xE9ales",
+      kind: "cereal_box",
+      x: -60,
+      y: 104,
+      z: 40,
+      radius: 19,
+      maxHp: 32,
+      dropsPowerUp: true,
+      rewardPool: ["rubber_missile", "firecracker", "turbo_battery"]
+    },
+    {
+      id: "cereal_box_2",
+      colliderId: "cereal_box_2",
+      nameFr: "Paquet de flocons",
+      kind: "cereal_box",
+      x: -198,
+      y: 108,
+      z: -145,
+      radius: 19,
+      maxHp: 32,
+      dropsPowerUp: true,
+      rewardPool: ["water_bomb", "bubble_shield", "repair_tape"]
+    },
+    {
+      id: "toaster",
+      colliderId: "toaster",
+      nameFr: "Grille-pain",
+      kind: "toaster",
+      x: 82,
+      y: 100,
+      z: -143,
+      radius: 16,
+      maxHp: 40,
+      dropsPowerUp: true,
+      rewardPool: ["firecracker", "magnet", "turbo_battery"]
+    },
+    {
+      id: "milk_carton",
+      colliderId: "milk_carton",
+      nameFr: "Brique de lait",
+      kind: "snack_box",
+      x: -229,
+      y: 109,
+      z: 26,
+      radius: 16,
+      maxHp: 28,
+      dropsPowerUp: true,
+      rewardPool: ["glue_mine", "repair_tape", "bubble_shield"]
+    },
+    {
+      id: "spice_jar",
+      colliderId: "spice_jar",
+      nameFr: "Pot d\u2019\xE9pices",
+      kind: "piggy_bank",
+      x: -118,
+      y: 98,
+      z: 44,
+      radius: 13,
+      maxHp: 26,
+      dropsPowerUp: true
+    }
+  ],
+  spawns: [
+    // Unobstructed south, center-corridor, and high airspace lanes
+    { x: -185, y: 136, z: 128, yaw: -Math.PI * 0.48 },
+    { x: 185, y: 140, z: 122, yaw: Math.PI * 0.48 },
+    { x: -175, y: 108, z: 140, yaw: -Math.PI * 0.46 },
+    { x: 175, y: 110, z: 140, yaw: Math.PI * 0.46 },
+    { x: -175, y: 122, z: -16, yaw: -Math.PI * 0.5 },
+    { x: 115, y: 124, z: -18, yaw: Math.PI * 0.5 },
+    { x: -180, y: 178, z: 118, yaw: -Math.PI * 0.48 },
+    { x: 180, y: 180, z: 112, yaw: Math.PI * 0.48 },
+    { x: -185, y: 186, z: -84, yaw: -Math.PI * 0.5 },
+    { x: 120, y: 186, z: -84, yaw: Math.PI * 0.5 },
+    { x: -190, y: 54, z: 126, yaw: -Math.PI * 0.47 },
+    { x: 190, y: 56, z: 126, yaw: Math.PI * 0.47 },
+    { x: -180, y: 52, z: -32, yaw: -Math.PI * 0.5 },
+    { x: 135, y: 52, z: -36, yaw: Math.PI * 0.5 },
+    { x: -115, y: 182, z: 134, yaw: -Math.PI * 0.45 },
+    { x: 115, y: 182, z: 134, yaw: Math.PI * 0.45 }
+  ],
+  windZones: [],
+  updraftZones: [
+    {
+      id: "stove_updraft",
+      x: 8,
+      y: 92,
+      z: -142,
+      radius: 36,
+      height: 120,
+      liftStrength: 135
+    }
+  ],
+  hazardZones: [
+    {
+      id: "blender_hazard",
+      nameFr: "le mixeur g\xE9ant",
+      x: 44,
+      y: 112,
+      z: 44,
+      radius: 17,
+      height: 36,
+      damage: 9999
+    }
+  ],
+  powerUpSpots: [
+    { id: "pu_island_tunnel", x: 0, y: 38, z: 44 },
+    { id: "pu_sink_arch", x: -95, y: 116, z: -136 },
+    { id: "pu_stove_thermal", x: 8, y: 158, z: -142 },
+    { id: "pu_hanging_pans", x: -74, y: 168, z: -44 },
+    { id: "pu_fridge_corner", x: 128, y: 115, z: -65 }
+  ]
+};
+
+// shared/maps/garden.ts
+function box3(id, minX, minY, minZ, maxX, maxY, maxZ, tier = "static") {
+  return { id, kind: "box", tier, minX, minY, minZ, maxX, maxY, maxZ };
+}
+function sphere3(id, x, y, z, radius, tier = "static") {
+  return { id, kind: "sphere", tier, x, y, z, radius };
+}
+function capsule3(id, ax, ay, az, bx, by, bz, radius, tier = "static") {
+  return { id, kind: "capsule", tier, ax, ay, az, bx, by, bz, radius };
+}
+var GARDEN_MAP = {
+  id: "garden",
+  nameFr: "Le jardin",
+  subtitleFr: "Plein air : niche tunnel, balan\xE7oire g\xE9ante, pots de fleurs, bac \xE0 sable et arroseur rotatif.",
+  available: true,
+  hardBounds: {
+    minX: -250,
+    maxX: 250,
+    minY: 6,
+    maxY: 222,
+    minZ: -185,
+    maxZ: 185
+  },
+  softBounds: {
+    minX: -236,
+    maxX: 236,
+    minY: 8,
+    maxY: 210,
+    minZ: -174,
+    maxZ: 174
+  },
+  skyColor: "#9ED8FF",
+  fogColor: "#CDEEFF",
+  colliders: [
+    // Dog house with fly-through tunnel along Z (open doorway X: -146..-114, Y: 0..56)
+    box3("doghouse_left", -164, 0, -138, -146, 56, -72),
+    box3("doghouse_right", -114, 0, -138, -96, 56, -72),
+    box3("doghouse_roof", -170, 56, -142, -90, 82, -68),
+    // Giant A-frame Swing Set
+    capsule3("swing_post_left", 10, 0, -110, 18, 168, -110, 4.5),
+    capsule3("swing_post_right", 110, 0, -110, 102, 168, -110, 4.5),
+    capsule3("swing_top_bar", 8, 168, -110, 112, 168, -110, 5),
+    box3("swing_seat_1", 34, 34, -120, 54, 42, -100, "medium"),
+    box3("swing_seat_2", 66, 34, -120, 86, 42, -100, "medium"),
+    // Sandbox frame & sand floor + plastic bucket
+    box3("sandbox_wall_n", -185, 0, 55, -85, 18, 63),
+    box3("sandbox_wall_s", -185, 0, 137, -85, 18, 145),
+    box3("sandbox_wall_w", -185, 0, 63, -177, 18, 137),
+    box3("sandbox_wall_e", -93, 0, 63, -85, 18, 137),
+    box3("sandbox_floor", -177, 0, 63, -93, 10, 137),
+    capsule3("toy_bucket", -105, 10, 122, -105, 42, 122, 11, "medium"),
+    // Giant Terracotta Flower Pots & Blooming Stalks
+    capsule3("pot_big_1", 165, 0, -118, 165, 46, -118, 24),
+    capsule3("flower_stalk_1", 165, 46, -118, 165, 148, -118, 4.5),
+    sphere3("flower_head_1", 165, 152, -118, 18),
+    capsule3("pot_big_2", 176, 0, 82, 176, 42, 82, 22),
+    capsule3("flower_stalk_2", 176, 42, 82, 176, 122, 82, 4),
+    sphere3("flower_head_2", 176, 126, 82, 15),
+    // Giant grass blade clusters in backyard corners
+    capsule3("grass_cluster_nw", -208, 0, -142, -208, 96, -142, 16, "medium"),
+    capsule3("grass_cluster_sw", -210, 0, 148, -210, 86, 148, 15, "medium"),
+    capsule3("grass_cluster_se", 212, 0, 142, 212, 90, 142, 15, "medium"),
+    // Lawn sprinkler hub
+    capsule3("sprinkler_hub", 18, 0, 18, 18, 22, 18, 12),
+    // Destructible backyard props
+    box3("sandcastle", -152, 10, 84, -120, 48, 116, "small"),
+    capsule3("garden_gnome", -36, 0, -128, -36, 44, -128, 12, "small"),
+    capsule3("flower_pot_break", 112, 0, 118, 112, 40, 118, 15, "small"),
+    box3("picnic_juice_box", -42, 0, 116, -20, 34, 134, "small")
+  ],
+  destructibles: [
+    {
+      id: "sandcastle",
+      colliderId: "sandcastle",
+      nameFr: "Ch\xE2teau de sable",
+      kind: "sandcastle",
+      x: -136,
+      y: 29,
+      z: 100,
+      radius: 20,
+      maxHp: 35,
+      dropsPowerUp: true,
+      rewardPool: ["water_bomb", "bubble_shield", "turbo_battery"]
+    },
+    {
+      id: "garden_gnome",
+      colliderId: "garden_gnome",
+      nameFr: "Nain de jardin",
+      kind: "gnome",
+      x: -36,
+      y: 22,
+      z: -128,
+      radius: 15,
+      maxHp: 30,
+      dropsPowerUp: true,
+      rewardPool: ["rubber_missile", "firecracker", "magnet"]
+    },
+    {
+      id: "flower_pot_break",
+      colliderId: "flower_pot_break",
+      nameFr: "Pot de fleurs",
+      kind: "flower_pot",
+      x: 112,
+      y: 20,
+      z: 118,
+      radius: 17,
+      maxHp: 35,
+      dropsPowerUp: true,
+      rewardPool: ["repair_tape", "glue_mine", "bubble_shield"]
+    },
+    {
+      id: "picnic_juice_box",
+      colliderId: "picnic_juice_box",
+      nameFr: "Brique de jus",
+      kind: "snack_box",
+      x: -31,
+      y: 17,
+      z: 125,
+      radius: 15,
+      maxHp: 28,
+      dropsPowerUp: true,
+      rewardPool: ["turbo_battery", "firecracker", "repair_tape"]
+    }
+  ],
+  spawns: [
+    // Clear sky corridors above & between lawn landmarks
+    { x: -165, y: 128, z: -15, yaw: -Math.PI * 0.5 },
+    { x: 165, y: 132, z: -15, yaw: Math.PI * 0.5 },
+    { x: -175, y: 148, z: 32, yaw: -Math.PI * 0.48 },
+    { x: 175, y: 152, z: 28, yaw: Math.PI * 0.48 },
+    { x: -160, y: 116, z: -42, yaw: -Math.PI * 0.5 },
+    { x: 145, y: 118, z: -44, yaw: Math.PI * 0.5 },
+    { x: -175, y: 184, z: -102, yaw: -Math.PI * 0.48 },
+    { x: 140, y: 184, z: -96, yaw: Math.PI * 0.48 },
+    { x: -170, y: 176, z: 118, yaw: -Math.PI * 0.46 },
+    { x: 165, y: 178, z: 118, yaw: Math.PI * 0.46 },
+    { x: -165, y: 74, z: 12, yaw: -Math.PI * 0.5 },
+    { x: 145, y: 76, z: 12, yaw: Math.PI * 0.5 },
+    { x: -155, y: 78, z: -28, yaw: -Math.PI * 0.5 },
+    { x: 135, y: 80, z: -28, yaw: Math.PI * 0.5 },
+    { x: -75, y: 188, z: 128, yaw: -Math.PI * 0.42 },
+    { x: 75, y: 188, z: 128, yaw: Math.PI * 0.42 }
+  ],
+  windZones: [
+    // Twin spinning water-jet sprinkler arms at center lawn
+    {
+      originX: 18,
+      originY: 22,
+      originZ: 18,
+      range: 135,
+      coneHalfAngle: 0.34,
+      baseYaw: 0,
+      sweepAmplitude: 0,
+      sweepSpeed: 1.15,
+      pushStrength: 80,
+      continuousSpin: true
+    },
+    {
+      originX: 18,
+      originY: 22,
+      originZ: 18,
+      range: 135,
+      coneHalfAngle: 0.34,
+      baseYaw: Math.PI,
+      sweepAmplitude: 0,
+      sweepSpeed: 1.15,
+      pushStrength: 80,
+      continuousSpin: true
+    }
+  ],
+  updraftZones: [],
+  hazardZones: [],
+  powerUpSpots: [
+    { id: "pu_doghouse_tunnel", x: -130, y: 28, z: -105 },
+    { id: "pu_swing_arch", x: 60, y: 94, z: -110 },
+    { id: "pu_sprinkler_top", x: 18, y: 58, z: 18 },
+    { id: "pu_sandbox", x: -135, y: 68, z: 100 },
+    { id: "pu_flower_corridor", x: 142, y: 88, z: -18 }
   ]
 };
 
 // shared/maps/index.ts
 var MAPS = {
   desk: DESK_MAP,
-  kitchen: {
-    id: "kitchen",
-    nameFr: "La cuisine",
-    subtitleFr: "Comptoir, grille-pain, \xE9vier et mixeur g\xE9ant (Jalons 3\u20134).",
-    available: false,
-    hardBounds: DESK_MAP.hardBounds,
-    softBounds: DESK_MAP.softBounds,
-    skyColor: "#FFF3D6",
-    fogColor: "#FFF7E5",
-    colliders: [],
-    spawns: DESK_MAP.spawns,
-    windZones: [],
-    powerUpSpots: []
-  },
-  garden: {
-    id: "garden",
-    nameFr: "Le jardin",
-    subtitleFr: "Brins d\u2019herbe g\xE9ants, pots de fleurs et arroseur (Jalons 3\u20134).",
-    available: false,
-    hardBounds: DESK_MAP.hardBounds,
-    softBounds: DESK_MAP.softBounds,
-    skyColor: "#BEE9FF",
-    fogColor: "#D6F2FF",
-    colliders: [],
-    spawns: DESK_MAP.spawns,
-    windZones: [],
-    powerUpSpots: []
-  }
+  kitchen: KITCHEN_MAP,
+  garden: GARDEN_MAP
 };
 
 // shared/planes.ts
@@ -302,8 +731,9 @@ function autoBalanceTeams(players) {
     toggle++;
   }
 }
-function checkRoundWinner(mode, players, roundTimerRemaining) {
+function checkRoundWinner(mode, players, roundTimerRemaining, suddenDeathElapsed = 0) {
   const activeContenders = players.filter((p) => p.alive || p.lives > 0);
+  const suddenDeathTimedOut = roundTimerRemaining <= 0 && suddenDeathElapsed >= 65;
   if (mode === "last_plane_ffa") {
     if (players.length > 1 && activeContenders.length <= 1) {
       const winner = activeContenders[0] ?? null;
@@ -314,7 +744,7 @@ function checkRoundWinner(mode, players, roundTimerRemaining) {
         winnerName: winner?.nickname ?? "\xC9galit\xE9"
       };
     }
-    if (roundTimerRemaining <= 0) {
+    if (suddenDeathTimedOut) {
       const sorted = [...players].sort((a, b) => {
         if (a.alive !== b.alive) return a.alive ? -1 : 1;
         return b.lives - a.lives;
@@ -342,7 +772,7 @@ function checkRoundWinner(mode, players, roundTimerRemaining) {
       winnerName: winningTeam === "red" ? "\xC9quipe Rouge" : winningTeam === "blue" ? "\xC9quipe Bleue" : "\xC9galit\xE9"
     };
   }
-  if (roundTimerRemaining <= 0) {
+  if (suddenDeathTimedOut) {
     const redLives = players.filter((p) => p.team === "red").reduce((acc, p) => acc + p.lives + (p.alive ? 1 : 0), 0);
     const blueLives = players.filter((p) => p.team === "blue").reduce((acc, p) => acc + p.lives + (p.alive ? 1 : 0), 0);
     const winningTeam = redLives > blueLives ? "red" : blueLives > redLives ? "blue" : "none";
@@ -364,21 +794,36 @@ function canDamageTarget(mode, friendlyFire, attackerId, attackerTeam, targetId,
 }
 function applyDamageToSim(sim, damage) {
   if (!sim.alive || sim.invulnTimer > 0) {
-    return { eliminated: false, lostRound: false };
+    return { eliminated: false, lostRound: false, shieldBlocked: false };
+  }
+  if (sim.shieldTimer > 0 && sim.shieldHp > 0 && damage < 9e3) {
+    sim.shieldHp = Math.max(0, sim.shieldHp - damage);
+    sim.hitFlashTimer = 0.12;
+    if (sim.shieldHp <= 0) {
+      sim.shieldTimer = 0;
+    }
+    return { eliminated: false, lostRound: false, shieldBlocked: true };
   }
   sim.hp = Math.max(0, sim.hp - damage);
   sim.hitFlashTimer = 0.14;
   if (sim.hp > 0) {
-    return { eliminated: false, lostRound: false };
+    return { eliminated: false, lostRound: false, shieldBlocked: false };
   }
   sim.alive = false;
   sim.lives = Math.max(0, sim.lives - 1);
+  sim.secondaryPowerUp = null;
+  sim.secondaryUses = 0;
+  sim.shieldTimer = 0;
+  sim.shieldHp = 0;
+  sim.turboTimer = 0;
+  sim.glueTimer = 0;
+  sim.magnetTimer = 0;
   if (sim.lives > 0) {
     sim.respawnTimer = 2.6;
-    return { eliminated: true, lostRound: false };
+    return { eliminated: true, lostRound: false, shieldBlocked: false };
   }
   sim.respawnTimer = 0;
-  return { eliminated: true, lostRound: true };
+  return { eliminated: true, lostRound: true, shieldBlocked: false };
 }
 function isMatchOver(mode, roundNumber, maxRounds, teamRoundWins, scoreboard) {
   const winsNeeded = Math.ceil(maxRounds / 2);
@@ -442,8 +887,16 @@ function isOutsideSoftBounds(x, y, z, map) {
   const sb = map.softBounds;
   return x < sb.minX || x > sb.maxX || y < sb.minY || y > sb.maxY || z < sb.minZ || z > sb.maxZ;
 }
-function getFanYawAtTime(baseYaw, sweepAmplitude, sweepSpeed, elapsedTime) {
+function getFanYawAtTime(baseYaw, sweepAmplitude, sweepSpeed, elapsedTime, continuousSpin = false) {
+  if (continuousSpin) {
+    return baseYaw + elapsedTime * sweepSpeed;
+  }
   return baseYaw + Math.sin(elapsedTime * sweepSpeed) * sweepAmplitude;
+}
+function getHingeDoorAngleAtTime(maxAngle, cycleSeconds, elapsedTime) {
+  const openRatio = 0.5 - 0.5 * Math.cos(elapsedTime * Math.PI * 2 / Math.max(1, cycleSeconds));
+  const angle = maxAngle * openRatio;
+  return angle === 0 ? 0 : angle;
 }
 function closestPointOnSegment(px, py, pz, ax, ay, az, bx, by, bz) {
   const abx = bx - ax;
@@ -458,8 +911,39 @@ function closestPointOnSegment(px, py, pz, ax, ay, az, bx, by, bz) {
     z: az + abz * t
   };
 }
-function resolveSphereVsCollider(sx, sy, sz, radius, collider) {
+function resolveSphereVsCollider(sx, sy, sz, radius, collider, elapsedTime = 0) {
   if (collider.kind === "box") {
+    if (collider.hinge) {
+      const { pivotX, pivotZ, lengthX, thicknessZ, maxAngle, cycleSeconds } = collider.hinge;
+      const angle = getHingeDoorAngleAtTime(maxAngle, cycleSeconds, elapsedTime);
+      const cosA = Math.cos(-angle);
+      const sinA = Math.sin(-angle);
+      const dxp = sx - pivotX;
+      const dzp = sz - pivotZ;
+      const lx = dxp * cosA + dzp * sinA;
+      const lz = -dxp * sinA + dzp * cosA;
+      const halfT = thicknessZ * 0.5;
+      const cx2 = clamp(lx, 0, lengthX);
+      const cy2 = clamp(sy, collider.minY, collider.maxY);
+      const cz2 = clamp(lz, -halfT, halfT);
+      const ddx = lx - cx2;
+      const ddy = sy - cy2;
+      const ddz = lz - cz2;
+      const distSq3 = ddx * ddx + ddy * ddy + ddz * ddz;
+      if (distSq3 >= radius * radius) return null;
+      const dist2 = Math.sqrt(distSq3) || 1e-3;
+      const lnx = distSq3 > 1e-6 ? ddx / dist2 : 0;
+      const lny = distSq3 > 1e-6 ? ddy / dist2 : 0;
+      const lnz = distSq3 > 1e-6 ? ddz / dist2 : 1;
+      const cosFwd = Math.cos(angle);
+      const sinFwd = Math.sin(angle);
+      return {
+        nx: lnx * cosFwd + lnz * sinFwd,
+        ny: lny,
+        nz: -lnx * sinFwd + lnz * cosFwd,
+        depth: radius - dist2
+      };
+    }
     const cx = clamp(sx, collider.minX, collider.maxX);
     const cy = clamp(sy, collider.minY, collider.maxY);
     const cz = clamp(sz, collider.minZ, collider.maxZ);
@@ -531,40 +1015,61 @@ function resolveSphereVsCollider(sx, sy, sz, radius, collider) {
     depth: minR - dist
   };
 }
-function stepPlanePhysics(state, input, archetype, map, elapsedTime) {
+function stepPlanePhysics(state, input, archetype, map, elapsedTime, destroyedColliderIds) {
   const dt = clamp(input.dt, 1e-3, 0.05);
   const result = {
     collided: false,
     collisionDamage: 0,
-    hitNormal: null
+    hitNormal: null,
+    collidedColliderId: null,
+    triggeredHazard: null
   };
   if (!state.alive) return result;
   if (state.invulnTimer > 0) state.invulnTimer = Math.max(0, state.invulnTimer - dt);
   if (state.hitFlashTimer > 0) state.hitFlashTimer = Math.max(0, state.hitFlashTimer - dt);
   if (state.collideCooldown > 0) state.collideCooldown = Math.max(0, state.collideCooldown - dt);
   if (state.fireCooldown > 0) state.fireCooldown = Math.max(0, state.fireCooldown - dt);
+  if (state.secondaryCooldown > 0) {
+    state.secondaryCooldown = Math.max(0, state.secondaryCooldown - dt);
+  }
   if (state.barrelRollCooldown > 0) {
     state.barrelRollCooldown = Math.max(0, state.barrelRollCooldown - dt);
   }
+  if (state.shieldTimer > 0) {
+    state.shieldTimer = Math.max(0, state.shieldTimer - dt);
+    if (state.shieldTimer <= 0) state.shieldHp = 0;
+  }
+  if (state.turboTimer > 0) state.turboTimer = Math.max(0, state.turboTimer - dt);
+  if (state.glueTimer > 0) state.glueTimer = Math.max(0, state.glueTimer - dt);
+  if (state.magnetTimer > 0) state.magnetTimer = Math.max(0, state.magnetTimer - dt);
   if (input.barrelRollDir !== 0 && state.barrelRollTimer <= 0 && state.barrelRollCooldown <= 0) {
     state.barrelRollTimer = 0.34;
     state.barrelRollCooldown = 1.15;
     state.barrelRollDir = input.barrelRollDir;
   }
-  const isBoosting = input.boost && state.boost > 1;
-  if (isBoosting) {
+  const turboActive = state.turboTimer > 0;
+  const glued = state.glueTimer > 0;
+  const isBoosting = turboActive || input.boost && state.boost > 1;
+  if (turboActive) {
+    state.boost = 100;
+  } else if (isBoosting) {
     state.boost = Math.max(0, state.boost - 34 * dt);
   } else {
     state.boost = Math.min(100, state.boost + 18 * dt);
   }
   const throttle = clamp(input.throttle, -1, 1);
   let targetSpeed = archetype.cruiseSpeed;
-  if (isBoosting) {
+  if (turboActive) {
+    targetSpeed = archetype.boostSpeed * 1.15;
+  } else if (isBoosting) {
     targetSpeed = archetype.boostSpeed;
   } else if (throttle > 0.05) {
     targetSpeed = archetype.cruiseSpeed + (archetype.maxSpeed - archetype.cruiseSpeed) * throttle;
   } else if (throttle < -0.05) {
     targetSpeed = archetype.cruiseSpeed + (archetype.cruiseSpeed - archetype.minSpeed) * throttle;
+  }
+  if (glued) {
+    targetSpeed *= 0.56;
   }
   const speedLerp = 1 - Math.exp(-6.5 * dt);
   state.speed += (targetSpeed - state.speed) * speedLerp;
@@ -575,8 +1080,9 @@ function stepPlanePhysics(state, input, archetype, map, elapsedTime) {
   const aimX = clamp(input.aimX, -1, 1);
   const aimY = clamp(input.aimY, -1, 1);
   const rollInput = clamp(input.roll, -1, 1);
-  const yawDelta = -aimX * archetype.turnRate * dt;
-  const pitchDelta = aimY * archetype.turnRate * 0.9 * dt;
+  const effectiveTurnRate = glued ? archetype.turnRate * 0.65 : archetype.turnRate;
+  const yawDelta = -aimX * effectiveTurnRate * dt;
+  const pitchDelta = aimY * effectiveTurnRate * 0.9 * dt;
   let [qx, qy, qz, qw] = [state.qx, state.qy, state.qz, state.qw];
   const [wyx, wyy, wyz, wyw] = quatFromAxisAngle(0, 1, 0, yawDelta);
   [qx, qy, qz, qw] = mulQuat(wyx, wyy, wyz, wyw, qx, qy, qz, qw);
@@ -628,7 +1134,13 @@ function stepPlanePhysics(state, input, archetype, map, elapsedTime) {
     const dz = nz - wz.originZ;
     const dist = Math.hypot(dx, dy, dz);
     if (dist > 2 && dist < wz.range) {
-      const fanYaw = getFanYawAtTime(wz.baseYaw, wz.sweepAmplitude, wz.sweepSpeed, elapsedTime);
+      const fanYaw = getFanYawAtTime(
+        wz.baseYaw,
+        wz.sweepAmplitude,
+        wz.sweepSpeed,
+        elapsedTime,
+        wz.continuousSpin
+      );
       const dirX = -Math.sin(fanYaw);
       const dirZ = -Math.cos(fanYaw);
       const dot = (dx * dirX + dz * dirZ) / dist;
@@ -639,9 +1151,17 @@ function stepPlanePhysics(state, input, archetype, map, elapsedTime) {
       }
     }
   }
+  for (const uz of map.updraftZones) {
+    const horiz = Math.hypot(nx - uz.x, nz - uz.z);
+    if (horiz <= uz.radius && ny >= uz.y - 4 && ny <= uz.y + uz.height) {
+      const radialFalloff = 1 - horiz / uz.radius * 0.45;
+      ny += uz.liftStrength * radialFalloff * dt;
+    }
+  }
   const r = archetype.hitboxRadius;
   for (const col of map.colliders) {
-    const hit = resolveSphereVsCollider(nx, ny, nz, r, col);
+    if (destroyedColliderIds?.has(col.id)) continue;
+    const hit = resolveSphereVsCollider(nx, ny, nz, r, col, elapsedTime);
     if (hit) {
       nx += hit.nx * (hit.depth + 0.3);
       ny += hit.ny * (hit.depth + 0.3);
@@ -667,12 +1187,22 @@ function stepPlanePhysics(state, input, archetype, map, elapsedTime) {
       }
       result.collided = true;
       result.hitNormal = { x: hit.nx, y: hit.ny, z: hit.nz };
+      result.collidedColliderId = col.id;
       if (state.collideCooldown <= 0 && state.invulnTimer <= 0) {
         const dmg = col.damageOnHit ?? Math.round(clamp(state.speed / archetype.maxSpeed * 14, 6, 16));
         result.collisionDamage = dmg;
         state.collideCooldown = 0.55;
       }
       break;
+    }
+  }
+  if (state.invulnTimer <= 0) {
+    for (const hz of map.hazardZones) {
+      const horiz = Math.hypot(nx - hz.x, nz - hz.z);
+      if (horiz <= hz.radius + r * 0.6 && ny >= hz.y - 4 && ny <= hz.y + hz.height) {
+        result.triggeredHazard = hz;
+        break;
+      }
     }
   }
   const hb = map.hardBounds;
@@ -764,8 +1294,11 @@ function pickBotName(existingNames, index) {
 function pickBotPersonality(index) {
   return PERSONALITIES[index % PERSONALITIES.length];
 }
-function pointInsideExpandedCollider(x, y, z, margin, col) {
+function pointInsideExpandedCollider(x, y, z, margin, col, elapsedTime) {
   if (col.kind === "box") {
+    if (col.hinge) {
+      return resolveSphereVsCollider(x, y, z, margin, col, elapsedTime) !== null;
+    }
     return x >= col.minX - margin && x <= col.maxX + margin && y >= col.minY - margin && y <= col.maxY + margin && z >= col.minZ - margin && z <= col.maxZ + margin;
   }
   if (col.kind === "sphere") {
@@ -783,7 +1316,7 @@ function pointInsideExpandedCollider(x, y, z, margin, col) {
   const maxZ = Math.max(col.az, col.bz) + col.radius + margin;
   return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
 }
-function computeBotInput(bot, allPlayers, settings, map, dt, elapsedTime) {
+function computeBotInput(bot, allPlayers, settings, map, dt, elapsedTime, powerUps = []) {
   const sim = bot.sim;
   const fwd = getPlaneForward(sim);
   const right = getPlaneRight(sim);
@@ -807,9 +1340,25 @@ function computeBotInput(bot, allPlayers, settings, map, dt, elapsedTime) {
     }
   }
   let wantsFire = false;
+  let wantsSecondary = false;
   let wantsBoost = false;
   let barrelRollDir = 0;
-  if (nearestEnemy) {
+  let soughtPickup = null;
+  if (!sim.secondaryPowerUp && powerUps.length > 0) {
+    let bestPuDist = 95;
+    for (const pu of powerUps) {
+      const d = Math.hypot(pu.x - sim.x, pu.y - sim.y, pu.z - sim.z);
+      if (d < bestPuDist) {
+        bestPuDist = d;
+        soughtPickup = pu;
+      }
+    }
+  }
+  if (soughtPickup) {
+    targetX = soughtPickup.x;
+    targetY = soughtPickup.y;
+    targetZ = soughtPickup.z;
+  } else if (nearestEnemy) {
     const enemyFwd = getPlaneForward(nearestEnemy.sim);
     const arch = PLANE_ARCHETYPES[bot.cosmetics.planeId];
     const leadTime = Math.min(0.45, enemyDist / arch.projectileSpeed);
@@ -848,11 +1397,21 @@ function computeBotInput(bot, allPlayers, settings, map, dt, elapsedTime) {
     const py = sim.y + fwd.y * dist;
     const pz = sim.z + fwd.z * dist;
     for (const col of map.colliders) {
-      if (pointInsideExpandedCollider(px, py, pz, 12, col)) {
+      if (pointInsideExpandedCollider(px, py, pz, 12, col, elapsedTime)) {
         obstacleAhead = true;
         avoidY += 1;
         avoidX += right.x * 0.6;
         avoidZ += right.z * 0.6;
+        break;
+      }
+    }
+    for (const hz of map.hazardZones) {
+      const horiz = Math.hypot(px - hz.x, pz - hz.z);
+      if (horiz <= hz.radius + 14 && py >= hz.y - 12 && py <= hz.y + hz.height + 12) {
+        obstacleAhead = true;
+        avoidY += 1.25;
+        avoidX += right.x * 0.85;
+        avoidZ += right.z * 0.85;
         break;
       }
     }
@@ -888,6 +1447,21 @@ function computeBotInput(bot, allPlayers, settings, map, dt, elapsedTime) {
   if (elapsedTime > 3 && nearestEnemy && !obstacleAhead && enemyDist < 220 && dotFwd > 0.91 && !sim.overheated && sim.heat < 82) {
     wantsFire = true;
   }
+  if (elapsedTime > 4 && sim.secondaryPowerUp && sim.secondaryCooldown <= 0) {
+    if (sim.secondaryPowerUp === "repair_tape" && sim.hp < sim.maxHp * 0.7) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === "bubble_shield" && enemyDist < 120) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === "turbo_battery" && enemyDist > 110) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === "magnet" && enemyDist < 90) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === "glue_mine" && enemyDist < 65) {
+      wantsSecondary = true;
+    } else if ((sim.secondaryPowerUp === "rubber_missile" || sim.secondaryPowerUp === "firecracker" || sim.secondaryPowerUp === "water_bomb") && nearestEnemy && !obstacleAhead && enemyDist < 185 && dotFwd > 0.86) {
+      wantsSecondary = true;
+    }
+  }
   return {
     seq: (bot.lastProcessedSeq ?? 0) + 1,
     dt,
@@ -897,7 +1471,128 @@ function computeBotInput(bot, allPlayers, settings, map, dt, elapsedTime) {
     roll: 0,
     boost: wantsBoost,
     fire: wantsFire,
+    useSecondary: wantsSecondary,
     barrelRollDir
+  };
+}
+
+// shared/powerups.ts
+var POWERUP_ORDER = [
+  "rubber_missile",
+  "water_bomb",
+  "firecracker",
+  "glue_mine",
+  "turbo_battery",
+  "bubble_shield",
+  "repair_tape",
+  "magnet"
+];
+var POWERUPS = {
+  rubber_missile: {
+    id: "rubber_missile",
+    nameFr: "Missiles \xE9lastiques",
+    shortDescFr: "Missile \xE0 t\xEAte chercheuse (x2)",
+    uses: 2,
+    colorHex: "#EF4444",
+    accentHex: "#FEF08A",
+    kind: "offensive"
+  },
+  water_bomb: {
+    id: "water_bomb",
+    nameFr: "Bombe \xE0 eau",
+    shortDescFr: "Explosion de zone \xE9claboussante",
+    uses: 1,
+    colorHex: "#0EA5E9",
+    accentHex: "#E0F2FE",
+    kind: "offensive"
+  },
+  firecracker: {
+    id: "firecracker",
+    nameFr: "P\xE9tard-fus\xE9e",
+    shortDescFr: "Roquette ultra-rapide (x2)",
+    uses: 2,
+    colorHex: "#F97316",
+    accentHex: "#FACC15",
+    kind: "offensive"
+  },
+  glue_mine: {
+    id: "glue_mine",
+    nameFr: "Mine de colle",
+    shortDescFr: "Pi\xE8ge collant qui ralentit (x2)",
+    uses: 2,
+    colorHex: "#EAB308",
+    accentHex: "#FEF9C3",
+    kind: "utility"
+  },
+  turbo_battery: {
+    id: "turbo_battery",
+    nameFr: "Pile turbo",
+    shortDescFr: "Vitesse maximale pendant 5,5 s",
+    uses: 1,
+    colorHex: "#22C55E",
+    accentHex: "#BBF7D0",
+    kind: "mobility"
+  },
+  bubble_shield: {
+    id: "bubble_shield",
+    nameFr: "Bulle bouclier",
+    shortDescFr: "Bulle de savon protectrice (7 s)",
+    uses: 1,
+    colorHex: "#A855F7",
+    accentHex: "#F3E8FF",
+    kind: "defensive"
+  },
+  repair_tape: {
+    id: "repair_tape",
+    nameFr: "Scotch r\xE9parateur",
+    shortDescFr: "R\xE9pare +45 pts de coque",
+    uses: 1,
+    colorHex: "#10B981",
+    accentHex: "#ECFDF5",
+    kind: "defensive"
+  },
+  magnet: {
+    id: "magnet",
+    nameFr: "Aimant",
+    shortDescFr: "D\xE9vie les ennemis proches (6 s)",
+    uses: 1,
+    colorHex: "#EC4899",
+    accentHex: "#CBD5E1",
+    kind: "utility"
+  }
+};
+function pickRandomPowerUp(rng = Math.random, preferPool) {
+  const list = preferPool && preferPool.length > 0 ? preferPool : POWERUP_ORDER;
+  return list[Math.floor(rng() * list.length) % list.length];
+}
+function computeVacuumState(suddenDeathElapsed, map) {
+  if (suddenDeathElapsed <= 0) {
+    return {
+      active: false,
+      elapsed: 0,
+      nozzleX: map.hardBounds.maxX + 60,
+      nozzleY: 120,
+      nozzleZ: 0,
+      safeRadius: 340,
+      suctionRadius: 42
+    };
+  }
+  const progress = Math.min(1, suddenDeathElapsed / 48);
+  const startRadius = 235;
+  const minRadius = 26;
+  const safeRadius = startRadius - (startRadius - minRadius) * progress;
+  const angle = suddenDeathElapsed * 0.72;
+  const nozzleX = Math.cos(angle) * safeRadius * 0.85;
+  const nozzleZ = Math.sin(angle) * safeRadius * 0.7;
+  const nozzleY = 108 + Math.sin(suddenDeathElapsed * 1.3) * 32;
+  return {
+    active: true,
+    elapsed: suddenDeathElapsed,
+    nozzleX,
+    nozzleY,
+    nozzleZ,
+    safeRadius,
+    suctionRadius: 40
   };
 }
 
@@ -925,8 +1620,11 @@ function segmentIntersectsSphere(ax, ay, az, bx, by, bz, cx, cy, cz, r) {
   const dz = pz - cz;
   return dx * dx + dy * dy + dz * dz <= r * r;
 }
-function pointInsideCollider(x, y, z, col) {
+function pointInsideCollider(x, y, z, col, elapsedTime = 0) {
   if (col.kind === "box") {
+    if (col.hinge) {
+      return resolveSphereVsCollider(x, y, z, 0.5, col, elapsedTime) !== null;
+    }
     return x >= col.minX && x <= col.maxX && y >= col.minY && y <= col.maxY && z >= col.minZ && z <= col.maxZ;
   }
   if (col.kind === "sphere") {
@@ -944,6 +1642,37 @@ function pointInsideCollider(x, y, z, col) {
   const dy = y - (col.ay + aby * t);
   const dz = z - (col.az + abz * t);
   return dx * dx + dy * dy + dz * dz <= col.radius * col.radius;
+}
+function initRoundEntities(room) {
+  const map = MAPS[room.settings.mapId] ?? MAPS.desk;
+  room.projectiles.length = 0;
+  room.secondaryProjectiles.length = 0;
+  room.powerUps.length = 0;
+  room.destroyedColliderIds.clear();
+  room.suddenDeath = false;
+  room.suddenDeathElapsed = 0;
+  room.destructibles = map.destructibles.map((d) => ({
+    id: d.id,
+    colliderId: d.colliderId,
+    kind: d.kind,
+    x: d.x,
+    y: d.y,
+    z: d.z,
+    radius: d.radius,
+    hp: d.maxHp,
+    maxHp: d.maxHp,
+    destroyed: false,
+    dropsPowerUp: d.dropsPowerUp,
+    rewardPool: d.rewardPool
+  }));
+  room.powerUpSpots = map.powerUpSpots.map((sp, i) => ({
+    id: sp.id,
+    x: sp.x,
+    y: sp.y,
+    z: sp.z,
+    // Spawn initial glowing pickups right after takeoff
+    respawnTimer: 1.5 + i * 0.4
+  }));
 }
 function spawnPlayerAtIndex(player, spawnIndex, mapId, resetLives) {
   const map = MAPS[mapId] ?? MAPS.desk;
@@ -974,8 +1703,16 @@ function spawnPlayerAtIndex(player, spawnIndex, mapId, resetLives) {
     lives,
     respawnTimer: 0,
     fireCooldown: 0,
+    secondaryCooldown: 0,
     hitFlashTimer: 0,
-    collideCooldown: 0
+    collideCooldown: 0,
+    secondaryPowerUp: null,
+    secondaryUses: 0,
+    shieldTimer: 0,
+    shieldHp: 0,
+    turboTimer: 0,
+    glueTimer: 0,
+    magnetTimer: 0
   };
   player.sim = sim;
   player.inputQueue.length = 0;
@@ -997,6 +1734,186 @@ function getRewindSnapshot(room, rewindMs) {
     }
   }
   return best;
+}
+function damageDestructible(room, colliderOrDestructibleId, damage, attackerId, callbacks) {
+  const d = room.destructibles.find(
+    (prop) => !prop.destroyed && (prop.id === colliderOrDestructibleId || prop.colliderId === colliderOrDestructibleId)
+  );
+  if (!d) return false;
+  d.hp = Math.max(0, d.hp - damage);
+  if (d.hp > 0) return true;
+  d.destroyed = true;
+  room.destroyedColliderIds.add(d.colliderId);
+  callbacks.emitHit(room, {
+    targetId: d.id,
+    attackerId,
+    damage,
+    x: round2(d.x),
+    y: round2(d.y),
+    z: round2(d.z),
+    fatal: true
+  });
+  if (d.dropsPowerUp) {
+    const powerUpId = pickRandomPowerUp(Math.random, d.rewardPool);
+    room.powerUps.push({
+      id: `pu_${room.nextPowerUpId++}`,
+      powerUpId,
+      x: d.x,
+      y: Math.max(24, d.y + 4),
+      z: d.z
+    });
+  }
+  return true;
+}
+function activateSecondaryPowerUp(room, player, callbacks) {
+  const powerUpId = player.sim.secondaryPowerUp;
+  if (!powerUpId || player.sim.secondaryUses <= 0 || player.sim.secondaryCooldown > 0) return;
+  player.sim.secondaryCooldown = 0.45;
+  player.sim.secondaryUses--;
+  if (player.sim.secondaryUses <= 0) {
+    player.sim.secondaryPowerUp = null;
+  }
+  const fwd = getPlaneForward(player.sim);
+  if (powerUpId === "repair_tape") {
+    player.sim.hp = Math.min(player.sim.maxHp, player.sim.hp + 45);
+    callbacks.emitHit(room, {
+      targetId: player.id,
+      attackerId: player.id,
+      damage: 0,
+      x: round2(player.sim.x),
+      y: round2(player.sim.y),
+      z: round2(player.sim.z),
+      fatal: false
+    });
+    return;
+  }
+  if (powerUpId === "bubble_shield") {
+    player.sim.shieldTimer = 7;
+    player.sim.shieldHp = 60;
+    return;
+  }
+  if (powerUpId === "turbo_battery") {
+    player.sim.turboTimer = 5.5;
+    player.sim.boost = 100;
+    return;
+  }
+  if (powerUpId === "magnet") {
+    player.sim.magnetTimer = 6;
+    return;
+  }
+  if (powerUpId === "rubber_missile") {
+    const speed = 250;
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: "rubber_missile",
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x + fwd.x * 8,
+      y: player.sim.y + fwd.y * 8,
+      z: player.sim.z + fwd.z * 8,
+      vx: fwd.x * speed,
+      vy: fwd.y * speed,
+      vz: fwd.z * speed,
+      damage: 34,
+      radius: 4,
+      ttl: 3.2,
+      maxTtl: 3.2
+    });
+    return;
+  }
+  if (powerUpId === "water_bomb") {
+    const speed = 195;
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: "water_bomb",
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x + fwd.x * 8,
+      y: player.sim.y + fwd.y * 8,
+      z: player.sim.z + fwd.z * 8,
+      vx: fwd.x * speed,
+      vy: fwd.y * speed + 28,
+      vz: fwd.z * speed,
+      damage: 38,
+      radius: 4.5,
+      ttl: 1.35,
+      maxTtl: 1.35
+    });
+    return;
+  }
+  if (powerUpId === "firecracker") {
+    const speed = 520;
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: "firecracker",
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x + fwd.x * 8,
+      y: player.sim.y + fwd.y * 8,
+      z: player.sim.z + fwd.z * 8,
+      vx: fwd.x * speed,
+      vy: fwd.y * speed,
+      vz: fwd.z * speed,
+      damage: 42,
+      radius: 3.5,
+      ttl: 1.15,
+      maxTtl: 1.15
+    });
+    return;
+  }
+  if (powerUpId === "glue_mine") {
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: "glue_mine",
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x - fwd.x * 10,
+      y: player.sim.y - fwd.y * 10,
+      z: player.sim.z - fwd.z * 10,
+      vx: -fwd.x * 10,
+      vy: 0,
+      vz: -fwd.z * 10,
+      damage: 14,
+      radius: 15,
+      ttl: 18,
+      maxTtl: 18
+    });
+  }
+}
+function applyCombatDamage(room, target, attacker, damage, hx, hy, hz, reason, powerUpId, callbacks) {
+  const now = Date.now();
+  const res = applyDamageToSim(target.sim, damage);
+  if (target.sim.invulnTimer <= 0 && attacker) {
+    target.lastHitBy = attacker.id;
+    target.lastHitAt = now;
+  }
+  callbacks.emitHit(room, {
+    targetId: target.id,
+    attackerId: attacker?.id ?? target.id,
+    damage: res.shieldBlocked ? 0 : damage,
+    x: round2(hx),
+    y: round2(hy),
+    z: round2(hz),
+    fatal: res.eliminated
+  });
+  if (res.eliminated) {
+    target.deaths++;
+    if (attacker && attacker.id !== target.id) {
+      attacker.kills++;
+      attacker.score += 100;
+    }
+    callbacks.emitKillFeed(room, {
+      id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+      killerName: attacker?.nickname ?? "Inconnu",
+      killerTeam: attacker?.team ?? "none",
+      victimName: target.nickname,
+      victimTeam: target.team,
+      reason,
+      powerUpId,
+      timestamp: now
+    });
+    callbacks.emitRoomState(room);
+  }
 }
 function stepRoomTick(room, dt, callbacks) {
   const map = MAPS[room.settings.mapId] ?? MAPS.desk;
@@ -1021,8 +1938,8 @@ function stepRoomTick(room, dt, callbacks) {
       } else {
         room.roundNumber++;
         room.roundTimer = 240;
-        room.projectiles.length = 0;
         room.lastRoundWinner = null;
+        initRoundEntities(room);
         let idx = 0;
         for (const player of room.players.values()) {
           spawnPlayerAtIndex(player, idx++, room.settings.mapId, room.settings.livesPerRound);
@@ -1037,8 +1954,33 @@ function stepRoomTick(room, dt, callbacks) {
   if (room.phase !== "playing") {
     return;
   }
-  room.roundTimer = Math.max(0, room.roundTimer - dt);
+  if (room.roundTimer > 0) {
+    room.roundTimer = Math.max(0, room.roundTimer - dt);
+  } else {
+    if (!room.suddenDeath) {
+      room.suddenDeath = true;
+      room.suddenDeathElapsed = 0;
+      callbacks.emitRoomState(room);
+    }
+    room.suddenDeathElapsed += dt;
+  }
   const allPlayers = Array.from(room.players.values());
+  for (const spot of room.powerUpSpots) {
+    const occupied = room.powerUps.some((p) => p.spotId === spot.id);
+    if (!occupied) {
+      spot.respawnTimer -= dt;
+      if (spot.respawnTimer <= 0) {
+        room.powerUps.push({
+          id: `pu_${room.nextPowerUpId++}`,
+          powerUpId: pickRandomPowerUp(),
+          x: spot.x,
+          y: spot.y,
+          z: spot.z,
+          spotId: spot.id
+        });
+      }
+    }
+  }
   let spawnCounter = 0;
   for (const player of allPlayers) {
     spawnCounter++;
@@ -1065,7 +2007,8 @@ function stepRoomTick(room, dt, callbacks) {
         room.settings,
         map,
         dt,
-        room.elapsedTime
+        room.elapsedTime,
+        room.powerUps
       );
       player.lastProcessedSeq = latestInput.seq;
     } else if (player.inputQueue.length > 0) {
@@ -1075,9 +2018,28 @@ function stepRoomTick(room, dt, callbacks) {
           ...inp,
           dt: Math.min(0.05, Math.max(5e-3, inp.dt))
         };
-        const res = stepPlanePhysics(player.sim, clampedInp, arch, map, room.elapsedTime);
+        const res = stepPlanePhysics(
+          player.sim,
+          clampedInp,
+          arch,
+          map,
+          room.elapsedTime,
+          room.destroyedColliderIds
+        );
         player.lastProcessedSeq = clampedInp.seq;
-        if (res.collisionDamage > 0) {
+        if (res.collidedColliderId) {
+          damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+        }
+        if (res.triggeredHazard) {
+          handlePlaneCrashDamage(
+            room,
+            player,
+            res.triggeredHazard.damage,
+            "hazard",
+            callbacks,
+            res.triggeredHazard.nameFr
+          );
+        } else if (res.collisionDamage > 0) {
           handlePlaneCrashDamage(room, player, res.collisionDamage, "crash", callbacks);
         }
         latestInput = clampedInp;
@@ -1092,21 +2054,116 @@ function stepRoomTick(room, dt, callbacks) {
         roll: 0,
         boost: false,
         fire: false,
+        useSecondary: false,
         barrelRollDir: 0
       };
-      const res = stepPlanePhysics(player.sim, latestInput, arch, map, room.elapsedTime);
-      if (res.collisionDamage > 0) {
+      const res = stepPlanePhysics(
+        player.sim,
+        latestInput,
+        arch,
+        map,
+        room.elapsedTime,
+        room.destroyedColliderIds
+      );
+      if (res.collidedColliderId) {
+        damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+      }
+      if (res.triggeredHazard) {
+        handlePlaneCrashDamage(
+          room,
+          player,
+          res.triggeredHazard.damage,
+          "hazard",
+          callbacks,
+          res.triggeredHazard.nameFr
+        );
+      } else if (res.collisionDamage > 0) {
         handlePlaneCrashDamage(room, player, res.collisionDamage, "crash", callbacks);
       }
     }
     if (player.isBot && latestInput) {
-      const res = stepPlanePhysics(player.sim, latestInput, arch, map, room.elapsedTime);
-      if (res.collisionDamage > 0) {
+      const res = stepPlanePhysics(
+        player.sim,
+        latestInput,
+        arch,
+        map,
+        room.elapsedTime,
+        room.destroyedColliderIds
+      );
+      if (res.collidedColliderId) {
+        damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+      }
+      if (res.triggeredHazard) {
+        handlePlaneCrashDamage(
+          room,
+          player,
+          res.triggeredHazard.damage,
+          "hazard",
+          callbacks,
+          res.triggeredHazard.nameFr
+        );
+      } else if (res.collisionDamage > 0) {
         handlePlaneCrashDamage(room, player, res.collisionDamage, "crash", callbacks);
+      }
+    }
+    if (player.sim.alive && player.sim.magnetTimer > 0) {
+      for (const other of allPlayers) {
+        if (!other.sim.alive) continue;
+        if (!canDamageTarget(
+          room.settings.mode,
+          room.settings.friendlyFire,
+          player.id,
+          player.team,
+          other.id,
+          other.team
+        )) {
+          continue;
+        }
+        const dx = player.sim.x - other.sim.x;
+        const dy = player.sim.y - other.sim.y;
+        const dz = player.sim.z - other.sim.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 6 && dist < 95) {
+          const pull = (1 - dist / 95) * 44 * dt / dist;
+          other.sim.x += dx * pull;
+          other.sim.y += dy * pull;
+          other.sim.z += dz * pull;
+        }
+      }
+      for (const pu of room.powerUps) {
+        const dx = player.sim.x - pu.x;
+        const dy = player.sim.y - pu.y;
+        const dz = player.sim.z - pu.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 2 && dist < 80) {
+          const pull = 75 * dt / dist;
+          pu.x += dx * pull;
+          pu.y += dy * pull;
+          pu.z += dz * pull;
+        }
+      }
+    }
+    if (player.sim.alive) {
+      for (let i = room.powerUps.length - 1; i >= 0; i--) {
+        const pu = room.powerUps[i];
+        const dist = Math.hypot(pu.x - player.sim.x, pu.y - player.sim.y, pu.z - player.sim.z);
+        if (dist < 13) {
+          player.sim.secondaryPowerUp = pu.powerUpId;
+          player.sim.secondaryUses = POWERUPS[pu.powerUpId].uses;
+          if (pu.spotId) {
+            const spot = room.powerUpSpots.find((s) => s.id === pu.spotId);
+            if (spot) spot.respawnTimer = 14;
+          }
+          room.powerUps.splice(i, 1);
+          break;
+        }
       }
     }
     if (player.sim.alive && player.sim.outOfBoundsTimer >= 4) {
       handlePlaneCrashDamage(room, player, 9999, "oob", callbacks);
+    }
+    if (player.sim.alive && latestInput?.useSecondary) {
+      activateSecondaryPowerUp(room, player, callbacks);
     }
     if (player.sim.alive && latestInput?.fire && !player.sim.overheated && player.sim.fireCooldown <= 0) {
       player.sim.fireCooldown = 1 / arch.fireRate;
@@ -1115,7 +2172,7 @@ function stepRoomTick(room, dt, callbacks) {
         player.sim.overheated = true;
       }
       const fwd = getPlaneForward(player.sim);
-      const proj = {
+      room.projectiles.push({
         id: room.nextProjectileId++,
         ownerId: player.id,
         team: player.team,
@@ -1128,8 +2185,34 @@ function stepRoomTick(room, dt, callbacks) {
         damage: arch.damage,
         heavy: arch.heavyGun,
         ttl: 1.4
-      };
-      room.projectiles.push(proj);
+      });
+    }
+  }
+  if (room.suddenDeath) {
+    const vac = computeVacuumState(room.suddenDeathElapsed, map);
+    for (const player of allPlayers) {
+      if (!player.sim.alive) continue;
+      const distCenter = Math.hypot(player.sim.x, player.sim.z);
+      if (distCenter > vac.safeRadius && distCenter > 1) {
+        const pull = 55 * dt;
+        player.sim.x -= player.sim.x / distCenter * pull;
+        player.sim.z -= player.sim.z / distCenter * pull;
+        if (distCenter > vac.safeRadius + 24) {
+          const res = applyDamageToSim(player.sim, 22 * dt);
+          if (res.eliminated) {
+            handlePlaneCrashDamage(room, player, 9999, "vacuum", callbacks);
+            continue;
+          }
+        }
+      }
+      const distNozzle = Math.hypot(
+        player.sim.x - vac.nozzleX,
+        player.sim.y - vac.nozzleY,
+        player.sim.z - vac.nozzleZ
+      );
+      if (distNozzle < vac.suctionRadius) {
+        handlePlaneCrashDamage(room, player, 9999, "vacuum", callbacks);
+      }
     }
   }
   const planePositions = /* @__PURE__ */ new Map();
@@ -1159,8 +2242,23 @@ function stepRoomTick(room, dt, callbacks) {
       room.projectiles.splice(i, 1);
       continue;
     }
+    let hitDestructible = false;
+    for (const d of room.destructibles) {
+      if (d.destroyed) continue;
+      if (segmentIntersectsSphere(prevX, prevY, prevZ, proj.x, proj.y, proj.z, d.x, d.y, d.z, d.radius + 1.5)) {
+        damageDestructible(room, d.id, proj.damage, proj.ownerId, callbacks);
+        hitDestructible = true;
+        break;
+      }
+    }
+    if (hitDestructible) {
+      room.projectiles.splice(i, 1);
+      continue;
+    }
     const hb = map.hardBounds;
-    if (proj.x < hb.minX || proj.x > hb.maxX || proj.y < hb.minY || proj.y > hb.maxY || proj.z < hb.minZ || proj.z > hb.maxZ || map.colliders.some((c) => pointInsideCollider(proj.x, proj.y, proj.z, c))) {
+    if (proj.x < hb.minX || proj.x > hb.maxX || proj.y < hb.minY || proj.y > hb.maxY || proj.z < hb.minZ || proj.z > hb.maxZ || map.colliders.some(
+      (c) => !room.destroyedColliderIds.has(c.id) && pointInsideCollider(proj.x, proj.y, proj.z, c, room.elapsedTime)
+    )) {
       room.projectiles.splice(i, 1);
       continue;
     }
@@ -1190,39 +2288,182 @@ function stepRoomTick(room, dt, callbacks) {
       }
     }
     if (hitPlayer) {
-      const res = applyDamageToSim(hitPlayer.sim, proj.damage);
-      if (hitPlayer.sim.invulnTimer <= 0) {
-        hitPlayer.lastHitBy = proj.ownerId;
-        hitPlayer.lastHitAt = now;
-      }
-      callbacks.emitHit(room, {
-        targetId: hitPlayer.id,
-        attackerId: proj.ownerId,
-        damage: proj.damage,
-        x: round2(proj.x),
-        y: round2(proj.y),
-        z: round2(proj.z),
-        fatal: res.eliminated
-      });
-      if (res.eliminated) {
-        hitPlayer.deaths++;
-        if (owner && owner.id !== hitPlayer.id) {
-          owner.kills++;
-          owner.score += 100;
-        }
-        callbacks.emitKillFeed(room, {
-          id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
-          killerName: owner?.nickname ?? "Inconnu",
-          killerTeam: owner?.team ?? "none",
-          victimName: hitPlayer.nickname,
-          victimTeam: hitPlayer.team,
-          reason: "gun",
-          timestamp: now
-        });
-        callbacks.emitRoomState(room);
-      }
+      applyCombatDamage(
+        room,
+        hitPlayer,
+        owner,
+        proj.damage,
+        proj.x,
+        proj.y,
+        proj.z,
+        "gun",
+        void 0,
+        callbacks
+      );
       room.projectiles.splice(i, 1);
     }
+  }
+  for (let i = room.secondaryProjectiles.length - 1; i >= 0; i--) {
+    const sp = room.secondaryProjectiles[i];
+    const owner = room.players.get(sp.ownerId);
+    const prevX = sp.x;
+    const prevY = sp.y;
+    const prevZ = sp.z;
+    if (sp.kind === "rubber_missile") {
+      let bestTarget = null;
+      let bestDist = 240;
+      for (const cand of allPlayers) {
+        if (!cand.sim.alive) continue;
+        if (!canDamageTarget(
+          room.settings.mode,
+          room.settings.friendlyFire,
+          sp.ownerId,
+          sp.team,
+          cand.id,
+          cand.team
+        )) {
+          continue;
+        }
+        const d = Math.hypot(cand.sim.x - sp.x, cand.sim.y - sp.y, cand.sim.z - sp.z);
+        if (d < bestDist) {
+          bestDist = d;
+          bestTarget = cand;
+        }
+      }
+      if (bestTarget) {
+        const curSpeed = Math.hypot(sp.vx, sp.vy, sp.vz) || 250;
+        const tx = bestTarget.sim.x - sp.x;
+        const ty = bestTarget.sim.y - sp.y;
+        const tz = bestTarget.sim.z - sp.z;
+        const tLen = Math.hypot(tx, ty, tz) || 1;
+        const steer = 4.2 * dt;
+        sp.vx += (tx / tLen * curSpeed - sp.vx) * steer;
+        sp.vy += (ty / tLen * curSpeed - sp.vy) * steer;
+        sp.vz += (tz / tLen * curSpeed - sp.vz) * steer;
+        const nLen = Math.hypot(sp.vx, sp.vy, sp.vz) || 1;
+        sp.vx = sp.vx / nLen * curSpeed;
+        sp.vy = sp.vy / nLen * curSpeed;
+        sp.vz = sp.vz / nLen * curSpeed;
+      }
+    } else if (sp.kind === "water_bomb") {
+      sp.vy -= 85 * dt;
+    } else if (sp.kind === "glue_mine") {
+      sp.vx *= 0.94;
+      sp.vy *= 0.94;
+      sp.vz *= 0.94;
+    }
+    sp.x += sp.vx * dt;
+    sp.y += sp.vy * dt;
+    sp.z += sp.vz * dt;
+    sp.ttl -= dt;
+    const hb = map.hardBounds;
+    const hitWallOrFloor = sp.x < hb.minX || sp.x > hb.maxX || sp.y < hb.minY || sp.y > hb.maxY || sp.z < hb.minZ || sp.z > hb.maxZ || map.colliders.some(
+      (c) => !room.destroyedColliderIds.has(c.id) && pointInsideCollider(sp.x, sp.y, sp.z, c, room.elapsedTime)
+    );
+    let hitProp = false;
+    if (sp.kind !== "glue_mine") {
+      for (const d of room.destructibles) {
+        if (d.destroyed) continue;
+        if (segmentIntersectsSphere(prevX, prevY, prevZ, sp.x, sp.y, sp.z, d.x, d.y, d.z, d.radius + 2)) {
+          damageDestructible(room, d.id, sp.damage, sp.ownerId, callbacks);
+          hitProp = true;
+          break;
+        }
+      }
+    }
+    let directTarget = null;
+    const mineArmed = sp.kind !== "glue_mine" || sp.maxTtl - sp.ttl > 0.35;
+    if (mineArmed) {
+      for (const target of allPlayers) {
+        if (!target.sim.alive) continue;
+        if (!canDamageTarget(
+          room.settings.mode,
+          room.settings.friendlyFire,
+          sp.ownerId,
+          sp.team,
+          target.id,
+          target.team
+        )) {
+          continue;
+        }
+        const hitR = PLANE_ARCHETYPES[target.cosmetics.planeId].hitboxRadius + sp.radius;
+        if (segmentIntersectsSphere(
+          prevX,
+          prevY,
+          prevZ,
+          sp.x,
+          sp.y,
+          sp.z,
+          target.sim.x,
+          target.sim.y,
+          target.sim.z,
+          hitR
+        )) {
+          directTarget = target;
+          break;
+        }
+      }
+    }
+    const shouldDetonate = sp.kind === "water_bomb" ? sp.ttl <= 0 || hitWallOrFloor || hitProp || directTarget !== null : sp.kind === "glue_mine" ? directTarget !== null : hitWallOrFloor || hitProp || directTarget !== null || sp.ttl <= 0;
+    if (!shouldDetonate) continue;
+    if (sp.kind === "water_bomb" && (sp.ttl <= 0 || hitWallOrFloor || hitProp || directTarget)) {
+      const splashRadius = 42;
+      for (const target of allPlayers) {
+        if (!target.sim.alive) continue;
+        if (!canDamageTarget(
+          room.settings.mode,
+          room.settings.friendlyFire,
+          sp.ownerId,
+          sp.team,
+          target.id,
+          target.team
+        )) {
+          continue;
+        }
+        const d = Math.hypot(target.sim.x - sp.x, target.sim.y - sp.y, target.sim.z - sp.z);
+        if (d <= splashRadius) {
+          const dmg = Math.round(sp.damage * (1 - 0.55 * (d / splashRadius)));
+          applyCombatDamage(
+            room,
+            target,
+            owner,
+            dmg,
+            sp.x,
+            sp.y,
+            sp.z,
+            "secondary",
+            "water_bomb",
+            callbacks
+          );
+        }
+      }
+      callbacks.emitHit(room, {
+        targetId: directTarget?.id ?? "splash",
+        attackerId: sp.ownerId,
+        damage: sp.damage,
+        x: round2(sp.x),
+        y: round2(sp.y),
+        z: round2(sp.z),
+        fatal: true
+      });
+    } else if (directTarget) {
+      if (sp.kind === "glue_mine") {
+        directTarget.sim.glueTimer = 3.5;
+      }
+      applyCombatDamage(
+        room,
+        directTarget,
+        owner,
+        sp.damage,
+        sp.x,
+        sp.y,
+        sp.z,
+        "secondary",
+        sp.kind,
+        callbacks
+      );
+    }
+    room.secondaryProjectiles.splice(i, 1);
   }
   const outcome = checkRoundWinner(
     room.settings.mode,
@@ -1233,7 +2474,8 @@ function stepRoomTick(room, dt, callbacks) {
       alive: p.sim.alive,
       lives: p.sim.lives
     })),
-    room.roundTimer
+    room.roundTimer,
+    room.suddenDeathElapsed
   );
   if (outcome.finished) {
     room.phase = "round_end";
@@ -1262,7 +2504,7 @@ function stepRoomTick(room, dt, callbacks) {
     callbacks.emitRoomState(room);
   }
 }
-function handlePlaneCrashDamage(room, player, damage, reason, callbacks) {
+function handlePlaneCrashDamage(room, player, damage, reason, callbacks, hazardNameFr) {
   const res = applyDamageToSim(player.sim, damage);
   if (res.eliminated) {
     const now = Date.now();
@@ -1288,6 +2530,7 @@ function handlePlaneCrashDamage(room, player, damage, reason, callbacks) {
       victimName: player.nickname,
       victimTeam: player.team,
       reason,
+      hazardNameFr,
       timestamp: now
     });
     callbacks.emitRoomState(room);
@@ -1296,7 +2539,15 @@ function handlePlaneCrashDamage(room, player, damage, reason, callbacks) {
 function buildCompactSnapshot(room) {
   const map = MAPS[room.settings.mapId] ?? MAPS.desk;
   const wz = map.windZones[0];
-  const fanAngle = wz ? round3(getFanYawAtTime(wz.baseYaw, wz.sweepAmplitude, wz.sweepSpeed, room.elapsedTime)) : 0;
+  const fanAngle = wz ? round3(
+    getFanYawAtTime(
+      wz.baseYaw,
+      wz.sweepAmplitude,
+      wz.sweepSpeed,
+      room.elapsedTime,
+      wz.continuousSpin
+    )
+  ) : 0;
   const planes = [];
   for (const p of room.players.values()) {
     planes.push({
@@ -1325,6 +2576,12 @@ function buildCompactSnapshot(room) {
       invuln: p.sim.invulnTimer > 0,
       outOfBounds: round2(p.sim.outOfBoundsTimer),
       barrelRoll: round2(p.sim.barrelRollTimer),
+      secondaryPowerUp: p.sim.secondaryPowerUp,
+      secondaryUses: p.sim.secondaryUses,
+      shielded: p.sim.shieldTimer > 0 && p.sim.shieldHp > 0,
+      turboActive: p.sim.turboTimer > 0,
+      glued: p.sim.glueTimer > 0,
+      magnetActive: p.sim.magnetTimer > 0,
       lastAckSeq: p.lastProcessedSeq
     });
   }
@@ -1340,13 +2597,51 @@ function buildCompactSnapshot(room) {
     vz: round2(pr.vz),
     heavy: pr.heavy
   }));
+  const secondaryProjectiles = room.secondaryProjectiles.map((sp) => ({
+    id: sp.id,
+    kind: sp.kind,
+    ownerId: sp.ownerId,
+    team: sp.team,
+    x: round2(sp.x),
+    y: round2(sp.y),
+    z: round2(sp.z),
+    vx: round2(sp.vx),
+    vy: round2(sp.vy),
+    vz: round2(sp.vz)
+  }));
+  const powerUps = room.powerUps.map((pu) => ({
+    id: pu.id,
+    powerUpId: pu.powerUpId,
+    x: round2(pu.x),
+    y: round2(pu.y),
+    z: round2(pu.z)
+  }));
+  const destructibles = room.destructibles.map((d) => ({
+    id: d.id,
+    hp: Math.round(d.hp),
+    maxHp: d.maxHp,
+    destroyed: d.destroyed
+  }));
+  const vac = room.suddenDeath ? computeVacuumState(room.suddenDeathElapsed, map) : null;
   return {
     tick: room.tick,
     serverTime: Date.now(),
     roundTimer: round2(room.roundTimer),
+    suddenDeath: room.suddenDeath,
     fanAngle,
+    mapEventTime: round2(room.elapsedTime),
     planes,
-    projectiles
+    projectiles,
+    secondaryProjectiles,
+    powerUps,
+    destructibles,
+    vacuum: vac ? {
+      active: true,
+      x: round2(vac.nozzleX),
+      y: round2(vac.nozzleY),
+      z: round2(vac.nozzleZ),
+      safeRadius: round2(vac.safeRadius)
+    } : null
   };
 }
 
@@ -1506,6 +2801,7 @@ var RoomManager = class {
           roll: Math.max(-1, Math.min(1, Number(input.roll) || 0)),
           boost: Boolean(input.boost),
           fire: Boolean(input.fire),
+          useSecondary: Boolean(input.useSecondary),
           barrelRollDir: input.barrelRollDir === -1 ? -1 : input.barrelRollDir === 1 ? 1 : 0
         });
       }
@@ -1616,8 +2912,16 @@ var RoomManager = class {
         lives: room.settings.livesPerRound,
         respawnTimer: 0,
         fireCooldown: 0,
+        secondaryCooldown: 0,
         hitFlashTimer: 0,
-        collideCooldown: 0
+        collideCooldown: 0,
+        secondaryPowerUp: null,
+        secondaryUses: 0,
+        shieldTimer: 0,
+        shieldHp: 0,
+        turboTimer: 0,
+        glueTimer: 0,
+        magnetTimer: 0
       },
       inputQueue: [],
       lastProcessedSeq: 0,
@@ -1683,7 +2987,13 @@ var RoomManager = class {
       },
       players: /* @__PURE__ */ new Map(),
       projectiles: [],
+      secondaryProjectiles: [],
+      powerUps: [],
+      powerUpSpots: [],
+      destructibles: [],
+      destroyedColliderIds: /* @__PURE__ */ new Set(),
       nextProjectileId: 1,
+      nextPowerUpId: 1,
       tick: 0,
       elapsedTime: 0,
       roundNumber: 1,
@@ -1691,6 +3001,8 @@ var RoomManager = class {
       roundTimer: 240,
       countdownTimer: 0,
       roundEndTimer: 0,
+      suddenDeath: false,
+      suddenDeathElapsed: 0,
       teamRoundWins: { red: 0, blue: 0 },
       lastRoundWinner: null,
       rewindHistory: [],
@@ -1789,8 +3101,16 @@ var RoomManager = class {
           lives: room.settings.livesPerRound,
           respawnTimer: 0,
           fireCooldown: 0,
+          secondaryCooldown: 0,
           hitFlashTimer: 0,
-          collideCooldown: 0
+          collideCooldown: 0,
+          secondaryPowerUp: null,
+          secondaryUses: 0,
+          shieldTimer: 0,
+          shieldHp: 0,
+          turboTimer: 0,
+          glueTimer: 0,
+          magnetTimer: 0
         },
         inputQueue: [],
         lastProcessedSeq: 0,
@@ -1812,8 +3132,8 @@ var RoomManager = class {
     room.roundTimer = 240;
     room.teamRoundWins = { red: 0, blue: 0 };
     room.lastRoundWinner = null;
-    room.projectiles.length = 0;
     room.rewindHistory.length = 0;
+    initRoundEntities(room);
     let idx = 0;
     for (const player of room.players.values()) {
       player.kills = 0;
@@ -1876,6 +3196,7 @@ var RoomManager = class {
       maxRounds: room.maxRounds,
       roundTimer: room.roundTimer,
       countdownTimer: room.countdownTimer,
+      suddenDeath: room.suddenDeath,
       teamRoundWins: { ...room.teamRoundWins },
       lastRoundWinner: room.lastRoundWinner,
       scoreboard

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   KillFeedEntry,
+  MapId,
   PlayerCosmetics,
   RoomSettings,
   RoomState,
@@ -81,6 +82,7 @@ export default function App() {
 
   const keysHeldRef = useRef<Set<string>>(new Set());
   const mouseDownRef = useRef(false);
+  const gamepadSecondaryHeldRef = useRef(false);
   const lastTapRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
   const autostartDoneRef = useRef(false);
 
@@ -105,15 +107,18 @@ export default function App() {
     }
   }, [cosmetics]);
 
-  // Sync document.body.dataset.state & ThreeGameEngine mode
+  // Sync document.body.dataset.state, active map, & ThreeGameEngine mode
   useEffect(() => {
     const engine = engineRef.current;
     if (!room) {
       document.body.dataset.state = 'title';
+      engine?.setMap('desk');
       engine?.setMode(showHangar ? 'hangar_preview' : 'title_tour', cosmeticsRef.current);
       soundEngine.stopFlightAudio();
       return;
     }
+
+    engine?.setMap(room.settings.mapId);
 
     if (room.phase === 'lobby') {
       document.body.dataset.state = 'lobby';
@@ -158,7 +163,12 @@ export default function App() {
 
   // Join helper
   const joinRoom = useCallback(
-    (mode: 'quick' | 'create' | 'join', roomCode?: string, autoStartIfHost = false) => {
+    (
+      mode: 'quick' | 'create' | 'join',
+      roomCode?: string,
+      autoStartIfHost = false,
+      preferredMap?: MapId
+    ) => {
       soundEngine.playUiClick();
       setErrorMessage(null);
       const socket = getSocket();
@@ -180,12 +190,17 @@ export default function App() {
           setRoom(res.room);
           setKillFeed([]);
           setPaused(false);
+          const targetMap = preferredMap ?? res.room.settings.mapId;
+          engineRef.current?.setMap(targetMap);
           engineRef.current?.resetMatchVisuals();
           engineRef.current?.setLocalPlayer(res.playerId, cosmeticsRef.current);
 
           if (autoStartIfHost) {
             const me = res.room.players.find((p) => p.id === res.playerId);
             if (me?.isHost) {
+              if (preferredMap && preferredMap !== res.room.settings.mapId) {
+                socket.emit('room:updateSettings', { mapId: preferredMap });
+              }
               socket.emit('room:startMatch');
             }
           }
@@ -203,11 +218,14 @@ export default function App() {
       setConnected(true);
       setErrorMessage(null);
 
-      // ?autostart=1 immediately launches solo/bot flight on "Le bureau"
+      // ?autostart=1 (&map=kitchen|garden) immediately launches solo/bot flight
       const params = new URLSearchParams(window.location.search);
       if (params.get('autostart') === '1' && !autostartDoneRef.current && !roomRef.current) {
         autostartDoneRef.current = true;
-        joinRoom('create', undefined, true);
+        const rawMap = params.get('map');
+        const mapParam: MapId | undefined =
+          rawMap === 'desk' || rawMap === 'kitchen' || rawMap === 'garden' ? rawMap : undefined;
+        joinRoom('create', undefined, true, mapParam);
       }
     };
 
@@ -327,6 +345,12 @@ export default function App() {
         return;
       }
 
+      if (!e.repeat && e.code === 'KeyE') {
+        if (engineRef.current) {
+          engineRef.current.inputState.useSecondaryQueued = true;
+        }
+      }
+
       // Double-tap Q/D (KeyA/KeyD on physical layout) or ArrowLeft/ArrowRight for barrel roll
       if (!e.repeat && (e.code === 'KeyA' || e.code === 'ArrowLeft' || e.code === 'KeyD' || e.code === 'ArrowRight')) {
         const now = performance.now();
@@ -375,12 +399,21 @@ export default function App() {
     };
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 && roomRef.current?.phase === 'playing' && !pausedRef.current) {
-        // Ignore clicks on interactive HUD buttons
+      if (roomRef.current?.phase === 'playing' && !pausedRef.current) {
         const target = e.target as HTMLElement | null;
         if (target?.closest('button, input, select')) return;
         soundEngine.unlock();
-        mouseDownRef.current = true;
+        if (e.button === 0) {
+          mouseDownRef.current = true;
+        } else if (e.button === 2 && engineRef.current) {
+          engineRef.current.inputState.useSecondaryQueued = true;
+        }
+      }
+    };
+
+    const onContextMenu = (e: MouseEvent) => {
+      if (roomRef.current?.phase === 'playing' && !pausedRef.current) {
+        e.preventDefault();
       }
     };
 
@@ -393,6 +426,7 @@ export default function App() {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('blur', clearInputs);
     document.addEventListener('visibilitychange', clearInputs);
 
@@ -430,6 +464,13 @@ export default function App() {
         }
         if (gp.buttons[0]?.pressed) boost = true;
         if (gp.buttons[7]?.pressed) fire = true;
+        const bPressed = Boolean(gp.buttons[1]?.pressed);
+        if (bPressed && !gamepadSecondaryHeldRef.current) {
+          engine.inputState.useSecondaryQueued = true;
+        }
+        gamepadSecondaryHeldRef.current = bPressed;
+      } else {
+        gamepadSecondaryHeldRef.current = false;
       }
 
       engine.inputState.throttle = throttle;
@@ -457,6 +498,7 @@ export default function App() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('blur', clearInputs);
       document.removeEventListener('visibilitychange', clearInputs);
     };

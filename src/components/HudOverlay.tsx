@@ -1,6 +1,7 @@
 import { useImperativeHandle, useRef, forwardRef } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Volume2, VolumeX } from 'lucide-react';
-import { DESK_MAP } from '../../shared/maps/desk';
+import { MAPS } from '../../shared/maps/index';
+import { POWERUPS } from '../../shared/powerups';
 import type { HudFrameData } from '../engine/ThreeGameEngine';
 import type { KillFeedEntry, RoomState } from '../../shared/types';
 import { FR } from '../i18n/fr';
@@ -64,6 +65,11 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const spectatorNameRef = useRef<HTMLSpanElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const labelsContainerRef = useRef<HTMLDivElement>(null);
+  const secondarySlotRef = useRef<HTMLDivElement>(null);
+  const secondaryNameRef = useRef<HTMLDivElement>(null);
+  const secondaryUsesRef = useRef<HTMLSpanElement>(null);
+  const statusBadgesRef = useRef<HTMLDivElement>(null);
+  const vacuumBannerRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
     updateFrame(data: HudFrameData, aimX: number, aimY: number, boosting: boolean) {
@@ -130,6 +136,47 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         }
       }
 
+      if (secondarySlotRef.current && secondaryNameRef.current && secondaryUsesRef.current) {
+        if (data.secondaryPowerUp && data.secondaryUses > 0) {
+          const def = POWERUPS[data.secondaryPowerUp];
+          secondarySlotRef.current.style.borderStyle = 'solid';
+          secondarySlotRef.current.style.borderColor = def.colorHex;
+          secondarySlotRef.current.style.backgroundColor = 'rgba(15, 23, 42, 0.94)';
+          secondaryNameRef.current.textContent = def.nameFr;
+          secondaryNameRef.current.style.color = def.accentHex;
+          secondaryUsesRef.current.style.display = 'inline-flex';
+          secondaryUsesRef.current.textContent = `x${data.secondaryUses} · ${FR.hud.secondaryHint}`;
+        } else {
+          secondarySlotRef.current.style.borderStyle = 'dashed';
+          secondarySlotRef.current.style.borderColor = '#475569';
+          secondarySlotRef.current.style.backgroundColor = 'rgba(30, 41, 59, 0.8)';
+          secondaryNameRef.current.textContent = FR.hud.secondaryEmpty;
+          secondaryNameRef.current.style.color = '#94A3B8';
+          secondaryUsesRef.current.style.display = 'none';
+        }
+      }
+
+      if (statusBadgesRef.current) {
+        let badgesHtml = '';
+        if (data.shielded) {
+          badgesHtml += `<span class="rounded-lg border border-black bg-purple-600 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.shieldActive}</span>`;
+        }
+        if (data.turboActive) {
+          badgesHtml += `<span class="rounded-lg border border-black bg-emerald-500 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.turboActive}</span>`;
+        }
+        if (data.magnetActive) {
+          badgesHtml += `<span class="rounded-lg border border-black bg-pink-500 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.magnetActive}</span>`;
+        }
+        if (data.glued) {
+          badgesHtml += `<span class="rounded-lg border border-black bg-yellow-400 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.gluedWarning}</span>`;
+        }
+        statusBadgesRef.current.innerHTML = badgesHtml;
+      }
+
+      if (vacuumBannerRef.current) {
+        vacuumBannerRef.current.style.display = data.suddenDeath ? 'flex' : 'none';
+      }
+
       // Draw Minimap
       const mc = minimapCanvasRef.current;
       if (mc) {
@@ -137,27 +184,53 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         if (ctx) {
           const w = mc.width;
           const h = mc.height;
+          const activeMap = MAPS[room.settings.mapId] ?? MAPS.desk;
           ctx.clearRect(0, 0, w, h);
 
-          // Room floor
-          ctx.fillStyle = '#0F172A';
+          // Floor backdrop per map
+          ctx.fillStyle = room.settings.mapId === 'garden' ? '#14532D' : '#0F172A';
           ctx.fillRect(0, 0, w, h);
 
           const toMx = (wx: number) =>
-            ((wx - DESK_MAP.hardBounds.minX) /
-              (DESK_MAP.hardBounds.maxX - DESK_MAP.hardBounds.minX)) *
+            ((wx - activeMap.hardBounds.minX) /
+              (activeMap.hardBounds.maxX - activeMap.hardBounds.minX)) *
             w;
           const toMy = (wz: number) =>
-            ((wz - DESK_MAP.hardBounds.minZ) /
-              (DESK_MAP.hardBounds.maxZ - DESK_MAP.hardBounds.minZ)) *
+            ((wz - activeMap.hardBounds.minZ) /
+              (activeMap.hardBounds.maxZ - activeMap.hardBounds.minZ)) *
             h;
 
-          // Desk outline
-          ctx.fillStyle = '#92400E';
-          ctx.fillRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
-          ctx.strokeStyle = '#FDE68A';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
+          if (room.settings.mapId === 'kitchen') {
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(toMx(-225), toMy(-182), toMx(110) - toMx(-225), toMy(-102) - toMy(-182));
+            ctx.fillRect(toMx(-94), toMy(10), toMx(94) - toMx(-94), toMy(78) - toMy(10));
+            ctx.fillStyle = '#E0F2FE';
+            ctx.fillRect(toMx(158), toMy(-178), toMx(244) - toMx(158), toMy(-92) - toMy(-178));
+            // Stove heat & Blender hazard markers
+            ctx.fillStyle = '#FB923C';
+            ctx.beginPath();
+            ctx.arc(toMx(8), toMy(-142), 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#EF4444';
+            ctx.beginPath();
+            ctx.arc(toMx(44), toMy(44), 4.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (room.settings.mapId === 'garden') {
+            ctx.fillStyle = '#D97706';
+            ctx.fillRect(toMx(-164), toMy(-138), toMx(-96) - toMx(-164), toMy(-68) - toMy(-138));
+            ctx.fillStyle = '#FDE68A';
+            ctx.fillRect(toMx(-185), toMy(55), toMx(-85) - toMx(-185), toMy(145) - toMy(55));
+            ctx.fillStyle = '#38BDF8';
+            ctx.beginPath();
+            ctx.arc(toMx(18), toMy(18), 4.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillStyle = '#92400E';
+            ctx.fillRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
+            ctx.strokeStyle = '#FDE68A';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
+          }
 
           // Blips
           for (const b of data.minimapBlips) {
@@ -428,11 +501,30 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
                   <span className="text-slate-300">{FR.hud.killGun}</span>{' '}
                   <span className="text-rose-300">{kf.victimName}</span>
                 </>
+              ) : kf.reason === 'secondary' ? (
+                <>
+                  <span className="text-amber-300">{kf.killerName}</span>{' '}
+                  <span className="text-slate-300">{FR.hud.killSecondary}</span>{' '}
+                  <span className="text-sky-300">
+                    {kf.powerUpId ? POWERUPS[kf.powerUpId].nameFr : ''}
+                  </span>{' '}
+                  <span className="text-rose-300">{kf.victimName}</span>
+                </>
+              ) : kf.reason === 'hazard' ? (
+                <>
+                  <span className="text-rose-300">{kf.victimName}</span>{' '}
+                  <span className="text-slate-300">{FR.hud.killHazard}</span>{' '}
+                  <span className="text-orange-300">{kf.hazardNameFr ?? ''}</span>
+                </>
               ) : (
                 <>
                   <span className="text-rose-300">{kf.victimName}</span>{' '}
                   <span className="text-slate-300">
-                    {kf.reason === 'oob' ? FR.hud.killOob : FR.hud.killCrash}
+                    {kf.reason === 'oob'
+                      ? FR.hud.killOob
+                      : kf.reason === 'vacuum'
+                        ? FR.hud.killVacuum
+                        : FR.hud.killCrash}
                   </span>
                 </>
               )}
@@ -446,23 +538,47 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         <canvas ref={minimapCanvasRef} width={144} height={108} className="block rounded-xl" />
       </div>
 
-      {/* Bottom-Right: Power-Up Slot (Milestone 3 ready) + Speed */}
-      <div className="toy-panel-dark fixed bottom-4 right-4 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-white">
-        <div className="flex h-11 w-28 items-center justify-center rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/80 px-2 text-center text-[11px] font-semibold text-slate-400">
-          {FR.hud.secondaryEmpty}
+      {/* Bottom-Right: Active Buffs + Secondary Power-Up Slot + Speed */}
+      <div className="fixed bottom-4 right-4 flex flex-col items-end gap-2">
+        <div ref={statusBadgesRef} className="flex flex-wrap justify-end gap-1.5" />
+        <div className="toy-panel-dark flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-white">
+          <div
+            ref={secondarySlotRef}
+            data-testid="hud-secondary-slot"
+            className="flex min-w-36 flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/80 px-3 py-1.5 text-center"
+          >
+            <div ref={secondaryNameRef} className="text-xs font-extrabold text-slate-400">
+              {FR.hud.secondaryEmpty}
+            </div>
+            <span
+              ref={secondaryUsesRef}
+              className="mt-0.5 hidden text-[10px] font-bold uppercase tracking-wide text-slate-300"
+            />
+          </div>
+          <div className="text-right">
+            <span ref={speedRef} className="font-mono-num block text-xl font-extrabold text-amber-300">
+              95
+            </span>
+            <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.speedUnit}</div>
+          </div>
         </div>
-        <div className="text-right">
-          <span ref={speedRef} className="font-mono-num block text-xl font-extrabold text-amber-300">
-            95
-          </span>
-          <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.speedUnit}</div>
+      </div>
+
+      {/* Sudden Death: Giant Vacuum Alert */}
+      <div
+        ref={vacuumBannerRef}
+        className="fixed left-1/2 top-20 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-rose-600 px-6 py-2 text-white shadow-[0_5px_0_#09090b]"
+      >
+        <div className="font-display text-base font-extrabold uppercase tracking-wide text-amber-200">
+          {FR.hud.vacuumWarning}
         </div>
+        <div className="text-[11px] font-semibold text-rose-100">{FR.hud.vacuumDangerSub}</div>
       </div>
 
       {/* Out of bounds alert */}
       <div
         ref={oobBannerRef}
-        className="fixed left-1/2 top-24 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-red-600 px-6 py-2.5 text-white shadow-[0_5px_0_#09090b]"
+        className="fixed left-1/2 top-36 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-red-600 px-6 py-2.5 text-white shadow-[0_5px_0_#09090b]"
       >
         <div className="font-display text-lg font-extrabold">
           {FR.hud.outOfBounds} <span ref={oobCountdownRef} className="font-mono-num">4.0s</span>

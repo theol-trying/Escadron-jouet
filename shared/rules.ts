@@ -57,9 +57,11 @@ export interface RoundOutcome {
 export function checkRoundWinner(
   mode: GameModeId,
   players: RoundCheckPlayer[],
-  roundTimerRemaining: number
+  roundTimerRemaining: number,
+  suddenDeathElapsed = 0
 ): RoundOutcome {
   const activeContenders = players.filter((p) => p.alive || p.lives > 0);
+  const suddenDeathTimedOut = roundTimerRemaining <= 0 && suddenDeathElapsed >= 65;
 
   if (mode === 'last_plane_ffa') {
     if (players.length > 1 && activeContenders.length <= 1) {
@@ -71,8 +73,8 @@ export function checkRoundWinner(
         winnerName: winner?.nickname ?? 'Égalité',
       };
     }
-    if (roundTimerRemaining <= 0) {
-      // Highest remaining lives/alive wins on timer tiebreak
+    if (suddenDeathTimedOut) {
+      // Highest remaining lives/alive wins on sudden-death hard cap tiebreak
       const sorted = [...players].sort((a, b) => {
         if (a.alive !== b.alive) return a.alive ? -1 : 1;
         return b.lives - a.lives;
@@ -109,7 +111,7 @@ export function checkRoundWinner(
     };
   }
 
-  if (roundTimerRemaining <= 0) {
+  if (suddenDeathTimedOut) {
     const redLives = players
       .filter((p) => p.team === 'red')
       .reduce((acc, p) => acc + p.lives + (p.alive ? 1 : 0), 0);
@@ -152,23 +154,41 @@ export function canDamageTarget(
 export function applyDamageToSim(
   sim: PlaneSimState,
   damage: number
-): { eliminated: boolean; lostRound: boolean } {
+): { eliminated: boolean; lostRound: boolean; shieldBlocked: boolean } {
   if (!sim.alive || sim.invulnTimer > 0) {
-    return { eliminated: false, lostRound: false };
+    return { eliminated: false, lostRound: false, shieldBlocked: false };
   }
+
+  // Bubble shield absorbs incoming combat/crash damage (but not sudden-death vacuum or OOB 9999 kills)
+  if (sim.shieldTimer > 0 && sim.shieldHp > 0 && damage < 9000) {
+    sim.shieldHp = Math.max(0, sim.shieldHp - damage);
+    sim.hitFlashTimer = 0.12;
+    if (sim.shieldHp <= 0) {
+      sim.shieldTimer = 0;
+    }
+    return { eliminated: false, lostRound: false, shieldBlocked: true };
+  }
+
   sim.hp = Math.max(0, sim.hp - damage);
   sim.hitFlashTimer = 0.14;
   if (sim.hp > 0) {
-    return { eliminated: false, lostRound: false };
+    return { eliminated: false, lostRound: false, shieldBlocked: false };
   }
   sim.alive = false;
   sim.lives = Math.max(0, sim.lives - 1);
+  sim.secondaryPowerUp = null;
+  sim.secondaryUses = 0;
+  sim.shieldTimer = 0;
+  sim.shieldHp = 0;
+  sim.turboTimer = 0;
+  sim.glueTimer = 0;
+  sim.magnetTimer = 0;
   if (sim.lives > 0) {
     sim.respawnTimer = 2.6;
-    return { eliminated: true, lostRound: false };
+    return { eliminated: true, lostRound: false, shieldBlocked: false };
   }
   sim.respawnTimer = 0;
-  return { eliminated: true, lostRound: true };
+  return { eliminated: true, lostRound: true, shieldBlocked: false };
 }
 
 export function isMatchOver(

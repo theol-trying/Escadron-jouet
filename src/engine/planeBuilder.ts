@@ -14,6 +14,9 @@ export interface BuiltPlaneRig {
   windupKey: THREE.Object3D | null;
   hitFlashMaterials: THREE.Material[];
   stickerMesh: THREE.Mesh;
+  shieldMesh: THREE.Mesh;
+  magnetRingMesh: THREE.Mesh;
+  glueBlobMesh: THREE.Mesh;
   dispose: () => void;
 }
 
@@ -316,6 +319,46 @@ export function buildToyPlane(
   stickerMesh.position.set(0, stickerY, stickerZ);
   bodyGroup.add(stickerMesh);
 
+  // Power-up status aura meshes (pre-allocated, toggled via .visible)
+  const shieldGeo = new THREE.SphereGeometry(6.8, 16, 12);
+  const shieldMat = new THREE.MeshStandardMaterial({
+    color: 0xa855f7,
+    emissive: 0x38bdf8,
+    emissiveIntensity: 0.45,
+    transparent: true,
+    opacity: 0.34,
+    roughness: 0.1,
+    metalness: 0.1,
+    depthWrite: false,
+  });
+  const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+  shieldMesh.visible = false;
+  root.add(shieldMesh);
+
+  const magnetGeo = new THREE.TorusGeometry(6.4, 0.36, 8, 22);
+  magnetGeo.rotateX(Math.PI / 2);
+  const magnetMat = new THREE.MeshBasicMaterial({
+    color: 0xec4899,
+    transparent: true,
+    opacity: 0.78,
+  });
+  const magnetRingMesh = new THREE.Mesh(magnetGeo, magnetMat);
+  magnetRingMesh.visible = false;
+  root.add(magnetRingMesh);
+
+  const glueGeo = new THREE.DodecahedronGeometry(3.8, 0);
+  const glueMat = new THREE.MeshStandardMaterial({
+    color: 0xeab308,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.55,
+  });
+  const glueBlobMesh = new THREE.Mesh(glueGeo, glueMat);
+  glueBlobMesh.visible = false;
+  root.add(glueBlobMesh);
+
+  disposables.push(shieldGeo, shieldMat, magnetGeo, magnetMat, glueGeo, glueMat);
+
   return {
     root,
     bodyGroup,
@@ -323,6 +366,9 @@ export function buildToyPlane(
     windupKey,
     hitFlashMaterials: [hullMat, secondaryMat, accentMat],
     stickerMesh,
+    shieldMesh,
+    magnetRingMesh,
+    glueBlobMesh,
     dispose: () => {
       for (const d of disposables) {
         d.dispose();

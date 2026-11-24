@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test shared/flightPhysics.test.ts shared/rules.test.ts"
+    "test": "tsx --test shared/flightPhysics.test.ts shared/rules.test.ts shared/powerups.test.ts shared/maps/maps.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

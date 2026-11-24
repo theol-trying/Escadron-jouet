@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { DESK_MAP } from '../../../shared/maps/desk';
+import { getFanYawAtTime } from '../../../shared/flightPhysics';
+import type { MapSceneHandles } from './types';
 import {
   addCartoonOutline,
   createCarpetTexture,
@@ -9,17 +11,13 @@ import {
   createWoodGrainTexture,
 } from '../toonMaterials';
 
-export interface DeskSceneHandles {
-  fanHead: THREE.Group;
-  fanBlades: THREE.Group;
-  dustMotes: THREE.Points;
-  cameraColliders: THREE.Object3D[];
-  dispose: () => void;
-}
-
-export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneHandles {
+export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
   const disposables: Array<{ dispose: () => void }> = [];
   const cameraColliders: THREE.Object3D[] = [];
+  const destructibleGroups = new Map<string, THREE.Object3D>();
+  const powerUpZoneRings: THREE.Mesh[] = [];
+  const rootGroup = new THREE.Group();
+  scene.add(rootGroup);
 
   const woodTex = createWoodGrainTexture(maxAniso);
   const carpetTex = createCarpetTexture(maxAniso);
@@ -70,7 +68,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
     mesh.receiveShadow = true;
     if (outline) addCartoonOutline(mesh, 1.025);
     if (blocksCam) cameraColliders.push(mesh);
-    scene.add(mesh);
+    rootGroup.add(mesh);
     return mesh;
   };
 
@@ -81,7 +79,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const floorMesh = new THREE.Mesh(floorGeo, darkWoodMat);
   floorMesh.position.y = 0;
   floorMesh.receiveShadow = true;
-  scene.add(floorMesh);
+  rootGroup.add(floorMesh);
 
   const rugGeo = new THREE.BoxGeometry(360, 1.2, 270);
   disposables.push(rugGeo);
@@ -89,7 +87,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   rugMesh.position.set(10, 0.6, 25);
   rugMesh.receiveShadow = true;
   addCartoonOutline(rugMesh, 1.01);
-  scene.add(rugMesh);
+  rootGroup.add(rugMesh);
 
   // Room walls (back wall -Z, left window wall -X, right wall +X, front wall +Z)
   const backWallGeo = new THREE.PlaneGeometry(520, 250);
@@ -97,19 +95,19 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const backWall = new THREE.Mesh(backWallGeo, wallMat);
   backWall.position.set(0, 125, -186);
   backWall.receiveShadow = true;
-  scene.add(backWall);
+  rootGroup.add(backWall);
 
   const rightWallGeo = new THREE.PlaneGeometry(400, 250);
   rightWallGeo.rotateY(-Math.PI / 2);
   disposables.push(rightWallGeo);
   const rightWall = new THREE.Mesh(rightWallGeo, wallMat);
   rightWall.position.set(252, 125, 0);
-  scene.add(rightWall);
+  rootGroup.add(rightWall);
 
   const frontWall = new THREE.Mesh(backWallGeo, wallMat);
   frontWall.rotation.y = Math.PI;
   frontWall.position.set(0, 125, 186);
-  scene.add(frontWall);
+  rootGroup.add(frontWall);
 
   // Warm bedroom ceiling + central cartoon ceiling lamp
   const ceilingGeo = new THREE.PlaneGeometry(540, 420);
@@ -134,19 +132,19 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
 
   const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
   ceiling.position.set(0, 236, 0);
-  scene.add(ceiling);
+  rootGroup.add(ceiling);
 
   const lampCord = new THREE.Mesh(lampCordGeo, lampCordMat);
   lampCord.position.set(0, 231, 0);
-  scene.add(lampCord);
+  rootGroup.add(lampCord);
 
   const lampShade = new THREE.Mesh(lampShadeGeo, lampShadeMat);
   lampShade.position.set(0, 224, 0);
-  scene.add(lampShade);
+  rootGroup.add(lampShade);
 
   const lampBulb = new THREE.Mesh(lampBulbGeo, lampBulbMat);
   lampBulb.position.set(0, 221, 0);
-  scene.add(lampBulb);
+  rootGroup.add(lampBulb);
 
   // Left wall (-X) with sunlit window opening
   const leftWallMat = wallMat;
@@ -162,7 +160,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   disposables.push(skyPaneGeo, skyPaneMat);
   const skyPane = new THREE.Mesh(skyPaneGeo, skyPaneMat);
   skyPane.position.set(-258, 126, 0);
-  scene.add(skyPane);
+  rootGroup.add(skyPane);
 
   // Window frame crossbars & sill
   const whiteTrimMat = createCelMaterial(0xffffff);
@@ -196,7 +194,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   disposables.push(screenGeo);
   const screenMesh = new THREE.Mesh(screenGeo, monitorScreenMat);
   screenMesh.position.set(-45, 126, -81.6);
-  scene.add(screenMesh);
+  rootGroup.add(screenMesh);
 
   // Giant Mechanical Keyboard Canyon + instanced colorful keycaps!
   addStaticBox(-105, 76, -46, -5, 83, -10, plasticDarkMat);
@@ -226,7 +224,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   keycaps.instanceMatrix.needsUpdate = true;
   if (keycaps.instanceColor) keycaps.instanceColor.needsUpdate = true;
   keycaps.computeBoundingSphere();
-  scene.add(keycaps);
+  rootGroup.add(keycaps);
 
   // Giant Pencil Cup + Oversized Pencils
   const cupMat = createCelMaterial(0x0ea5e9);
@@ -242,7 +240,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   cupMesh.castShadow = true;
   addCartoonOutline(cupMesh, 1.04);
   cameraColliders.push(cupMesh);
-  scene.add(cupMesh);
+  rootGroup.add(cupMesh);
 
   const pencilShaftGeo = new THREE.CylinderGeometry(2.1, 2.1, 34, 8);
   const pencilTipGeo = new THREE.ConeGeometry(2.1, 5.5, 8);
@@ -256,7 +254,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const p1Tip = new THREE.Mesh(pencilTipGeo, woodTipMat);
   p1Tip.position.y = 19.7;
   p1.add(p1Shaft, p1Tip);
-  scene.add(p1);
+  rootGroup.add(p1);
 
   const p2 = new THREE.Group();
   p2.position.set(67, 109, -61);
@@ -266,7 +264,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const p2Tip = new THREE.Mesh(pencilTipGeo, woodTipMat);
   p2Tip.position.y = 19.7;
   p2.add(p2Shaft, p2Tip);
-  scene.add(p2);
+  rootGroup.add(p2);
 
   // Hardcover Book Stacks (desk + floor + shelf)
   const bookColors = [0xef4444, 0x22c55e, 0x3b82f6, 0xf59e0b, 0xa855f7, 0x14b8a6];
@@ -300,7 +298,14 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
 
   addBook(-172, 76, -72, -130, 92, -32, 0);
   addBook(-168, 92, -68, -134, 106, -36, 1);
-  addBook(-164, 106, -64, -138, 118, -40, 2);
+
+  // Destructible top desk book (desk_books_3)
+  const topBookGroup = new THREE.Group();
+  const topBookMesh = addStaticBox(-164, 106, -64, -138, 118, -40, bookMats[2]);
+  const topBookPages = addStaticBox(-139.5, 107.5, -62.5, -137.8, 116.5, -41.5, pagesMat, false, false);
+  topBookGroup.add(topBookMesh, topBookPages);
+  rootGroup.add(topBookGroup);
+  destructibleGroups.set('desk_books_3', topBookGroup);
 
   addBook(-170, 0, 88, -120, 20, 132, 3);
   addBook(-164, 20, 92, -124, 38, 128, 4);
@@ -313,42 +318,114 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const legoGreenMat = createCelMaterial(0x16a34a);
   disposables.push(legoRedMat, legoYellowMat, legoBlueMat, legoGreenMat);
 
-  // Desk Lego tower
-  addStaticBox(86, 76, -68, 124, 96, -34, legoRedMat);
-  addStaticBox(86, 96, -68, 124, 116, -34, legoYellowMat);
-  addStaticBox(92, 116, -62, 118, 142, -40, legoBlueMat);
+  // Desk Lego tower (destructible base + top)
+  const legoTowerBaseGroup = new THREE.Group();
+  legoTowerBaseGroup.add(
+    addStaticBox(86, 76, -68, 124, 96, -34, legoRedMat),
+    addStaticBox(86, 96, -68, 124, 116, -34, legoYellowMat)
+  );
+  rootGroup.add(legoTowerBaseGroup);
+  destructibleGroups.set('lego_desk_tower_base', legoTowerBaseGroup);
 
-  // Floor Lego Archway (fly-through landmark!)
+  const legoTowerTopGroup = new THREE.Group();
+  legoTowerTopGroup.add(addStaticBox(92, 116, -62, 118, 142, -40, legoBlueMat));
+  rootGroup.add(legoTowerTopGroup);
+  destructibleGroups.set('lego_desk_tower_top', legoTowerTopGroup);
+
+  // Floor Lego Archway (fly-through landmark + destructible bridge!)
   addStaticBox(162, 0, 48, 184, 31, 76, legoGreenMat);
   addStaticBox(162, 31, 48, 184, 62, 76, legoYellowMat);
   addStaticBox(162, 0, 108, 184, 31, 136, legoBlueMat);
   addStaticBox(162, 31, 108, 184, 62, 136, legoRedMat);
-  addStaticBox(162, 62, 48, 184, 82, 136, legoYellowMat);
+  const legoArchBridgeGroup = new THREE.Group();
+  legoArchBridgeGroup.add(addStaticBox(162, 62, 48, 184, 82, 136, legoYellowMat));
+  rootGroup.add(legoArchBridgeGroup);
+  destructibleGroups.set('lego_arch_bridge', legoArchBridgeGroup);
 
-  // Studs on Lego tops via InstancedMesh
+  // Studs on Lego tops attached to their destructible groups so they vanish when shattered
   const studGeo = new THREE.CylinderGeometry(2.6, 2.6, 2.2, 10);
-  disposables.push(studGeo);
-  const studPositions: Array<[number, number, number, number]> = [
-    [99, 143.1, -55, 0x2563eb],
-    [111, 143.1, -55, 0x2563eb],
-    [99, 143.1, -47, 0x2563eb],
-    [111, 143.1, -47, 0x2563eb],
+  const studBlueMat = createCelMaterial(0x2563eb);
+  const studYellowMat = createCelMaterial(0xfacc15);
+  disposables.push(studGeo, studBlueMat, studYellowMat);
+  const topStudCoords: Array<[number, number, number]> = [
+    [99, 143.1, -55],
+    [111, 143.1, -55],
+    [99, 143.1, -47],
+    [111, 143.1, -47],
   ];
-  for (let z = 55; z <= 130; z += 15) {
-    studPositions.push([168, 83.1, z, 0xfacc15]);
-    studPositions.push([178, 83.1, z, 0xfacc15]);
+  for (const [sx, sy, sz] of topStudCoords) {
+    const st = new THREE.Mesh(studGeo, studBlueMat);
+    st.position.set(sx, sy, sz);
+    legoTowerTopGroup.add(st);
   }
-  const studs = new THREE.InstancedMesh(studGeo, keyMat, studPositions.length);
-  studPositions.forEach(([sx, sy, sz, hex], i) => {
-    dummy.position.set(sx, sy, sz);
-    dummy.updateMatrix();
-    studs.setMatrixAt(i, dummy.matrix);
-    studs.setColorAt(i, color.setHex(hex));
+  for (let z = 55; z <= 130; z += 15) {
+    for (const sx of [168, 178]) {
+      const st = new THREE.Mesh(studGeo, studYellowMat);
+      st.position.set(sx, 83.1, z);
+      legoArchBridgeGroup.add(st);
+    }
+  }
+
+  // Piggy Bank on Wall Shelf (-32, 166, -158) -> destructible with bonus!
+  const piggyGroup = new THREE.Group();
+  piggyGroup.position.set(-32, 166, -158);
+  const pigMat = createCelMaterial(0xf472b6);
+  const pigSnoutMat = createCelMaterial(0xf9a8d4);
+  const pigBodyGeo = new THREE.SphereGeometry(11, 14, 12);
+  pigBodyGeo.scale(1.15, 0.92, 0.95);
+  const pigSnoutGeo = new THREE.CylinderGeometry(3.8, 4.2, 4, 12);
+  pigSnoutGeo.rotateZ(Math.PI / 2);
+  const pigEarGeo = new THREE.ConeGeometry(2.8, 5.2, 6);
+  const pigSlotGeo = new THREE.BoxGeometry(5.5, 1.2, 1.4);
+  disposables.push(pigMat, pigSnoutMat, pigBodyGeo, pigSnoutGeo, pigEarGeo, pigSlotGeo);
+  const pigBody = new THREE.Mesh(pigBodyGeo, pigMat);
+  pigBody.castShadow = true;
+  addCartoonOutline(pigBody, 1.05);
+  const pigSnout = new THREE.Mesh(pigSnoutGeo, pigSnoutMat);
+  pigSnout.position.set(12.2, -1, 0);
+  addCartoonOutline(pigSnout, 1.07);
+  const pigEarL = new THREE.Mesh(pigEarGeo, pigMat);
+  pigEarL.position.set(5, 8.8, -4.5);
+  const pigEarR = new THREE.Mesh(pigEarGeo, pigMat);
+  pigEarR.position.set(5, 8.8, 4.5);
+  const pigSlot = new THREE.Mesh(pigSlotGeo, plasticDarkMat);
+  pigSlot.position.set(-1, 9.6, 0);
+  piggyGroup.add(pigBody, pigSnout, pigEarL, pigEarR, pigSlot);
+  rootGroup.add(piggyGroup);
+  destructibleGroups.set('piggy_bank', piggyGroup);
+
+  // Snack / Cereal Box on right desk (108..134, 76..108, 4..24) -> destructible with bonus!
+  const snackGroup = new THREE.Group();
+  const snackMat = createCelMaterial(0xf59e0b);
+  const snackStripeMat = createCelMaterial(0xef4444);
+  const snackBoxGeo = new THREE.BoxGeometry(26, 32, 20);
+  const snackBandGeo = new THREE.BoxGeometry(26.4, 9, 20.4);
+  disposables.push(snackMat, snackStripeMat, snackBoxGeo, snackBandGeo);
+  const snackMesh = new THREE.Mesh(snackBoxGeo, snackMat);
+  snackMesh.position.set(121, 92, 14);
+  snackMesh.castShadow = true;
+  addCartoonOutline(snackMesh, 1.03);
+  const snackBand = new THREE.Mesh(snackBandGeo, snackStripeMat);
+  snackBand.position.set(121, 96, 14);
+  snackGroup.add(snackMesh, snackBand);
+  rootGroup.add(snackGroup);
+  destructibleGroups.set('snack_box', snackGroup);
+
+  // Glowing contested Power-Up Spawn Zone rings
+  const zoneRingGeo = new THREE.TorusGeometry(9, 0.9, 8, 24);
+  zoneRingGeo.rotateX(Math.PI / 2);
+  const zoneRingMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.55,
   });
-  studs.instanceMatrix.needsUpdate = true;
-  if (studs.instanceColor) studs.instanceColor.needsUpdate = true;
-  studs.computeBoundingSphere();
-  scene.add(studs);
+  disposables.push(zoneRingGeo, zoneRingMat);
+  for (const sp of DESK_MAP.powerUpSpots) {
+    const ring = new THREE.Mesh(zoneRingGeo, zoneRingMat);
+    ring.position.set(sp.x, sp.y - 5, sp.z);
+    rootGroup.add(ring);
+    powerUpZoneRings.push(ring);
+  }
 
   // Wall Shelf & Globe & Shelf Books
   addStaticBox(-175, 146, -182, 145, 154, -138, woodMat);
@@ -362,7 +439,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   globe.castShadow = true;
   addCartoonOutline(globe, 1.04);
   cameraColliders.push(globe);
-  scene.add(globe);
+  rootGroup.add(globe);
 
   // Fairy-light string along the back wall above the shelf
   const stringCurve = new THREE.CatmullRomCurve3([
@@ -377,7 +454,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const bulbGeo = new THREE.SphereGeometry(2.1, 8, 8);
   const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
   disposables.push(wireGeo, wireMat, bulbGeo, bulbMat);
-  scene.add(new THREE.Mesh(wireGeo, wireMat));
+  rootGroup.add(new THREE.Mesh(wireGeo, wireMat));
   const bulbPoints = stringCurve.getPoints(14);
   const bulbInst = new THREE.InstancedMesh(bulbGeo, bulbMat, bulbPoints.length);
   bulbPoints.forEach((pt, i) => {
@@ -387,7 +464,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   });
   bulbInst.instanceMatrix.needsUpdate = true;
   bulbInst.computeBoundingSphere();
-  scene.add(bulbInst);
+  rootGroup.add(bulbInst);
 
   // Floor Mug
   const mugGeo = new THREE.CylinderGeometry(14, 13, 24, 16);
@@ -398,7 +475,7 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   mug.castShadow = true;
   addCartoonOutline(mug, 1.04);
   cameraColliders.push(mug);
-  scene.add(mug);
+  rootGroup.add(mug);
 
   // Oscillating Desk Fan (at -164, 76..132, 6)
   const fanBaseMat = createCelMaterial(0x0d9488);
@@ -415,11 +492,11 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   const stem = new THREE.Mesh(stemGeo, fanBaseMat);
   stem.position.set(-164, 95, 6);
   addCartoonOutline(stem, 1.06);
-  scene.add(stem);
+  rootGroup.add(stem);
 
   const fanHead = new THREE.Group();
   fanHead.position.set(-164, 112, 6);
-  scene.add(fanHead);
+  rootGroup.add(fanHead);
 
   const motorGeo = new THREE.CylinderGeometry(5, 5, 10, 12);
   motorGeo.rotateX(Math.PI / 2);
@@ -478,14 +555,34 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): DeskSceneH
   });
   disposables.push(moteGeo, moteMat);
   const dustMotes = new THREE.Points(moteGeo, moteMat);
-  scene.add(dustMotes);
+  rootGroup.add(dustMotes);
 
   return {
-    fanHead,
-    fanBlades,
-    dustMotes,
     cameraColliders,
+    destructibleGroups,
+    powerUpZoneRings,
+    updateAnimations: (elapsedTime: number, dt: number) => {
+      const wz = DESK_MAP.windZones[0];
+      if (wz) {
+        fanHead.rotation.y = getFanYawAtTime(
+          wz.baseYaw,
+          wz.sweepAmplitude,
+          wz.sweepSpeed,
+          elapsedTime,
+          wz.continuousSpin
+        );
+        fanBlades.rotation.z += dt * 16;
+      }
+      dustMotes.rotation.y = elapsedTime * 0.015;
+      for (let i = 0; i < powerUpZoneRings.length; i++) {
+        const ring = powerUpZoneRings[i];
+        const pulse = 1 + Math.sin(elapsedTime * 3.2 + i) * 0.12;
+        ring.scale.set(pulse, 1, pulse);
+        ring.rotation.y = elapsedTime * 1.1;
+      }
+    },
     dispose: () => {
+      scene.remove(rootGroup);
       for (const d of disposables) d.dispose();
     },
   };

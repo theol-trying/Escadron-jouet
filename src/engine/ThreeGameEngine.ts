@@ -5,19 +5,26 @@ import {
   quatFromYaw,
   stepPlanePhysics,
 } from '../../shared/flightPhysics';
-import { DESK_MAP } from '../../shared/maps/desk';
+import { MAPS } from '../../shared/maps/index';
+import type { MapDefinition } from '../../shared/maps/types';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
 import type {
   HitFeedbackEvent,
+  MapId,
   PlaneSimState,
   PlayerCosmetics,
   PlayerInputState,
+  PowerUpId,
   SnapshotPayload,
   SnapshotPlane,
   TeamId,
 } from '../../shared/types';
 import { soundEngine } from '../audio/soundEngine';
-import { buildDeskScene, type DeskSceneHandles } from './maps/buildDeskScene';
+import { MatchExtrasRenderer } from './m3Visuals';
+import { buildDeskScene } from './maps/buildDeskScene';
+import { buildGardenScene } from './maps/buildGardenScene';
+import { buildKitchenScene } from './maps/buildKitchenScene';
+import type { MapSceneHandles } from './maps/types';
 import { ParticleAndProjectilePool } from './particlePool';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
 
@@ -58,6 +65,13 @@ export interface HudFrameData {
   alive: boolean;
   spectatingName: string;
   roundTimer: number;
+  secondaryPowerUp: PowerUpId | null;
+  secondaryUses: number;
+  shielded: boolean;
+  turboActive: boolean;
+  glued: boolean;
+  magnetActive: boolean;
+  suddenDeath: boolean;
   labels: ProjectedLabel[];
   minimapBlips: MinimapBlip[];
 }
@@ -101,7 +115,10 @@ export class ThreeGameEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private isSoftwareGl: boolean;
-  private deskHandles: DeskSceneHandles;
+  private maxAniso = 4;
+  private currentMapId: MapId = 'desk';
+  private currentMap: MapDefinition = MAPS.desk;
+  private mapHandles: MapSceneHandles;
   private pool: ParticleAndProjectilePool;
 
   private mode: EngineMode = 'title_tour';
@@ -133,6 +150,10 @@ export class ThreeGameEngine {
   private latestSnapshot: SnapshotPayload | null = null;
   private spectatorIndex = 0;
   private currentSpectatingName = '';
+  private destroyedColliderIds = new Set<string>();
+  private knownDestroyedProps = new Set<string>();
+  private wasSuddenDeath = false;
+  private extrasRenderer: MatchExtrasRenderer;
 
   // Camera state
   private camPos = new THREE.Vector3(0, 140, 180);
@@ -149,6 +170,7 @@ export class ThreeGameEngine {
     roll: 0,
     boost: false,
     fire: false,
+    useSecondaryQueued: false,
     barrelRollQueued: 0 as -1 | 0 | 1,
     paused: false,
   };
@@ -193,15 +215,15 @@ export class ThreeGameEngine {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(DESK_MAP.skyColor);
-    this.scene.fog = new THREE.Fog(DESK_MAP.fogColor, 240, 560);
+    this.scene.background = new THREE.Color(this.currentMap.skyColor);
+    this.scene.fog = new THREE.Fog(this.currentMap.fogColor, 240, 560);
 
     // Mandatory studio environment reflection (RoomEnvironment)
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
 
-    this.camera = new THREE.PerspectiveCamera(70, width / height, 0.5, 900);
+    this.camera = new THREE.PerspectiveCamera(70, width / height, 0.5, 950);
 
     // Warm sunny window directional key light + cool HemisphereLight fill
     const hemi = new THREE.HemisphereLight(0xdbeafe, 0xfde68a, 0.95);
@@ -226,10 +248,11 @@ export class ThreeGameEngine {
     rimLight.position.set(180, 140, -160);
     this.scene.add(rimLight);
 
-    // Build "Le bureau" 3D world
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
-    this.deskHandles = buildDeskScene(this.scene, maxAniso);
+    // Build initial 3D world
+    this.maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    this.mapHandles = this.buildMapScene(this.currentMapId);
     this.pool = new ParticleAndProjectilePool(this.scene);
+    this.extrasRenderer = new MatchExtrasRenderer(this.scene);
 
     // Ambient planes for the title flyover
     const tourConfigs: Array<[PlayerCosmetics, number, number, number]> = [
@@ -264,6 +287,33 @@ export class ThreeGameEngine {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private buildMapScene(mapId: MapId): MapSceneHandles {
+    if (mapId === 'kitchen') return buildKitchenScene(this.scene, this.maxAniso);
+    if (mapId === 'garden') return buildGardenScene(this.scene, this.maxAniso);
+    return buildDeskScene(this.scene, this.maxAniso);
+  }
+
+  public setMap(mapId: MapId): void {
+    if (this.currentMapId === mapId) return;
+    this.mapHandles.dispose();
+    this.currentMapId = mapId;
+    this.currentMap = MAPS[mapId] ?? MAPS.desk;
+    this.mapHandles = this.buildMapScene(mapId);
+    this.scene.background = new THREE.Color(this.currentMap.skyColor);
+    this.scene.fog = new THREE.Fog(
+      this.currentMap.fogColor,
+      mapId === 'garden' ? 320 : 240,
+      mapId === 'garden' ? 760 : 560
+    );
+    this.destroyedColliderIds.clear();
+    this.knownDestroyedProps.clear();
+    if (!this.isSoftwareGl) {
+      this.renderer.compile(this.scene, this.camera);
+    }
+    this.updateScene(0.016, performance.now());
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -333,6 +383,13 @@ export class ThreeGameEngine {
     this.localSim = null;
     this.pendingInputs.length = 0;
     this.latestSnapshot = null;
+    this.destroyedColliderIds.clear();
+    this.knownDestroyedProps.clear();
+    this.wasSuddenDeath = false;
+    for (const group of this.mapHandles.destructibleGroups.values()) {
+      group.visible = true;
+    }
+    this.extrasRenderer.syncAndAnimate(this.elapsedTime, [], [], null, false);
   }
 
   public cycleSpectator(dir: -1 | 1): void {
@@ -410,6 +467,46 @@ export class ThreeGameEngine {
       }
     }
 
+    // Sync destructible household props
+    for (const d of snapshot.destructibles) {
+      const group = this.mapHandles.destructibleGroups.get(d.id);
+      if (group) {
+        group.visible = !d.destroyed;
+      }
+      if (d.destroyed) {
+        const cfg = this.currentMap.destructibles.find((item) => item.id === d.id);
+        if (cfg) {
+          this.destroyedColliderIds.add(cfg.colliderId);
+        }
+        if (!this.knownDestroyedProps.has(d.id)) {
+          this.knownDestroyedProps.add(d.id);
+          if (cfg) {
+            this.pool.spawnBurst(
+              cfg.x,
+              cfg.y,
+              cfg.z,
+              24,
+              [0xfacc15, 0xef4444, 0x38bdf8, 0xf472b6, 0xffffff],
+              68,
+              2.2,
+              42,
+              0.75
+            );
+          }
+          soundEngine.playPropBreak();
+        }
+      }
+    }
+
+    // Sudden death transition alert
+    if (snapshot.suddenDeath && !this.wasSuddenDeath) {
+      this.wasSuddenDeath = true;
+      soundEngine.playVacuumAlert();
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.55);
+    } else if (!snapshot.suddenDeath) {
+      this.wasSuddenDeath = false;
+    }
+
     // Sync projectiles immediately
     this.pool.syncProjectiles(snapshot.projectiles);
   }
@@ -455,14 +552,25 @@ export class ThreeGameEngine {
         lives: auth.lives,
         respawnTimer: 0,
         fireCooldown: 0,
+        secondaryCooldown: 0,
         hitFlashTimer: 0,
         collideCooldown: 0,
+        secondaryPowerUp: auth.secondaryPowerUp,
+        secondaryUses: auth.secondaryUses,
+        shieldTimer: auth.shielded ? 1 : 0,
+        shieldHp: auth.shielded ? 60 : 0,
+        turboTimer: auth.turboActive ? 1 : 0,
+        glueTimer: auth.glued ? 1 : 0,
+        magnetTimer: auth.magnetActive ? 1 : 0,
       };
       this.pendingInputs.length = 0;
       return;
     }
 
-    // Authoritative health, lives, boost, heat, alive
+    const prevPu = this.localSim.secondaryPowerUp;
+    const prevUses = this.localSim.secondaryUses;
+
+    // Authoritative health, lives, boost, heat, power-up & status buffs
     this.localSim.hp = auth.hp;
     this.localSim.maxHp = auth.maxHp;
     this.localSim.lives = auth.lives;
@@ -472,6 +580,19 @@ export class ThreeGameEngine {
     this.localSim.heat = auth.heat;
     this.localSim.overheated = auth.overheated;
     this.localSim.boost = auth.boost;
+    this.localSim.secondaryPowerUp = auth.secondaryPowerUp;
+    this.localSim.secondaryUses = auth.secondaryUses;
+    this.localSim.shieldTimer = auth.shielded ? 1 : 0;
+    this.localSim.turboTimer = auth.turboActive ? 1 : 0;
+    this.localSim.glueTimer = auth.glued ? 1 : 0;
+    this.localSim.magnetTimer = auth.magnetActive ? 1 : 0;
+
+    if (
+      auth.secondaryPowerUp &&
+      (auth.secondaryPowerUp !== prevPu || auth.secondaryUses > prevUses)
+    ) {
+      soundEngine.playPickup();
+    }
 
     // Discard acknowledged inputs
     while (this.pendingInputs.length > 0 && this.pendingInputs[0].seq <= auth.lastAckSeq) {
@@ -491,7 +612,14 @@ export class ThreeGameEngine {
       speed: auth.speed,
     };
     for (const inp of this.pendingInputs) {
-      stepPlanePhysics(replaySim, inp, arch, DESK_MAP, this.elapsedTime);
+      stepPlanePhysics(
+        replaySim,
+        inp,
+        arch,
+        this.currentMap,
+        this.latestSnapshot?.mapEventTime ?? this.elapsedTime,
+        this.destroyedColliderIds
+      );
     }
 
     // Smoothly correct local position without jarring snaps
@@ -525,6 +653,9 @@ export class ThreeGameEngine {
     const barrelRollDir = canControl ? this.inputState.barrelRollQueued : 0;
     this.inputState.barrelRollQueued = 0;
 
+    const useSecondary = canControl ? this.inputState.useSecondaryQueued : false;
+    this.inputState.useSecondaryQueued = false;
+
     const inp: PlayerInputState = {
       seq: ++this.inputSeq,
       dt,
@@ -534,11 +665,29 @@ export class ThreeGameEngine {
       roll: canControl ? this.inputState.roll : 0,
       boost: canControl ? this.inputState.boost : false,
       fire: canControl ? this.inputState.fire : false,
+      useSecondary,
       barrelRollDir,
     };
 
+    if (
+      useSecondary &&
+      this.localSim.secondaryPowerUp &&
+      this.localSim.secondaryUses > 0 &&
+      this.localSim.secondaryCooldown <= 0
+    ) {
+      soundEngine.playSecondaryUse(this.localSim.secondaryPowerUp);
+      this.localSim.secondaryCooldown = 0.45;
+    }
+
     const arch = PLANE_ARCHETYPES[this.localCosmetics.planeId];
-    const res = stepPlanePhysics(this.localSim, inp, arch, DESK_MAP, this.elapsedTime);
+    const res = stepPlanePhysics(
+      this.localSim,
+      inp,
+      arch,
+      this.currentMap,
+      this.latestSnapshot?.mapEventTime ?? this.elapsedTime,
+      this.destroyedColliderIds
+    );
     if (res.collided && res.collisionDamage > 0) {
       this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3);
       soundEngine.playHit();
@@ -568,7 +717,7 @@ export class ThreeGameEngine {
     soundEngine.updateEnginePitch(
       Math.max(0, Math.min(1, speedRatio)),
       this.localSim.alive,
-      inp.boost && this.localSim.boost > 2
+      this.localSim.turboTimer > 0 || (inp.boost && this.localSim.boost > 2)
     );
 
     this.pendingInputs.push(inp);
@@ -623,16 +772,20 @@ export class ThreeGameEngine {
   }
 
   private updateScene(dt: number, now: number): void {
-    // Animate desk fan & dust motes
-    const wz = DESK_MAP.windZones[0];
-    if (wz) {
-      const fanYaw = wz.baseYaw + Math.sin(this.elapsedTime * wz.sweepSpeed) * wz.sweepAmplitude;
-      this.deskHandles.fanHead.rotation.y = fanYaw;
-      this.deskHandles.fanBlades.rotation.z += dt * 16;
-    }
-    this.deskHandles.dustMotes.rotation.y = this.elapsedTime * 0.015;
+    const animTime =
+      this.mode === 'playing' && this.latestSnapshot
+        ? this.latestSnapshot.mapEventTime
+        : this.elapsedTime;
+    this.mapHandles.updateAnimations(animTime, dt);
 
     this.pool.updateParticles(dt);
+    this.extrasRenderer.syncAndAnimate(
+      this.elapsedTime,
+      this.latestSnapshot?.powerUps ?? [],
+      this.latestSnapshot?.secondaryProjectiles ?? [],
+      this.latestSnapshot?.vacuum ?? null,
+      this.mode === 'playing'
+    );
 
     if (this.mode === 'title_tour') {
       const t = this.elapsedTime * 0.18;
@@ -726,6 +879,14 @@ export class ThreeGameEngine {
       for (const prop of pv.rig.propellers) prop.rotation.z += dt * speedSpin;
       if (pv.rig.windupKey) pv.rig.windupKey.rotation.y += dt * (4 + latest.speed * 0.06);
 
+      // Power-up status auras
+      pv.rig.shieldMesh.visible = latest.shielded;
+      pv.rig.magnetRingMesh.visible = latest.magnetActive;
+      if (latest.magnetActive) {
+        pv.rig.magnetRingMesh.rotation.y += dt * 4.5;
+      }
+      pv.rig.glueBlobMesh.visible = latest.glued;
+
       // Hit flash feedback
       if (pv.hitFlashTimer > 0) {
         pv.hitFlashTimer = Math.max(0, pv.hitFlashTimer - dt);
@@ -789,6 +950,11 @@ export class ThreeGameEngine {
       this._v1.set(0, 5.4, 21.0).applyQuaternion(focusQuat).add(focusPos);
       this._v2.set(0, 1.8, -26).applyQuaternion(focusQuat).add(focusPos);
 
+      const localPv2 = this.localPlayerId ? this.planeVisuals.get(this.localPlayerId) : null;
+      if (localPv2 && this.localSim && this.localSim.alive && this.localSim.turboTimer > 0) {
+        isBoosting = true;
+      }
+
       // Camera collision raycast so it never clips inside furniture while keeping plane visible
       this._v3.subVectors(this._v1, focusPos);
       const desiredDist = this._v3.length();
@@ -796,9 +962,17 @@ export class ThreeGameEngine {
         this._v3.divideScalar(desiredDist);
         this._raycaster.set(focusPos, this._v3);
         this._raycaster.far = desiredDist;
-        const hits = this._raycaster.intersectObjects(this.deskHandles.cameraColliders, false);
-        if (hits.length > 0 && hits[0].distance < desiredDist) {
-          const safeDist = Math.max(10.5, hits[0].distance - 2.2);
+        const hits = this._raycaster.intersectObjects(this.mapHandles.cameraColliders, false);
+        const visibleHit = hits.find((h) => {
+          let cur: THREE.Object3D | null = h.object;
+          while (cur) {
+            if (!cur.visible) return false;
+            cur = cur.parent;
+          }
+          return true;
+        });
+        if (visibleHit && visibleHit.distance < desiredDist) {
+          const safeDist = Math.max(10.5, visibleHit.distance - 2.2);
           this._v1.copy(focusPos).addScaledVector(this._v3, safeDist);
           // Lift camera slightly higher when pulled close so own plane stays framed
           if (safeDist < 15) {
@@ -905,6 +1079,13 @@ export class ThreeGameEngine {
         alive: sim?.alive ?? false,
         spectatingName: this.currentSpectatingName,
         roundTimer: this.latestSnapshot?.roundTimer ?? 240,
+        secondaryPowerUp: sim?.secondaryPowerUp ?? null,
+        secondaryUses: sim?.secondaryUses ?? 0,
+        shielded: (sim?.shieldTimer ?? 0) > 0,
+        turboActive: (sim?.turboTimer ?? 0) > 0,
+        glued: (sim?.glueTimer ?? 0) > 0,
+        magnetActive: (sim?.magnetTimer ?? 0) > 0,
+        suddenDeath: this.latestSnapshot?.suddenDeath ?? false,
         labels,
         minimapBlips,
       });
@@ -925,8 +1106,9 @@ export class ThreeGameEngine {
       this.scene.remove(this.hangarPlane.root);
       this.hangarPlane.dispose();
     }
-    this.deskHandles.dispose();
+    this.mapHandles.dispose();
     this.pool.dispose();
+    this.extrasRenderer.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);

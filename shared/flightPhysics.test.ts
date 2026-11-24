@@ -35,8 +35,16 @@ function makeSim(overrides: Partial<PlaneSimState> = {}): PlaneSimState {
     lives: 3,
     respawnTimer: 0,
     fireCooldown: 0,
+    secondaryCooldown: 0,
     hitFlashTimer: 0,
     collideCooldown: 0,
+    secondaryPowerUp: null,
+    secondaryUses: 0,
+    shieldTimer: 0,
+    shieldHp: 0,
+    turboTimer: 0,
+    glueTimer: 0,
+    magnetTimer: 0,
     ...overrides,
   };
 }
@@ -51,6 +59,7 @@ function makeInput(overrides: Partial<PlayerInputState> = {}): PlayerInputState 
     roll: 0,
     boost: false,
     fire: false,
+    useSecondary: false,
     barrelRollDir: 0,
     ...overrides,
   };
@@ -131,4 +140,38 @@ test('primary spawns on Le bureau have >4.5s of clear unobstructed airspace', ()
       assert.equal(sim.outOfBoundsTimer, 0, `spawn ${spawnIdx} went out of bounds at step ${step}`);
     }
   }
+});
+
+test('turbo_battery timer forces high speed and full boost; glueTimer slows plane', () => {
+  const turboSim = makeSim({ boost: 10, turboTimer: 3.0 });
+  for (let i = 0; i < 20; i++) {
+    stepPlanePhysics(turboSim, makeInput(), PLANE_ARCHETYPES.plastic_jet, DESK_MAP, i * (1 / 30));
+  }
+  assert.equal(turboSim.boost, 100);
+  assert.ok(turboSim.speed > PLANE_ARCHETYPES.plastic_jet.boostSpeed);
+
+  const glueSim = makeSim({ glueTimer: 3.0 });
+  for (let i = 0; i < 20; i++) {
+    stepPlanePhysics(glueSim, makeInput(), PLANE_ARCHETYPES.plastic_jet, DESK_MAP, i * (1 / 30));
+  }
+  assert.ok(glueSim.speed < PLANE_ARCHETYPES.plastic_jet.cruiseSpeed * 0.72);
+});
+
+test('destroyedColliderIds allows plane to fly cleanly through shattered prop', () => {
+  // snack_box collider: 108..134, 76..108, 4..24
+  const simSolid = makeSim({ x: 121, y: 92, z: 14 });
+  const hitSolid = stepPlanePhysics(simSolid, makeInput(), PLANE_ARCHETYPES.plastic_jet, DESK_MAP, 0);
+  assert.equal(hitSolid.collided, true);
+  assert.equal(hitSolid.collidedColliderId, 'snack_box');
+
+  const simBroken = makeSim({ x: 121, y: 92, z: 14 });
+  const hitBroken = stepPlanePhysics(
+    simBroken,
+    makeInput(),
+    PLANE_ARCHETYPES.plastic_jet,
+    DESK_MAP,
+    0,
+    new Set(['snack_box'])
+  );
+  assert.equal(hitBroken.collided, false);
 });

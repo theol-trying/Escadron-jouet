@@ -1,4 +1,4 @@
-import type { MapCollider, MapDefinition } from './maps/types';
+import type { HazardZoneConfig, MapCollider, MapDefinition } from './maps/types';
 import type { PlaneArchetype } from './planes';
 import type { PlaneSimState, PlayerInputState, Vec3 } from './types';
 
@@ -102,15 +102,31 @@ export function getFanYawAtTime(
   baseYaw: number,
   sweepAmplitude: number,
   sweepSpeed: number,
+  elapsedTime: number,
+  continuousSpin = false
+): number {
+  if (continuousSpin) {
+    return baseYaw + elapsedTime * sweepSpeed;
+  }
+  return baseYaw + Math.sin(elapsedTime * sweepSpeed) * sweepAmplitude;
+}
+
+export function getHingeDoorAngleAtTime(
+  maxAngle: number,
+  cycleSeconds: number,
   elapsedTime: number
 ): number {
-  return baseYaw + Math.sin(elapsedTime * sweepSpeed) * sweepAmplitude;
+  const openRatio = 0.5 - 0.5 * Math.cos((elapsedTime * Math.PI * 2) / Math.max(1, cycleSeconds));
+  const angle = maxAngle * openRatio;
+  return angle === 0 ? 0 : angle;
 }
 
 export interface StepPlaneResult {
   collided: boolean;
   collisionDamage: number;
   hitNormal: Vec3 | null;
+  collidedColliderId: string | null;
+  triggeredHazard: HazardZoneConfig | null;
 }
 
 function closestPointOnSegment(
@@ -137,14 +153,48 @@ function closestPointOnSegment(
   };
 }
 
-function resolveSphereVsCollider(
+export function resolveSphereVsCollider(
   sx: number,
   sy: number,
   sz: number,
   radius: number,
-  collider: MapCollider
+  collider: MapCollider,
+  elapsedTime = 0
 ): { nx: number; ny: number; nz: number; depth: number } | null {
   if (collider.kind === 'box') {
+    if (collider.hinge) {
+      const { pivotX, pivotZ, lengthX, thicknessZ, maxAngle, cycleSeconds } = collider.hinge;
+      const angle = getHingeDoorAngleAtTime(maxAngle, cycleSeconds, elapsedTime);
+      const cosA = Math.cos(-angle);
+      const sinA = Math.sin(-angle);
+      const dxp = sx - pivotX;
+      const dzp = sz - pivotZ;
+      // Transform sphere center into door-local frame (door spans X: 0..lengthX, Z: -thicknessZ/2..thicknessZ/2)
+      const lx = dxp * cosA + dzp * sinA;
+      const lz = -dxp * sinA + dzp * cosA;
+      const halfT = thicknessZ * 0.5;
+      const cx = clamp(lx, 0, lengthX);
+      const cy = clamp(sy, collider.minY, collider.maxY);
+      const cz = clamp(lz, -halfT, halfT);
+      const ddx = lx - cx;
+      const ddy = sy - cy;
+      const ddz = lz - cz;
+      const distSq = ddx * ddx + ddy * ddy + ddz * ddz;
+      if (distSq >= radius * radius) return null;
+      const dist = Math.sqrt(distSq) || 0.001;
+      const lnx = distSq > 1e-6 ? ddx / dist : 0;
+      const lny = distSq > 1e-6 ? ddy / dist : 0;
+      const lnz = distSq > 1e-6 ? ddz / dist : 1;
+      const cosFwd = Math.cos(angle);
+      const sinFwd = Math.sin(angle);
+      return {
+        nx: lnx * cosFwd + lnz * sinFwd,
+        ny: lny,
+        nz: -lnx * sinFwd + lnz * cosFwd,
+        depth: radius - dist,
+      };
+    }
+
     const cx = clamp(sx, collider.minX, collider.maxX);
     const cy = clamp(sy, collider.minY, collider.maxY);
     const cz = clamp(sz, collider.minZ, collider.maxZ);
@@ -228,13 +278,16 @@ export function stepPlanePhysics(
   input: PlayerInputState,
   archetype: PlaneArchetype,
   map: MapDefinition,
-  elapsedTime: number
+  elapsedTime: number,
+  destroyedColliderIds?: ReadonlySet<string>
 ): StepPlaneResult {
   const dt = clamp(input.dt, 0.001, 0.05);
   const result: StepPlaneResult = {
     collided: false,
     collisionDamage: 0,
     hitNormal: null,
+    collidedColliderId: null,
+    triggeredHazard: null,
   };
 
   if (!state.alive) return result;
@@ -244,9 +297,19 @@ export function stepPlanePhysics(
   if (state.hitFlashTimer > 0) state.hitFlashTimer = Math.max(0, state.hitFlashTimer - dt);
   if (state.collideCooldown > 0) state.collideCooldown = Math.max(0, state.collideCooldown - dt);
   if (state.fireCooldown > 0) state.fireCooldown = Math.max(0, state.fireCooldown - dt);
+  if (state.secondaryCooldown > 0) {
+    state.secondaryCooldown = Math.max(0, state.secondaryCooldown - dt);
+  }
   if (state.barrelRollCooldown > 0) {
     state.barrelRollCooldown = Math.max(0, state.barrelRollCooldown - dt);
   }
+  if (state.shieldTimer > 0) {
+    state.shieldTimer = Math.max(0, state.shieldTimer - dt);
+    if (state.shieldTimer <= 0) state.shieldHp = 0;
+  }
+  if (state.turboTimer > 0) state.turboTimer = Math.max(0, state.turboTimer - dt);
+  if (state.glueTimer > 0) state.glueTimer = Math.max(0, state.glueTimer - dt);
+  if (state.magnetTimer > 0) state.magnetTimer = Math.max(0, state.magnetTimer - dt);
 
   // Barrel roll trigger
   if (input.barrelRollDir !== 0 && state.barrelRollTimer <= 0 && state.barrelRollCooldown <= 0) {
@@ -255,9 +318,13 @@ export function stepPlanePhysics(
     state.barrelRollDir = input.barrelRollDir;
   }
 
-  // Boost & speed
-  const isBoosting = input.boost && state.boost > 1;
-  if (isBoosting) {
+  // Boost & speed (affected by Pile turbo & Mine de colle)
+  const turboActive = state.turboTimer > 0;
+  const glued = state.glueTimer > 0;
+  const isBoosting = turboActive || (input.boost && state.boost > 1);
+  if (turboActive) {
+    state.boost = 100;
+  } else if (isBoosting) {
     state.boost = Math.max(0, state.boost - 34 * dt);
   } else {
     state.boost = Math.min(100, state.boost + 18 * dt);
@@ -265,7 +332,9 @@ export function stepPlanePhysics(
 
   const throttle = clamp(input.throttle, -1, 1);
   let targetSpeed = archetype.cruiseSpeed;
-  if (isBoosting) {
+  if (turboActive) {
+    targetSpeed = archetype.boostSpeed * 1.15;
+  } else if (isBoosting) {
     targetSpeed = archetype.boostSpeed;
   } else if (throttle > 0.05) {
     targetSpeed =
@@ -273,6 +342,9 @@ export function stepPlanePhysics(
   } else if (throttle < -0.05) {
     targetSpeed =
       archetype.cruiseSpeed + (archetype.cruiseSpeed - archetype.minSpeed) * throttle;
+  }
+  if (glued) {
+    targetSpeed *= 0.56;
   }
   const speedLerp = 1 - Math.exp(-6.5 * dt);
   state.speed += (targetSpeed - state.speed) * speedLerp;
@@ -287,9 +359,10 @@ export function stepPlanePhysics(
   const aimX = clamp(input.aimX, -1, 1);
   const aimY = clamp(input.aimY, -1, 1);
   const rollInput = clamp(input.roll, -1, 1);
+  const effectiveTurnRate = glued ? archetype.turnRate * 0.65 : archetype.turnRate;
 
-  const yawDelta = -aimX * archetype.turnRate * dt;
-  const pitchDelta = aimY * archetype.turnRate * 0.9 * dt;
+  const yawDelta = -aimX * effectiveTurnRate * dt;
+  const pitchDelta = aimY * effectiveTurnRate * 0.9 * dt;
 
   // Rotate quaternion in local space for pitch (local X) and world-up-assisted yaw
   let [qx, qy, qz, qw] = [state.qx, state.qy, state.qz, state.qw];
@@ -353,14 +426,20 @@ export function stepPlanePhysics(
     nz += right.z * state.barrelRollDir * dodgeSpeed * dt;
   }
 
-  // Dynamic wind zones (e.g., oscillating desk fan)
+  // Dynamic wind zones (e.g., oscillating desk fan or spinning lawn sprinkler)
   for (const wz of map.windZones) {
     const dx = nx - wz.originX;
     const dy = ny - wz.originY;
     const dz = nz - wz.originZ;
     const dist = Math.hypot(dx, dy, dz);
     if (dist > 2 && dist < wz.range) {
-      const fanYaw = getFanYawAtTime(wz.baseYaw, wz.sweepAmplitude, wz.sweepSpeed, elapsedTime);
+      const fanYaw = getFanYawAtTime(
+        wz.baseYaw,
+        wz.sweepAmplitude,
+        wz.sweepSpeed,
+        elapsedTime,
+        wz.continuousSpin
+      );
       const dirX = -Math.sin(fanYaw);
       const dirZ = -Math.cos(fanYaw);
       const dot = (dx * dirX + dz * dirZ) / dist;
@@ -372,10 +451,20 @@ export function stepPlanePhysics(
     }
   }
 
+  // Thermal updraft zones (e.g., kitchen stove burner)
+  for (const uz of map.updraftZones) {
+    const horiz = Math.hypot(nx - uz.x, nz - uz.z);
+    if (horiz <= uz.radius && ny >= uz.y - 4 && ny <= uz.y + uz.height) {
+      const radialFalloff = 1 - (horiz / uz.radius) * 0.45;
+      ny += uz.liftStrength * radialFalloff * dt;
+    }
+  }
+
   // Collisions against map colliders
   const r = archetype.hitboxRadius;
   for (const col of map.colliders) {
-    const hit = resolveSphereVsCollider(nx, ny, nz, r, col);
+    if (destroyedColliderIds?.has(col.id)) continue;
+    const hit = resolveSphereVsCollider(nx, ny, nz, r, col, elapsedTime);
     if (hit) {
       nx += hit.nx * (hit.depth + 0.3);
       ny += hit.ny * (hit.depth + 0.3);
@@ -405,6 +494,7 @@ export function stepPlanePhysics(
 
       result.collided = true;
       result.hitNormal = { x: hit.nx, y: hit.ny, z: hit.nz };
+      result.collidedColliderId = col.id;
 
       if (state.collideCooldown <= 0 && state.invulnTimer <= 0) {
         const dmg = col.damageOnHit ?? Math.round(clamp((state.speed / archetype.maxSpeed) * 14, 6, 16));
@@ -412,6 +502,17 @@ export function stepPlanePhysics(
         state.collideCooldown = 0.55;
       }
       break;
+    }
+  }
+
+  // Deadly map hazard zones (e.g., spinning blender blades)
+  if (state.invulnTimer <= 0) {
+    for (const hz of map.hazardZones) {
+      const horiz = Math.hypot(nx - hz.x, nz - hz.z);
+      if (horiz <= hz.radius + r * 0.6 && ny >= hz.y - 4 && ny <= hz.y + hz.height) {
+        result.triggeredHazard = hz;
+        break;
+      }
     }
   }
 

@@ -263,3 +263,127 @@ export function createStickerTexture(stickerId: string): THREE.CanvasTexture {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+export function createTileTexture(
+  maxAniso = 4,
+  colorA = '#FFFBEB',
+  colorB = '#FED7AA',
+  repeatX = 10,
+  repeatY = 8
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const half = 128;
+
+  ctx.fillStyle = colorA;
+  ctx.fillRect(0, 0, half, half);
+  ctx.fillRect(half, half, half, half);
+
+  ctx.fillStyle = colorB;
+  ctx.fillRect(half, 0, half, half);
+  ctx.fillRect(0, half, half, half);
+
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.16)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(0, 0, 256, 256);
+  ctx.beginPath();
+  ctx.moveTo(half, 0);
+  ctx.lineTo(half, 256);
+  ctx.moveTo(0, half);
+  ctx.lineTo(256, half);
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+export function createGraniteTexture(maxAniso = 4): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#F1F5F9';
+  ctx.fillRect(0, 0, 256, 256);
+
+  const dots = ['#CBD5E1', '#94A3B8', '#E2E8F0', '#FDE68A', '#64748B'];
+  const hash = (n: number) => {
+    const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  for (let i = 0; i < 650; i++) {
+    const x = hash(i * 2 + 1) * 252;
+    const y = hash(i * 2 + 2) * 252;
+    const s = 1.8 + (i % 3);
+    ctx.fillStyle = dots[i % dots.length];
+    ctx.fillRect(x, y, s, s);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 2);
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+export function createGrassTexture(maxAniso = 4): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#34C759';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Subtle soft mowing variation
+  ctx.fillStyle = 'rgba(21, 128, 61, 0.14)';
+  ctx.fillRect(0, 0, 128, 256);
+
+  // Playful scattered grass blade tufts & tiny daisies
+  for (let i = 0; i < 160; i++) {
+    const x = (i * 59 + (i % 7) * 11) % 246;
+    const y = (i * 97 + (i % 5) * 13) % 246;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(74, 222, 128, 0.45)' : 'rgba(21, 128, 61, 0.25)';
+    ctx.fillRect(x, y, 2, 6);
+    ctx.fillRect(x + 3, y + 1, 2, 5);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(12, 12);
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+export function createSandTexture(maxAniso = 4): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#FDE68A';
+  ctx.fillRect(0, 0, 256, 256);
+
+  for (let i = 0; i < 240; i++) {
+    const x = (i * 67) % 252;
+    const y = (i * 113) % 252;
+    ctx.fillStyle = i % 2 === 0 ? '#FCD34D' : '#FEF3C7';
+    ctx.fillRect(x, y, 4, 3);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  tex.anisotropy = maxAniso;
+  return tex;
+}

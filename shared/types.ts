@@ -14,6 +14,22 @@ export type PaintId =
 
 export type StickerId = 'star' | 'lightning' | 'target' | 'flame';
 
+export type PowerUpId =
+  | 'rubber_missile'
+  | 'water_bomb'
+  | 'firecracker'
+  | 'glue_mine'
+  | 'turbo_battery'
+  | 'bubble_shield'
+  | 'repair_tape'
+  | 'magnet';
+
+export type SecondaryProjectileKind =
+  | 'rubber_missile'
+  | 'water_bomb'
+  | 'firecracker'
+  | 'glue_mine';
+
 export type GameModeId = 'last_plane_ffa' | 'last_plane_teams';
 
 export type MapId = 'desk' | 'kitchen' | 'garden';
@@ -79,6 +95,7 @@ export interface RoomState {
   maxRounds: number;
   roundTimer: number;
   countdownTimer: number;
+  suddenDeath: boolean;
   teamRoundWins: { red: number; blue: number };
   lastRoundWinner: {
     winnerId: string | null;
@@ -97,6 +114,7 @@ export interface PlayerInputState {
   roll: number; // -1..1
   boost: boolean;
   fire: boolean;
+  useSecondary: boolean;
   barrelRollDir: -1 | 0 | 1;
 }
 
@@ -136,8 +154,16 @@ export interface PlaneSimState {
   lives: number;
   respawnTimer: number;
   fireCooldown: number;
+  secondaryCooldown: number;
   hitFlashTimer: number;
   collideCooldown: number;
+  secondaryPowerUp: PowerUpId | null;
+  secondaryUses: number;
+  shieldTimer: number;
+  shieldHp: number;
+  turboTimer: number;
+  glueTimer: number;
+  magnetTimer: number;
 }
 
 export interface SnapshotPlane {
@@ -166,6 +192,12 @@ export interface SnapshotPlane {
   invuln: boolean;
   outOfBounds: number;
   barrelRoll: number;
+  secondaryPowerUp: PowerUpId | null;
+  secondaryUses: number;
+  shielded: boolean;
+  turboActive: boolean;
+  glued: boolean;
+  magnetActive: boolean;
   lastAckSeq: number;
 }
 
@@ -182,13 +214,55 @@ export interface SnapshotProjectile {
   heavy: boolean;
 }
 
+export interface SnapshotSecondaryProjectile {
+  id: number;
+  kind: SecondaryProjectileKind;
+  ownerId: string;
+  team: TeamId;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+}
+
+export interface SnapshotPowerUpPickup {
+  id: string;
+  powerUpId: PowerUpId;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface SnapshotDestructible {
+  id: string;
+  hp: number;
+  maxHp: number;
+  destroyed: boolean;
+}
+
+export interface SnapshotVacuum {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  safeRadius: number;
+}
+
 export interface SnapshotPayload {
   tick: number;
   serverTime: number;
   roundTimer: number;
+  suddenDeath: boolean;
   fanAngle: number;
+  mapEventTime: number;
   planes: SnapshotPlane[];
   projectiles: SnapshotProjectile[];
+  secondaryProjectiles: SnapshotSecondaryProjectile[];
+  powerUps: SnapshotPowerUpPickup[];
+  destructibles: SnapshotDestructible[];
+  vacuum: SnapshotVacuum | null;
 }
 
 export interface KillFeedEntry {
@@ -197,7 +271,9 @@ export interface KillFeedEntry {
   killerTeam: TeamId;
   victimName: string;
   victimTeam: TeamId;
-  reason: 'gun' | 'crash' | 'oob';
+  reason: 'gun' | 'crash' | 'oob' | 'secondary' | 'vacuum' | 'hazard';
+  powerUpId?: PowerUpId;
+  hazardNameFr?: string;
   timestamp: number;
 }
 

@@ -3,6 +3,7 @@ import {
   getPlaneRight,
   getPlaneUp,
   isOutsideSoftBounds,
+  resolveSphereVsCollider,
 } from '../shared/flightPhysics';
 import type { MapCollider, MapDefinition } from '../shared/maps/types';
 import { PLANE_ARCHETYPES, PAINT_ORDER, PLANE_ORDER, STICKER_ORDER } from '../shared/planes';
@@ -55,9 +56,13 @@ function pointInsideExpandedCollider(
   y: number,
   z: number,
   margin: number,
-  col: MapCollider
+  col: MapCollider,
+  elapsedTime: number
 ): boolean {
   if (col.kind === 'box') {
+    if (col.hinge) {
+      return resolveSphereVsCollider(x, y, z, margin, col, elapsedTime) !== null;
+    }
     return (
       x >= col.minX - margin &&
       x <= col.maxX + margin &&
@@ -84,13 +89,16 @@ function pointInsideExpandedCollider(
   return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
 }
 
+import type { ServerPowerUpPickup } from './types';
+
 export function computeBotInput(
   bot: ServerPlayer,
   allPlayers: ServerPlayer[],
   settings: RoomSettings,
   map: MapDefinition,
   dt: number,
-  elapsedTime: number
+  elapsedTime: number,
+  powerUps: ServerPowerUpPickup[] = []
 ): PlayerInputState {
   const sim = bot.sim;
   const fwd = getPlaneForward(sim);
@@ -120,10 +128,28 @@ export function computeBotInput(
   }
 
   let wantsFire = false;
+  let wantsSecondary = false;
   let wantsBoost = false;
   let barrelRollDir: -1 | 0 | 1 = 0;
 
-  if (nearestEnemy) {
+  // Seek nearby power-up if empty
+  let soughtPickup: ServerPowerUpPickup | null = null;
+  if (!sim.secondaryPowerUp && powerUps.length > 0) {
+    let bestPuDist = 95;
+    for (const pu of powerUps) {
+      const d = Math.hypot(pu.x - sim.x, pu.y - sim.y, pu.z - sim.z);
+      if (d < bestPuDist) {
+        bestPuDist = d;
+        soughtPickup = pu;
+      }
+    }
+  }
+
+  if (soughtPickup) {
+    targetX = soughtPickup.x;
+    targetY = soughtPickup.y;
+    targetZ = soughtPickup.z;
+  } else if (nearestEnemy) {
     const enemyFwd = getPlaneForward(nearestEnemy.sim);
     const arch = PLANE_ARCHETYPES[bot.cosmetics.planeId];
     const leadTime = Math.min(0.45, enemyDist / arch.projectileSpeed);
@@ -160,7 +186,7 @@ export function computeBotInput(
     targetZ = 0;
   }
 
-  // Ahead obstacle probe: check 30cm & 55cm ahead
+  // Ahead obstacle probe: check 26cm & 48cm ahead
   let avoidX = 0;
   let avoidY = 0;
   let avoidZ = 0;
@@ -171,11 +197,21 @@ export function computeBotInput(
     const py = sim.y + fwd.y * dist;
     const pz = sim.z + fwd.z * dist;
     for (const col of map.colliders) {
-      if (pointInsideExpandedCollider(px, py, pz, 12, col)) {
+      if (pointInsideExpandedCollider(px, py, pz, 12, col, elapsedTime)) {
         obstacleAhead = true;
         avoidY += 1.0; // bias climb above obstacles
         avoidX += right.x * 0.6;
         avoidZ += right.z * 0.6;
+        break;
+      }
+    }
+    for (const hz of map.hazardZones) {
+      const horiz = Math.hypot(px - hz.x, pz - hz.z);
+      if (horiz <= hz.radius + 14 && py >= hz.y - 12 && py <= hz.y + hz.height + 12) {
+        obstacleAhead = true;
+        avoidY += 1.25;
+        avoidX += right.x * 0.85;
+        avoidZ += right.z * 0.85;
         break;
       }
     }
@@ -227,6 +263,31 @@ export function computeBotInput(
     wantsFire = true;
   }
 
+  // Smart secondary power-up usage
+  if (elapsedTime > 4.0 && sim.secondaryPowerUp && sim.secondaryCooldown <= 0) {
+    if (sim.secondaryPowerUp === 'repair_tape' && sim.hp < sim.maxHp * 0.7) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === 'bubble_shield' && enemyDist < 120) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === 'turbo_battery' && enemyDist > 110) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === 'magnet' && enemyDist < 90) {
+      wantsSecondary = true;
+    } else if (sim.secondaryPowerUp === 'glue_mine' && enemyDist < 65) {
+      wantsSecondary = true;
+    } else if (
+      (sim.secondaryPowerUp === 'rubber_missile' ||
+        sim.secondaryPowerUp === 'firecracker' ||
+        sim.secondaryPowerUp === 'water_bomb') &&
+      nearestEnemy &&
+      !obstacleAhead &&
+      enemyDist < 185 &&
+      dotFwd > 0.86
+    ) {
+      wantsSecondary = true;
+    }
+  }
+
   return {
     seq: (bot.lastProcessedSeq ?? 0) + 1,
     dt,
@@ -236,6 +297,7 @@ export function computeBotInput(
     roll: 0,
     boost: wantsBoost,
     fire: wantsFire,
+    useSecondary: wantsSecondary,
     barrelRollDir,
   };
 }

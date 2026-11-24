@@ -2,11 +2,13 @@ import {
   getFanYawAtTime,
   getPlaneForward,
   quatFromYaw,
+  resolveSphereVsCollider,
   stepPlanePhysics,
 } from '../shared/flightPhysics';
 import { MAPS } from '../shared/maps/index';
 import type { MapCollider } from '../shared/maps/types';
 import { PLANE_ARCHETYPES } from '../shared/planes';
+import { POWERUPS, computeVacuumState, pickRandomPowerUp } from '../shared/powerups';
 import {
   applyDamageToSim,
   canDamageTarget,
@@ -18,9 +20,13 @@ import type {
   KillFeedEntry,
   PlaneSimState,
   PlayerInputState,
+  PowerUpId,
+  SnapshotDestructible,
   SnapshotPayload,
   SnapshotPlane,
+  SnapshotPowerUpPickup,
   SnapshotProjectile,
+  SnapshotSecondaryProjectile,
 } from '../shared/types';
 import { computeBotInput } from './bots';
 import type { RewindFrame, ServerPlayer, ServerRoom } from './types';
@@ -62,8 +68,17 @@ function segmentIntersectsSphere(
   return dx * dx + dy * dy + dz * dz <= r * r;
 }
 
-function pointInsideCollider(x: number, y: number, z: number, col: MapCollider): boolean {
+function pointInsideCollider(
+  x: number,
+  y: number,
+  z: number,
+  col: MapCollider,
+  elapsedTime = 0
+): boolean {
   if (col.kind === 'box') {
+    if (col.hinge) {
+      return resolveSphereVsCollider(x, y, z, 0.5, col, elapsedTime) !== null;
+    }
     return (
       x >= col.minX &&
       x <= col.maxX &&
@@ -79,7 +94,6 @@ function pointInsideCollider(x: number, y: number, z: number, col: MapCollider):
     const dz = z - col.z;
     return dx * dx + dy * dy + dz * dz <= col.radius * col.radius;
   }
-  // capsule rough check
   const abx = col.bx - col.ax;
   const aby = col.by - col.ay;
   const abz = col.bz - col.az;
@@ -92,6 +106,40 @@ function pointInsideCollider(x: number, y: number, z: number, col: MapCollider):
   const dy = y - (col.ay + aby * t);
   const dz = z - (col.az + abz * t);
   return dx * dx + dy * dy + dz * dz <= col.radius * col.radius;
+}
+
+export function initRoundEntities(room: ServerRoom): void {
+  const map = MAPS[room.settings.mapId] ?? MAPS.desk;
+  room.projectiles.length = 0;
+  room.secondaryProjectiles.length = 0;
+  room.powerUps.length = 0;
+  room.destroyedColliderIds.clear();
+  room.suddenDeath = false;
+  room.suddenDeathElapsed = 0;
+
+  room.destructibles = map.destructibles.map((d) => ({
+    id: d.id,
+    colliderId: d.colliderId,
+    kind: d.kind,
+    x: d.x,
+    y: d.y,
+    z: d.z,
+    radius: d.radius,
+    hp: d.maxHp,
+    maxHp: d.maxHp,
+    destroyed: false,
+    dropsPowerUp: d.dropsPowerUp,
+    rewardPool: d.rewardPool,
+  }));
+
+  room.powerUpSpots = map.powerUpSpots.map((sp, i) => ({
+    id: sp.id,
+    x: sp.x,
+    y: sp.y,
+    z: sp.z,
+    // Spawn initial glowing pickups right after takeoff
+    respawnTimer: 1.5 + i * 0.4,
+  }));
 }
 
 export function spawnPlayerAtIndex(
@@ -129,8 +177,16 @@ export function spawnPlayerAtIndex(
     lives,
     respawnTimer: 0,
     fireCooldown: 0,
+    secondaryCooldown: 0,
     hitFlashTimer: 0,
     collideCooldown: 0,
+    secondaryPowerUp: null,
+    secondaryUses: 0,
+    shieldTimer: 0,
+    shieldHp: 0,
+    turboTimer: 0,
+    glueTimer: 0,
+    magnetTimer: 0,
   };
   player.sim = sim;
   player.inputQueue.length = 0;
@@ -162,6 +218,226 @@ function getRewindSnapshot(room: ServerRoom, rewindMs: number): RewindFrame | nu
   return best;
 }
 
+function damageDestructible(
+  room: ServerRoom,
+  colliderOrDestructibleId: string,
+  damage: number,
+  attackerId: string,
+  callbacks: LoopCallbacks
+): boolean {
+  const d = room.destructibles.find(
+    (prop) => !prop.destroyed && (prop.id === colliderOrDestructibleId || prop.colliderId === colliderOrDestructibleId)
+  );
+  if (!d) return false;
+
+  d.hp = Math.max(0, d.hp - damage);
+  if (d.hp > 0) return true;
+
+  d.destroyed = true;
+  room.destroyedColliderIds.add(d.colliderId);
+
+  callbacks.emitHit(room, {
+    targetId: d.id,
+    attackerId,
+    damage,
+    x: round2(d.x),
+    y: round2(d.y),
+    z: round2(d.z),
+    fatal: true,
+  });
+
+  if (d.dropsPowerUp) {
+    const powerUpId = pickRandomPowerUp(Math.random, d.rewardPool);
+    room.powerUps.push({
+      id: `pu_${room.nextPowerUpId++}`,
+      powerUpId,
+      x: d.x,
+      y: Math.max(24, d.y + 4),
+      z: d.z,
+    });
+  }
+  return true;
+}
+
+function activateSecondaryPowerUp(
+  room: ServerRoom,
+  player: ServerPlayer,
+  callbacks: LoopCallbacks
+): void {
+  const powerUpId = player.sim.secondaryPowerUp;
+  if (!powerUpId || player.sim.secondaryUses <= 0 || player.sim.secondaryCooldown > 0) return;
+
+  player.sim.secondaryCooldown = 0.45;
+  player.sim.secondaryUses--;
+  if (player.sim.secondaryUses <= 0) {
+    player.sim.secondaryPowerUp = null;
+  }
+
+  const fwd = getPlaneForward(player.sim);
+
+  if (powerUpId === 'repair_tape') {
+    player.sim.hp = Math.min(player.sim.maxHp, player.sim.hp + 45);
+    callbacks.emitHit(room, {
+      targetId: player.id,
+      attackerId: player.id,
+      damage: 0,
+      x: round2(player.sim.x),
+      y: round2(player.sim.y),
+      z: round2(player.sim.z),
+      fatal: false,
+    });
+    return;
+  }
+
+  if (powerUpId === 'bubble_shield') {
+    player.sim.shieldTimer = 7.0;
+    player.sim.shieldHp = 60;
+    return;
+  }
+
+  if (powerUpId === 'turbo_battery') {
+    player.sim.turboTimer = 5.5;
+    player.sim.boost = 100;
+    return;
+  }
+
+  if (powerUpId === 'magnet') {
+    player.sim.magnetTimer = 6.0;
+    return;
+  }
+
+  if (powerUpId === 'rubber_missile') {
+    const speed = 250;
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: 'rubber_missile',
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x + fwd.x * 8,
+      y: player.sim.y + fwd.y * 8,
+      z: player.sim.z + fwd.z * 8,
+      vx: fwd.x * speed,
+      vy: fwd.y * speed,
+      vz: fwd.z * speed,
+      damage: 34,
+      radius: 4.0,
+      ttl: 3.2,
+      maxTtl: 3.2,
+    });
+    return;
+  }
+
+  if (powerUpId === 'water_bomb') {
+    const speed = 195;
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: 'water_bomb',
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x + fwd.x * 8,
+      y: player.sim.y + fwd.y * 8,
+      z: player.sim.z + fwd.z * 8,
+      vx: fwd.x * speed,
+      vy: fwd.y * speed + 28,
+      vz: fwd.z * speed,
+      damage: 38,
+      radius: 4.5,
+      ttl: 1.35,
+      maxTtl: 1.35,
+    });
+    return;
+  }
+
+  if (powerUpId === 'firecracker') {
+    const speed = 520;
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: 'firecracker',
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x + fwd.x * 8,
+      y: player.sim.y + fwd.y * 8,
+      z: player.sim.z + fwd.z * 8,
+      vx: fwd.x * speed,
+      vy: fwd.y * speed,
+      vz: fwd.z * speed,
+      damage: 42,
+      radius: 3.5,
+      ttl: 1.15,
+      maxTtl: 1.15,
+    });
+    return;
+  }
+
+  if (powerUpId === 'glue_mine') {
+    room.secondaryProjectiles.push({
+      id: room.nextProjectileId++,
+      kind: 'glue_mine',
+      ownerId: player.id,
+      team: player.team,
+      x: player.sim.x - fwd.x * 10,
+      y: player.sim.y - fwd.y * 10,
+      z: player.sim.z - fwd.z * 10,
+      vx: -fwd.x * 10,
+      vy: 0,
+      vz: -fwd.z * 10,
+      damage: 14,
+      radius: 15,
+      ttl: 18,
+      maxTtl: 18,
+    });
+  }
+}
+
+function applyCombatDamage(
+  room: ServerRoom,
+  target: ServerPlayer,
+  attacker: ServerPlayer | undefined,
+  damage: number,
+  hx: number,
+  hy: number,
+  hz: number,
+  reason: 'gun' | 'secondary',
+  powerUpId: PowerUpId | undefined,
+  callbacks: LoopCallbacks
+): void {
+  const now = Date.now();
+  const res = applyDamageToSim(target.sim, damage);
+  if (target.sim.invulnTimer <= 0 && attacker) {
+    target.lastHitBy = attacker.id;
+    target.lastHitAt = now;
+  }
+
+  callbacks.emitHit(room, {
+    targetId: target.id,
+    attackerId: attacker?.id ?? target.id,
+    damage: res.shieldBlocked ? 0 : damage,
+    x: round2(hx),
+    y: round2(hy),
+    z: round2(hz),
+    fatal: res.eliminated,
+  });
+
+  if (res.eliminated) {
+    target.deaths++;
+    if (attacker && attacker.id !== target.id) {
+      attacker.kills++;
+      attacker.score += 100;
+    }
+    callbacks.emitKillFeed(room, {
+      id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+      killerName: attacker?.nickname ?? 'Inconnu',
+      killerTeam: attacker?.team ?? 'none',
+      victimName: target.nickname,
+      victimTeam: target.team,
+      reason,
+      powerUpId,
+      timestamp: now,
+    });
+    callbacks.emitRoomState(room);
+  }
+}
+
 export function stepRoomTick(
   room: ServerRoom,
   dt: number,
@@ -191,8 +467,8 @@ export function stepRoomTick(
       } else {
         room.roundNumber++;
         room.roundTimer = 240;
-        room.projectiles.length = 0;
         room.lastRoundWinner = null;
+        initRoundEntities(room);
         let idx = 0;
         for (const player of room.players.values()) {
           spawnPlayerAtIndex(player, idx++, room.settings.mapId, room.settings.livesPerRound);
@@ -209,8 +485,37 @@ export function stepRoomTick(
     return;
   }
 
-  room.roundTimer = Math.max(0, room.roundTimer - dt);
+  // Round timer & Sudden Death ("L'aspirateur arrive !")
+  if (room.roundTimer > 0) {
+    room.roundTimer = Math.max(0, room.roundTimer - dt);
+  } else {
+    if (!room.suddenDeath) {
+      room.suddenDeath = true;
+      room.suddenDeathElapsed = 0;
+      callbacks.emitRoomState(room);
+    }
+    room.suddenDeathElapsed += dt;
+  }
+
   const allPlayers = Array.from(room.players.values());
+
+  // 0. Contested glowing power-up spawn zones
+  for (const spot of room.powerUpSpots) {
+    const occupied = room.powerUps.some((p) => p.spotId === spot.id);
+    if (!occupied) {
+      spot.respawnTimer -= dt;
+      if (spot.respawnTimer <= 0) {
+        room.powerUps.push({
+          id: `pu_${room.nextPowerUpId++}`,
+          powerUpId: pickRandomPowerUp(),
+          x: spot.x,
+          y: spot.y,
+          z: spot.z,
+          spotId: spot.id,
+        });
+      }
+    }
+  }
 
   // 1. Step each player / bot
   let spawnCounter = 0;
@@ -241,26 +546,44 @@ export function stepRoomTick(
         room.settings,
         map,
         dt,
-        room.elapsedTime
+        room.elapsedTime,
+        room.powerUps
       );
       player.lastProcessedSeq = latestInput.seq;
     } else if (player.inputQueue.length > 0) {
-      // Drain up to 4 queued inputs per tick to stay responsive without speed-hacking
       const steps = player.inputQueue.splice(0, 4);
       for (const inp of steps) {
         const clampedInp: PlayerInputState = {
           ...inp,
           dt: Math.min(0.05, Math.max(0.005, inp.dt)),
         };
-        const res = stepPlanePhysics(player.sim, clampedInp, arch, map, room.elapsedTime);
+        const res = stepPlanePhysics(
+          player.sim,
+          clampedInp,
+          arch,
+          map,
+          room.elapsedTime,
+          room.destroyedColliderIds
+        );
         player.lastProcessedSeq = clampedInp.seq;
-        if (res.collisionDamage > 0) {
+        if (res.collidedColliderId) {
+          damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+        }
+        if (res.triggeredHazard) {
+          handlePlaneCrashDamage(
+            room,
+            player,
+            res.triggeredHazard.damage,
+            'hazard',
+            callbacks,
+            res.triggeredHazard.nameFr
+          );
+        } else if (res.collisionDamage > 0) {
           handlePlaneCrashDamage(room, player, res.collisionDamage, 'crash', callbacks);
         }
         latestInput = clampedInp;
       }
     } else {
-      // Keep flying forward smoothly if no packet arrived this tick
       latestInput = {
         seq: player.lastProcessedSeq,
         dt,
@@ -270,24 +593,127 @@ export function stepRoomTick(
         roll: 0,
         boost: false,
         fire: false,
+        useSecondary: false,
         barrelRollDir: 0,
       };
-      const res = stepPlanePhysics(player.sim, latestInput, arch, map, room.elapsedTime);
-      if (res.collisionDamage > 0) {
+      const res = stepPlanePhysics(
+        player.sim,
+        latestInput,
+        arch,
+        map,
+        room.elapsedTime,
+        room.destroyedColliderIds
+      );
+      if (res.collidedColliderId) {
+        damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+      }
+      if (res.triggeredHazard) {
+        handlePlaneCrashDamage(
+          room,
+          player,
+          res.triggeredHazard.damage,
+          'hazard',
+          callbacks,
+          res.triggeredHazard.nameFr
+        );
+      } else if (res.collisionDamage > 0) {
         handlePlaneCrashDamage(room, player, res.collisionDamage, 'crash', callbacks);
       }
     }
 
     if (player.isBot && latestInput) {
-      const res = stepPlanePhysics(player.sim, latestInput, arch, map, room.elapsedTime);
-      if (res.collisionDamage > 0) {
+      const res = stepPlanePhysics(
+        player.sim,
+        latestInput,
+        arch,
+        map,
+        room.elapsedTime,
+        room.destroyedColliderIds
+      );
+      if (res.collidedColliderId) {
+        damageDestructible(room, res.collidedColliderId, 22, player.id, callbacks);
+      }
+      if (res.triggeredHazard) {
+        handlePlaneCrashDamage(
+          room,
+          player,
+          res.triggeredHazard.damage,
+          'hazard',
+          callbacks,
+          res.triggeredHazard.nameFr
+        );
+      } else if (res.collisionDamage > 0) {
         handlePlaneCrashDamage(room, player, res.collisionDamage, 'crash', callbacks);
+      }
+    }
+
+    // Magnet aura pulls nearby enemies off course & attracts nearby power-ups
+    if (player.sim.alive && player.sim.magnetTimer > 0) {
+      for (const other of allPlayers) {
+        if (!other.sim.alive) continue;
+        if (
+          !canDamageTarget(
+            room.settings.mode,
+            room.settings.friendlyFire,
+            player.id,
+            player.team,
+            other.id,
+            other.team
+          )
+        ) {
+          continue;
+        }
+        const dx = player.sim.x - other.sim.x;
+        const dy = player.sim.y - other.sim.y;
+        const dz = player.sim.z - other.sim.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 6 && dist < 95) {
+          const pull = ((1 - dist / 95) * 44 * dt) / dist;
+          other.sim.x += dx * pull;
+          other.sim.y += dy * pull;
+          other.sim.z += dz * pull;
+        }
+      }
+      for (const pu of room.powerUps) {
+        const dx = player.sim.x - pu.x;
+        const dy = player.sim.y - pu.y;
+        const dz = player.sim.z - pu.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 2 && dist < 80) {
+          const pull = (75 * dt) / dist;
+          pu.x += dx * pull;
+          pu.y += dy * pull;
+          pu.z += dz * pull;
+        }
+      }
+    }
+
+    // Power-up pickup collision
+    if (player.sim.alive) {
+      for (let i = room.powerUps.length - 1; i >= 0; i--) {
+        const pu = room.powerUps[i];
+        const dist = Math.hypot(pu.x - player.sim.x, pu.y - player.sim.y, pu.z - player.sim.z);
+        if (dist < 13) {
+          player.sim.secondaryPowerUp = pu.powerUpId;
+          player.sim.secondaryUses = POWERUPS[pu.powerUpId].uses;
+          if (pu.spotId) {
+            const spot = room.powerUpSpots.find((s) => s.id === pu.spotId);
+            if (spot) spot.respawnTimer = 14;
+          }
+          room.powerUps.splice(i, 1);
+          break;
+        }
       }
     }
 
     // Out-of-bounds elimination after 4 seconds
     if (player.sim.alive && player.sim.outOfBoundsTimer >= 4.0) {
       handlePlaneCrashDamage(room, player, 9999, 'oob', callbacks);
+    }
+
+    // Activate secondary power-up
+    if (player.sim.alive && latestInput?.useSecondary) {
+      activateSecondaryPowerUp(room, player, callbacks);
     }
 
     // Firing primary pellet/dart gun
@@ -304,7 +730,7 @@ export function stepRoomTick(
       }
 
       const fwd = getPlaneForward(player.sim);
-      const proj = {
+      room.projectiles.push({
         id: room.nextProjectileId++,
         ownerId: player.id,
         team: player.team,
@@ -317,8 +743,36 @@ export function stepRoomTick(
         damage: arch.damage,
         heavy: arch.heavyGun,
         ttl: 1.4,
-      };
-      room.projectiles.push(proj);
+      });
+    }
+  }
+
+  // Sudden Death giant cartoon vacuum suction & shrinking safe zone
+  if (room.suddenDeath) {
+    const vac = computeVacuumState(room.suddenDeathElapsed, map);
+    for (const player of allPlayers) {
+      if (!player.sim.alive) continue;
+      const distCenter = Math.hypot(player.sim.x, player.sim.z);
+      if (distCenter > vac.safeRadius && distCenter > 1) {
+        const pull = 55 * dt;
+        player.sim.x -= (player.sim.x / distCenter) * pull;
+        player.sim.z -= (player.sim.z / distCenter) * pull;
+        if (distCenter > vac.safeRadius + 24) {
+          const res = applyDamageToSim(player.sim, 22 * dt);
+          if (res.eliminated) {
+            handlePlaneCrashDamage(room, player, 9999, 'vacuum', callbacks);
+            continue;
+          }
+        }
+      }
+      const distNozzle = Math.hypot(
+        player.sim.x - vac.nozzleX,
+        player.sim.y - vac.nozzleY,
+        player.sim.z - vac.nozzleZ
+      );
+      if (distNozzle < vac.suctionRadius) {
+        handlePlaneCrashDamage(room, player, 9999, 'vacuum', callbacks);
+      }
     }
   }
 
@@ -341,7 +795,7 @@ export function stepRoomTick(
     room.rewindHistory.shift();
   }
 
-  // 3. Step projectiles & lag-compensated hit detection
+  // 3. Step primary projectiles & lag-compensated hit detection + destructibles
   for (let i = room.projectiles.length - 1; i >= 0; i--) {
     const proj = room.projectiles[i];
     const prevX = proj.x;
@@ -357,7 +811,22 @@ export function stepRoomTick(
       continue;
     }
 
-    // Check world bounds or static obstacle hit
+    // Destructible prop hit check first
+    let hitDestructible = false;
+    for (const d of room.destructibles) {
+      if (d.destroyed) continue;
+      if (segmentIntersectsSphere(prevX, prevY, prevZ, proj.x, proj.y, proj.z, d.x, d.y, d.z, d.radius + 1.5)) {
+        damageDestructible(room, d.id, proj.damage, proj.ownerId, callbacks);
+        hitDestructible = true;
+        break;
+      }
+    }
+    if (hitDestructible) {
+      room.projectiles.splice(i, 1);
+      continue;
+    }
+
+    // Check world bounds or static obstacle hit (skipping destroyed props)
     const hb = map.hardBounds;
     if (
       proj.x < hb.minX ||
@@ -366,7 +835,11 @@ export function stepRoomTick(
       proj.y > hb.maxY ||
       proj.z < hb.minZ ||
       proj.z > hb.maxZ ||
-      map.colliders.some((c) => pointInsideCollider(proj.x, proj.y, proj.z, c))
+      map.colliders.some(
+        (c) =>
+          !room.destroyedColliderIds.has(c.id) &&
+          pointInsideCollider(proj.x, proj.y, proj.z, c, room.elapsedTime)
+      )
     ) {
       room.projectiles.splice(i, 1);
       continue;
@@ -405,42 +878,219 @@ export function stepRoomTick(
     }
 
     if (hitPlayer) {
-      const res = applyDamageToSim(hitPlayer.sim, proj.damage);
-      if (hitPlayer.sim.invulnTimer <= 0) {
-        hitPlayer.lastHitBy = proj.ownerId;
-        hitPlayer.lastHitAt = now;
-      }
-
-      callbacks.emitHit(room, {
-        targetId: hitPlayer.id,
-        attackerId: proj.ownerId,
-        damage: proj.damage,
-        x: round2(proj.x),
-        y: round2(proj.y),
-        z: round2(proj.z),
-        fatal: res.eliminated,
-      });
-
-      if (res.eliminated) {
-        hitPlayer.deaths++;
-        if (owner && owner.id !== hitPlayer.id) {
-          owner.kills++;
-          owner.score += 100;
-        }
-        callbacks.emitKillFeed(room, {
-          id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
-          killerName: owner?.nickname ?? 'Inconnu',
-          killerTeam: owner?.team ?? 'none',
-          victimName: hitPlayer.nickname,
-          victimTeam: hitPlayer.team,
-          reason: 'gun',
-          timestamp: now,
-        });
-        callbacks.emitRoomState(room);
-      }
-
+      applyCombatDamage(
+        room,
+        hitPlayer,
+        owner,
+        proj.damage,
+        proj.x,
+        proj.y,
+        proj.z,
+        'gun',
+        undefined,
+        callbacks
+      );
       room.projectiles.splice(i, 1);
     }
+  }
+
+  // 3b. Step secondary projectiles (Missiles élastiques, Bombe à eau, Pétard-fusée, Mine de colle)
+  for (let i = room.secondaryProjectiles.length - 1; i >= 0; i--) {
+    const sp = room.secondaryProjectiles[i];
+    const owner = room.players.get(sp.ownerId);
+    const prevX = sp.x;
+    const prevY = sp.y;
+    const prevZ = sp.z;
+
+    if (sp.kind === 'rubber_missile') {
+      // Home gently toward closest valid target
+      let bestTarget: ServerPlayer | null = null;
+      let bestDist = 240;
+      for (const cand of allPlayers) {
+        if (!cand.sim.alive) continue;
+        if (
+          !canDamageTarget(
+            room.settings.mode,
+            room.settings.friendlyFire,
+            sp.ownerId,
+            sp.team,
+            cand.id,
+            cand.team
+          )
+        ) {
+          continue;
+        }
+        const d = Math.hypot(cand.sim.x - sp.x, cand.sim.y - sp.y, cand.sim.z - sp.z);
+        if (d < bestDist) {
+          bestDist = d;
+          bestTarget = cand;
+        }
+      }
+      if (bestTarget) {
+        const curSpeed = Math.hypot(sp.vx, sp.vy, sp.vz) || 250;
+        const tx = bestTarget.sim.x - sp.x;
+        const ty = bestTarget.sim.y - sp.y;
+        const tz = bestTarget.sim.z - sp.z;
+        const tLen = Math.hypot(tx, ty, tz) || 1;
+        const steer = 4.2 * dt;
+        sp.vx += ((tx / tLen) * curSpeed - sp.vx) * steer;
+        sp.vy += ((ty / tLen) * curSpeed - sp.vy) * steer;
+        sp.vz += ((tz / tLen) * curSpeed - sp.vz) * steer;
+        const nLen = Math.hypot(sp.vx, sp.vy, sp.vz) || 1;
+        sp.vx = (sp.vx / nLen) * curSpeed;
+        sp.vy = (sp.vy / nLen) * curSpeed;
+        sp.vz = (sp.vz / nLen) * curSpeed;
+      }
+    } else if (sp.kind === 'water_bomb') {
+      sp.vy -= 85 * dt;
+    } else if (sp.kind === 'glue_mine') {
+      sp.vx *= 0.94;
+      sp.vy *= 0.94;
+      sp.vz *= 0.94;
+    }
+
+    sp.x += sp.vx * dt;
+    sp.y += sp.vy * dt;
+    sp.z += sp.vz * dt;
+    sp.ttl -= dt;
+
+    const hb = map.hardBounds;
+    const hitWallOrFloor =
+      sp.x < hb.minX ||
+      sp.x > hb.maxX ||
+      sp.y < hb.minY ||
+      sp.y > hb.maxY ||
+      sp.z < hb.minZ ||
+      sp.z > hb.maxZ ||
+      map.colliders.some(
+        (c) =>
+          !room.destroyedColliderIds.has(c.id) &&
+          pointInsideCollider(sp.x, sp.y, sp.z, c, room.elapsedTime)
+      );
+
+    // Check destructibles
+    let hitProp = false;
+    if (sp.kind !== 'glue_mine') {
+      for (const d of room.destructibles) {
+        if (d.destroyed) continue;
+        if (segmentIntersectsSphere(prevX, prevY, prevZ, sp.x, sp.y, sp.z, d.x, d.y, d.z, d.radius + 2)) {
+          damageDestructible(room, d.id, sp.damage, sp.ownerId, callbacks);
+          hitProp = true;
+          break;
+        }
+      }
+    }
+
+    // Check player hit
+    let directTarget: ServerPlayer | null = null;
+    const mineArmed = sp.kind !== 'glue_mine' || sp.maxTtl - sp.ttl > 0.35;
+    if (mineArmed) {
+      for (const target of allPlayers) {
+        if (!target.sim.alive) continue;
+        if (
+          !canDamageTarget(
+            room.settings.mode,
+            room.settings.friendlyFire,
+            sp.ownerId,
+            sp.team,
+            target.id,
+            target.team
+          )
+        ) {
+          continue;
+        }
+        const hitR = PLANE_ARCHETYPES[target.cosmetics.planeId].hitboxRadius + sp.radius;
+        if (
+          segmentIntersectsSphere(
+            prevX,
+            prevY,
+            prevZ,
+            sp.x,
+            sp.y,
+            sp.z,
+            target.sim.x,
+            target.sim.y,
+            target.sim.z,
+            hitR
+          )
+        ) {
+          directTarget = target;
+          break;
+        }
+      }
+    }
+
+    const shouldDetonate =
+      sp.kind === 'water_bomb'
+        ? sp.ttl <= 0 || hitWallOrFloor || hitProp || directTarget !== null
+        : sp.kind === 'glue_mine'
+          ? directTarget !== null
+          : hitWallOrFloor || hitProp || directTarget !== null || sp.ttl <= 0;
+
+    if (!shouldDetonate) continue;
+
+    if (sp.kind === 'water_bomb' && (sp.ttl <= 0 || hitWallOrFloor || hitProp || directTarget)) {
+      const splashRadius = 42;
+      for (const target of allPlayers) {
+        if (!target.sim.alive) continue;
+        if (
+          !canDamageTarget(
+            room.settings.mode,
+            room.settings.friendlyFire,
+            sp.ownerId,
+            sp.team,
+            target.id,
+            target.team
+          )
+        ) {
+          continue;
+        }
+        const d = Math.hypot(target.sim.x - sp.x, target.sim.y - sp.y, target.sim.z - sp.z);
+        if (d <= splashRadius) {
+          const dmg = Math.round(sp.damage * (1 - 0.55 * (d / splashRadius)));
+          applyCombatDamage(
+            room,
+            target,
+            owner,
+            dmg,
+            sp.x,
+            sp.y,
+            sp.z,
+            'secondary',
+            'water_bomb',
+            callbacks
+          );
+        }
+      }
+      // Splash burst visual
+      callbacks.emitHit(room, {
+        targetId: directTarget?.id ?? 'splash',
+        attackerId: sp.ownerId,
+        damage: sp.damage,
+        x: round2(sp.x),
+        y: round2(sp.y),
+        z: round2(sp.z),
+        fatal: true,
+      });
+    } else if (directTarget) {
+      if (sp.kind === 'glue_mine') {
+        directTarget.sim.glueTimer = 3.5;
+      }
+      applyCombatDamage(
+        room,
+        directTarget,
+        owner,
+        sp.damage,
+        sp.x,
+        sp.y,
+        sp.z,
+        'secondary',
+        sp.kind,
+        callbacks
+      );
+    }
+
+    room.secondaryProjectiles.splice(i, 1);
   }
 
   // 4. Check round victory condition
@@ -453,7 +1103,8 @@ export function stepRoomTick(
       alive: p.sim.alive,
       lives: p.sim.lives,
     })),
-    room.roundTimer
+    room.roundTimer,
+    room.suddenDeathElapsed
   );
 
   if (outcome.finished) {
@@ -490,8 +1141,9 @@ function handlePlaneCrashDamage(
   room: ServerRoom,
   player: ServerPlayer,
   damage: number,
-  reason: 'crash' | 'oob',
-  callbacks: LoopCallbacks
+  reason: 'crash' | 'oob' | 'vacuum' | 'hazard',
+  callbacks: LoopCallbacks,
+  hazardNameFr?: string
 ): void {
   const res = applyDamageToSim(player.sim, damage);
   if (res.eliminated) {
@@ -521,6 +1173,7 @@ function handlePlaneCrashDamage(
       victimName: player.nickname,
       victimTeam: player.team,
       reason,
+      hazardNameFr,
       timestamp: now,
     });
     callbacks.emitRoomState(room);
@@ -531,7 +1184,15 @@ export function buildCompactSnapshot(room: ServerRoom): SnapshotPayload {
   const map = MAPS[room.settings.mapId] ?? MAPS.desk;
   const wz = map.windZones[0];
   const fanAngle = wz
-    ? round3(getFanYawAtTime(wz.baseYaw, wz.sweepAmplitude, wz.sweepSpeed, room.elapsedTime))
+    ? round3(
+        getFanYawAtTime(
+          wz.baseYaw,
+          wz.sweepAmplitude,
+          wz.sweepSpeed,
+          room.elapsedTime,
+          wz.continuousSpin
+        )
+      )
     : 0;
 
   const planes: SnapshotPlane[] = [];
@@ -562,6 +1223,12 @@ export function buildCompactSnapshot(room: ServerRoom): SnapshotPayload {
       invuln: p.sim.invulnTimer > 0,
       outOfBounds: round2(p.sim.outOfBoundsTimer),
       barrelRoll: round2(p.sim.barrelRollTimer),
+      secondaryPowerUp: p.sim.secondaryPowerUp,
+      secondaryUses: p.sim.secondaryUses,
+      shielded: p.sim.shieldTimer > 0 && p.sim.shieldHp > 0,
+      turboActive: p.sim.turboTimer > 0,
+      glued: p.sim.glueTimer > 0,
+      magnetActive: p.sim.magnetTimer > 0,
       lastAckSeq: p.lastProcessedSeq,
     });
   }
@@ -579,12 +1246,56 @@ export function buildCompactSnapshot(room: ServerRoom): SnapshotPayload {
     heavy: pr.heavy,
   }));
 
+  const secondaryProjectiles: SnapshotSecondaryProjectile[] = room.secondaryProjectiles.map((sp) => ({
+    id: sp.id,
+    kind: sp.kind,
+    ownerId: sp.ownerId,
+    team: sp.team,
+    x: round2(sp.x),
+    y: round2(sp.y),
+    z: round2(sp.z),
+    vx: round2(sp.vx),
+    vy: round2(sp.vy),
+    vz: round2(sp.vz),
+  }));
+
+  const powerUps: SnapshotPowerUpPickup[] = room.powerUps.map((pu) => ({
+    id: pu.id,
+    powerUpId: pu.powerUpId,
+    x: round2(pu.x),
+    y: round2(pu.y),
+    z: round2(pu.z),
+  }));
+
+  const destructibles: SnapshotDestructible[] = room.destructibles.map((d) => ({
+    id: d.id,
+    hp: Math.round(d.hp),
+    maxHp: d.maxHp,
+    destroyed: d.destroyed,
+  }));
+
+  const vac = room.suddenDeath ? computeVacuumState(room.suddenDeathElapsed, map) : null;
+
   return {
     tick: room.tick,
     serverTime: Date.now(),
     roundTimer: round2(room.roundTimer),
+    suddenDeath: room.suddenDeath,
     fanAngle,
+    mapEventTime: round2(room.elapsedTime),
     planes,
     projectiles,
+    secondaryProjectiles,
+    powerUps,
+    destructibles,
+    vacuum: vac
+      ? {
+          active: true,
+          x: round2(vac.nozzleX),
+          y: round2(vac.nozzleY),
+          z: round2(vac.nozzleZ),
+          safeRadius: round2(vac.safeRadius),
+        }
+      : null,
   };
 }

@@ -66,11 +66,19 @@ test('applyDamageToSim decrements lives and marks final elimination', () => {
     invulnTimer: 0,
     respawnTimer: 0,
     hitFlashTimer: 0,
+    shieldTimer: 0,
+    shieldHp: 0,
+    secondaryPowerUp: null,
+    secondaryUses: 0,
+    turboTimer: 0,
+    glueTimer: 0,
+    magnetTimer: 0,
   } as PlaneSimState;
 
   const first = applyDamageToSim(sim, 25);
   assert.equal(first.eliminated, true);
   assert.equal(first.lostRound, false);
+  assert.equal(first.shieldBlocked, false);
   assert.equal(sim.lives, 1);
 
   sim.alive = true;
@@ -79,6 +87,47 @@ test('applyDamageToSim decrements lives and marks final elimination', () => {
   assert.equal(second.eliminated, true);
   assert.equal(second.lostRound, true);
   assert.equal(sim.lives, 0);
+});
+
+test('bubble_shield absorbs normal damage until depleted while vacuum/OOB 9999 bypasses it', () => {
+  const sim = {
+    hp: 40,
+    alive: true,
+    lives: 3,
+    invulnTimer: 0,
+    respawnTimer: 0,
+    hitFlashTimer: 0,
+    shieldTimer: 6,
+    shieldHp: 50,
+    secondaryPowerUp: 'rubber_missile',
+    secondaryUses: 2,
+    turboTimer: 0,
+    glueTimer: 0,
+    magnetTimer: 0,
+  } as PlaneSimState;
+
+  const blocked = applyDamageToSim(sim, 30);
+  assert.equal(blocked.shieldBlocked, true);
+  assert.equal(blocked.eliminated, false);
+  assert.equal(sim.hp, 40);
+  assert.equal(sim.shieldHp, 20);
+
+  const lethalVac = applyDamageToSim(sim, 9999);
+  assert.equal(lethalVac.shieldBlocked, false);
+  assert.equal(lethalVac.eliminated, true);
+  assert.equal(sim.secondaryPowerUp, null);
+  assert.equal(sim.secondaryUses, 0);
+});
+
+test('checkRoundWinner keeps match going during sudden death until 1 survivor or 65s cap', () => {
+  const players = [
+    { id: '1', nickname: 'Léo', team: 'none' as const, alive: true, lives: 2 },
+    { id: '2', nickname: 'Mia', team: 'none' as const, alive: true, lives: 1 },
+  ];
+  assert.equal(checkRoundWinner('last_plane_ffa', players, 0, 10).finished, false);
+  const capped = checkRoundWinner('last_plane_ffa', players, 0, 65);
+  assert.equal(capped.finished, true);
+  assert.equal(capped.winnerId, '1');
 });
 
 test('isMatchOver detects best of 3 victory', () => {

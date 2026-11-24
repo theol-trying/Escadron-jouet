@@ -1,3 +1,5 @@
+import type { PowerUpId } from '../../shared/types';
+
 export interface AudioSettings {
   masterVolume: number; // 0..1
   sfxVolume: number; // 0..1
@@ -216,6 +218,106 @@ class SoundEngine {
       g.connect(this.sfxGain);
       osc.start(start);
       osc.stop(start + 0.3);
+    });
+  }
+
+  public playPickup(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const now = this.ctx.currentTime;
+    [587.33, 880].forEach((freq, idx) => {
+      if (!this.ctx || !this.sfxGain) return;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sine';
+      const t = now + idx * 0.055;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.15, t + 0.09);
+      g.gain.setValueAtTime(0.16, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.12);
+    });
+  }
+
+  public playPropBreak(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    // Toy plastic/ceramic pop & crunch
+    [420, 260, 620].forEach((freq, idx) => {
+      if (!this.ctx || !this.sfxGain) return;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = idx === 2 ? 'sine' : 'square';
+      const st = t + idx * 0.03;
+      osc.frequency.setValueAtTime(freq, st);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.45, st + 0.08);
+      g.gain.setValueAtTime(0.13, st);
+      g.gain.exponentialRampToValueAtTime(0.001, st + 0.09);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(st);
+      osc.stop(st + 0.095);
+    });
+  }
+
+  public playSecondaryUse(powerUpId: PowerUpId): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+
+    if (powerUpId === 'rubber_missile' || powerUpId === 'firecracker') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(powerUpId === 'firecracker' ? 720 : 520, t);
+      osc.frequency.exponentialRampToValueAtTime(160, t + 0.22);
+      g.gain.setValueAtTime(0.18, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    } else if (powerUpId === 'water_bomb' || powerUpId === 'glue_mine') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(340, t);
+      osc.frequency.exponentialRampToValueAtTime(170, t + 0.14);
+      g.gain.setValueAtTime(0.19, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.17);
+    } else {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, t);
+      osc.frequency.exponentialRampToValueAtTime(880, t + 0.18);
+      g.gain.setValueAtTime(0.16, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    }
+  }
+
+  public playVacuumAlert(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const now = this.ctx.currentTime;
+    [480, 360, 480].forEach((freq, i) => {
+      if (!this.ctx || !this.sfxGain) return;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      const st = now + i * 0.18;
+      osc.frequency.setValueAtTime(freq, st);
+      osc.frequency.linearRampToValueAtTime(freq * 0.72, st + 0.15);
+      g.gain.setValueAtTime(0.15, st);
+      g.gain.exponentialRampToValueAtTime(0.001, st + 0.16);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(st);
+      osc.stop(st + 0.17);
     });
   }
 }
