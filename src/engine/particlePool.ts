@@ -20,12 +20,28 @@ interface ParticleItem {
 const MAX_PARTICLES = 260;
 const MAX_PROJECTILES = 120;
 
+interface ProjectileView {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  heavy: boolean;
+  team: string;
+}
+
 export class ParticleAndProjectilePool {
   private particleMesh: THREE.InstancedMesh;
   private particles: ParticleItem[] = [];
   private cursor = 0;
 
   private projectileMesh: THREE.InstancedMesh;
+  // Additive halo around each pellet so tracers stay readable against bright rooms
+  private projectileGlowMesh: THREE.InstancedMesh;
+  // Latest server projectiles and when they arrived: positions are extrapolated every frame
+  private projectiles: ProjectileView[] = [];
+  private projectilesAt = 0;
   private dummy = new THREE.Object3D();
   private color = new THREE.Color();
 
@@ -72,6 +88,21 @@ export class ParticleAndProjectilePool {
     this.projectileMesh.frustumCulled = false;
     this.projectileMesh.count = 0;
     scene.add(this.projectileMesh);
+
+    const gGeo = new THREE.CapsuleGeometry(1.1, 3.4, 4, 8);
+    gGeo.rotateX(Math.PI / 2);
+    const gMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.projectileGlowMesh = new THREE.InstancedMesh(gGeo, gMat, MAX_PROJECTILES);
+    this.projectileGlowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.projectileGlowMesh.frustumCulled = false;
+    this.projectileGlowMesh.count = 0;
+    scene.add(this.projectileGlowMesh);
   }
 
   public spawnBurst(
@@ -175,41 +206,49 @@ export class ParticleAndProjectilePool {
     }
   }
 
-  public syncProjectiles(
-    projectiles: Array<{
-      x: number;
-      y: number;
-      z: number;
-      vx: number;
-      vy: number;
-      vz: number;
-      heavy: boolean;
-      team: string;
-    }>
-  ): void {
-    const count = Math.min(MAX_PROJECTILES, projectiles.length);
+  /** New server projectiles (20 Hz). Colours are set here, positions every frame. */
+  public syncProjectiles(projectiles: ProjectileView[]): void {
+    this.projectiles = projectiles.slice(0, MAX_PROJECTILES);
+    this.projectilesAt = performance.now();
+    const count = this.projectiles.length;
     this.projectileMesh.count = count;
+    this.projectileGlowMesh.count = count;
     for (let i = 0; i < count; i++) {
-      const pr = projectiles[i];
-      this.dummy.position.set(pr.x, pr.y, pr.z);
-      this.dummy.lookAt(pr.x + pr.vx, pr.y + pr.vy, pr.z + pr.vz);
-      this.dummy.scale.setScalar(pr.heavy ? 1.5 : 1.0);
+      const pr = this.projectiles[i];
+      const hex =
+        pr.team === 'red' ? 0xff4d4d : pr.team === 'blue' ? 0x38bdf8 : pr.heavy ? 0xf97316 : 0xfacc15;
+      this.color.setHex(hex);
+      this.projectileMesh.setColorAt(i, this.color);
+      this.projectileGlowMesh.setColorAt(i, this.color);
+    }
+    if (this.projectileMesh.instanceColor) this.projectileMesh.instanceColor.needsUpdate = true;
+    if (this.projectileGlowMesh.instanceColor) this.projectileGlowMesh.instanceColor.needsUpdate = true;
+    this.updateProjectiles(this.projectilesAt);
+  }
+
+  /**
+   * Moves pellets smoothly between server updates (they fly straight) and stretches them into
+   * streaks along their velocity, so shots read as tracers instead of 20 Hz jumps.
+   */
+  public updateProjectiles(nowMs: number): void {
+    const count = this.projectiles.length;
+    if (count === 0) return;
+    const age = Math.min(0.12, Math.max(0, (nowMs - this.projectilesAt) / 1000));
+    for (let i = 0; i < count; i++) {
+      const pr = this.projectiles[i];
+      const x = pr.x + pr.vx * age;
+      const y = pr.y + pr.vy * age;
+      const z = pr.z + pr.vz * age;
+      this.dummy.position.set(x, y, z);
+      this.dummy.lookAt(x + pr.vx, y + pr.vy, z + pr.vz);
+      const w = pr.heavy ? 1.5 : 1.0;
+      this.dummy.scale.set(w, w, w * 1.9);
       this.dummy.updateMatrix();
       this.projectileMesh.setMatrixAt(i, this.dummy.matrix);
-      const hex =
-        pr.team === 'red'
-          ? 0xff4d4d
-          : pr.team === 'blue'
-            ? 0x38bdf8
-            : pr.heavy
-              ? 0xf97316
-              : 0xfacc15;
-      this.projectileMesh.setColorAt(i, this.color.setHex(hex));
+      this.projectileGlowMesh.setMatrixAt(i, this.dummy.matrix);
     }
     this.projectileMesh.instanceMatrix.needsUpdate = true;
-    if (this.projectileMesh.instanceColor) {
-      this.projectileMesh.instanceColor.needsUpdate = true;
-    }
+    this.projectileGlowMesh.instanceMatrix.needsUpdate = true;
   }
 
   public dispose(): void {
@@ -217,5 +256,7 @@ export class ParticleAndProjectilePool {
     (this.particleMesh.material as THREE.Material).dispose();
     this.projectileMesh.geometry.dispose();
     (this.projectileMesh.material as THREE.Material).dispose();
+    this.projectileGlowMesh.geometry.dispose();
+    (this.projectileGlowMesh.material as THREE.Material).dispose();
   }
 }

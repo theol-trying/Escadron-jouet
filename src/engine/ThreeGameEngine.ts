@@ -37,6 +37,8 @@ import { buildGardenScene } from './maps/buildGardenScene';
 import { buildKitchenScene } from './maps/buildKitchenScene';
 import type { MapSceneHandles } from './maps/types';
 import { ParticleAndProjectilePool } from './particlePool';
+import { WingTrails, type TrailInput } from './wingTrails';
+import { DebrisField } from './debris';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
 
 // Hangar preview spot on the desk (design units 18, 115, 18), following the arena scale
@@ -166,6 +168,8 @@ export class ThreeGameEngine {
   private currentMap: MapDefinition = MAPS.desk;
   private mapHandles: MapSceneHandles;
   private pool: ParticleAndProjectilePool;
+  private trails: WingTrails;
+  private debris: DebrisField;
 
   private mode: EngineMode = 'title_tour';
   private frameId = 0;
@@ -326,6 +330,8 @@ export class ThreeGameEngine {
     this.maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     this.mapHandles = this.buildMapScene(this.currentMapId);
     this.pool = new ParticleAndProjectilePool(this.scene);
+    this.trails = new WingTrails(this.scene);
+    this.debris = new DebrisField(this.scene);
     this.extrasRenderer = new MatchExtrasRenderer(this.scene);
 
     // Ambient planes for the title flyover
@@ -485,6 +491,8 @@ export class ThreeGameEngine {
   }
 
   public resetMatchVisuals(): void {
+    this.trails.clear();
+    this.debris.clear();
     for (const pv of this.planeVisuals.values()) {
       this.scene.remove(pv.rig.root);
       pv.rig.dispose();
@@ -604,6 +612,8 @@ export class ThreeGameEngine {
         if (!this.knownDestroyedProps.has(d.id)) {
           this.knownDestroyedProps.add(d.id);
           if (cfg) {
+            // The prop bursts into chunky pieces of its own colours
+            this.debris.burst(cfg.x, cfg.y, cfg.z, cfg.radius, DebrisField.colorsOf(group));
             this.pool.spawnBurst(
               cfg.x,
               cfg.y,
@@ -995,6 +1005,8 @@ export class ThreeGameEngine {
     this.mapHandles.updateAnimations(animTime, dt);
 
     this.pool.updateParticles(dt);
+    this.pool.updateProjectiles(now);
+    this.debris.update(dt);
     this.extrasRenderer.syncAndAnimate(
       this.elapsedTime,
       this.latestSnapshot?.powerUps ?? [],
@@ -1197,6 +1209,24 @@ export class ThreeGameEngine {
       focusQuat = spec.interpQuat;
       this.currentSpectatingName = this.roomPlayersMeta.get(spec.id)?.nickname ?? '';
     }
+
+    // Wing trails (white ribbons from the wingtips, brighter at full throttle or turbo)
+    const trailInputs: TrailInput[] = [];
+    for (const pv of this.planeVisuals.values()) {
+      const latest = pv.buffer[pv.buffer.length - 1]?.data;
+      const meta = this.roomPlayersMeta.get(pv.id);
+      const arch = PLANE_ARCHETYPES[meta?.planeId ?? 'plastic_jet'] ?? PLANE_ARCHETYPES.plastic_jet;
+      const speed = pv.id === this.localPlayerId ? (this.localSim?.speed ?? 0) : (latest?.speed ?? 0);
+      trailInputs.push({
+        id: pv.id,
+        position: pv.interpPos,
+        quaternion: pv.interpQuat,
+        halfSpan: arch.wingspan * 0.5 - 0.3,
+        visible: pv.rig.root.visible,
+        intense: Boolean(latest?.turboActive) || speed > arch.maxSpeed * 1.02,
+      });
+    }
+    this.trails.update(trailInputs, dt);
 
     // Cockpit view only while flying our own plane (spectating always uses the chase view)
     const cockpitActive =
@@ -1427,6 +1457,8 @@ export class ThreeGameEngine {
     }
     this.mapHandles.dispose();
     this.pool.dispose();
+    this.trails.dispose();
+    this.debris.dispose();
     this.extrasRenderer.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
