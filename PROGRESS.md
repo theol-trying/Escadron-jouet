@@ -33,7 +33,11 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
 
 11. [x] README en français (25/11) : modes, pièces, commandes, paramètres, ajout de musiques (avec retrait des
         métadonnées pour le garde-fou), tableau des réglages d’équilibrage, déblocages, mise en ligne.
-12. [ ] Audit complet + propositions (25/11, en cours).
+12. [x] Audit (25/11) : 56/56 tests, 0 vulnérabilité, 0 erreur console, 5-8 ms de calcul par image.
+        À corriger (en attente du choix de l’utilisateur) : bots bloqués au 3e anneau de la cuisine en course
+        (ils tournent autour sans s’aligner) ; Roi du ciel trop long à 6 avions (personne n’atteint 40 s en 3 min,
+        meilleur 11-15 s) ; dépendances inutiles (motion, autoprefixer) ; metadata.json d’AI Studio ;
+        pas d’image d’aperçu pour le lien d’invitation ; pas de cache longue durée sur /assets.
 
 ➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
   réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
