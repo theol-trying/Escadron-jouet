@@ -6,7 +6,8 @@ restaurer avec `git checkout refs/autosave/latest -- .`). Commit + push à chaqu
 
 1. [x] Tir à la souris rétabli sur les PC à écran tactile (interface tactile seulement si le pointeur principal
        est un doigt, ou dès qu'on touche l'écran ; la souris la masque).
-2. [ ] Mode équipes : une équipe qui se vide en cours de match ne bloque plus la manche suivante.
+2. [x] Mode équipes : une équipe qui se vide en cours de match ne bloque plus la manche suivante
+       (`ensureBothTeams` : on déplace le moins de pilotes possible, bots d'abord ; seul pilote → fin de match).
 3. [ ] Détails : commandes tactiles masquées en spectateur, retours de tir sur avion invulnérable, favicon, config Vite.
 4. [ ] Arènes agrandies et avions ralentis (réglage demandé après essai : cartes trop petites, avions trop rapides).
 5. [ ] Vérification complète (lint, tests, build, sondes réseau, navigateur bureau + mobile), puis propositions.

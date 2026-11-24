@@ -40,6 +40,32 @@ export function autoBalanceTeams<T extends { id: string; team: TeamId }>(players
   }
 }
 
+/**
+ * Before a new Teams round: if a team became empty mid-match (someone left, bots off), move as
+ * few pilots as possible — bots first — so both teams are populated again. Returns false when
+ * that is impossible (fewer than 2 pilots left): the match must then end.
+ */
+export function ensureBothTeams<T extends { isBot: boolean; team: TeamId }>(players: T[]): boolean {
+  const hasRed = players.some((p) => p.team === 'red');
+  const hasBlue = players.some((p) => p.team === 'blue');
+  if (hasRed && hasBlue) return true;
+  if (players.length < 2) return false;
+
+  const targetTeam: TeamId = hasRed ? 'blue' : 'red';
+  const movable = players.filter((p) => p.team !== targetTeam);
+  const toMove = Math.floor(players.length / 2);
+  const ordered = [...movable.filter((p) => p.isBot).reverse(), ...movable.filter((p) => !p.isBot).reverse()];
+  for (const p of ordered.slice(0, toMove)) {
+    p.team = targetTeam;
+  }
+  // Any leftover unassigned pilot joins the other team
+  const otherTeam: TeamId = targetTeam === 'red' ? 'blue' : 'red';
+  for (const p of players) {
+    if (p.team !== 'red' && p.team !== 'blue') p.team = otherTeam;
+  }
+  return true;
+}
+
 export function pickBotToRemoveForBalance<T extends { isBot: boolean; team: TeamId }>(
   players: T[],
   mode: GameModeId

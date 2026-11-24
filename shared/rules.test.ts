@@ -10,6 +10,7 @@ import {
   assignBalancedTeam,
   canDamageTarget,
   checkRoundWinner,
+  ensureBothTeams,
   generateRoomCode,
   isMatchOver,
   pickBotToRemoveForBalance,
@@ -62,6 +63,34 @@ test('pickBotToRemoveForBalance removes bots from oversized team first and rebal
   rebalanceBotTeams(skewed);
   assert.equal(skewed.filter((p) => p.team === 'red').length, 2);
   assert.equal(skewed.filter((p) => p.team === 'blue').length, 2);
+});
+
+test('ensureBothTeams refills an emptied team with as few moves as possible, bots first', () => {
+  const twoReds = [
+    { id: 'a', isBot: false, team: 'red' as TeamId },
+    { id: 'b', isBot: false, team: 'red' as TeamId },
+  ];
+  assert.equal(ensureBothTeams(twoReds), true);
+  assert.deepEqual(twoReds.map((p) => p.team).sort(), ['blue', 'red']);
+
+  const mixed = [
+    { id: 'h1', isBot: false, team: 'blue' as TeamId },
+    { id: 'h2', isBot: false, team: 'blue' as TeamId },
+    { id: 'b1', isBot: true, team: 'blue' as TeamId },
+  ];
+  assert.equal(ensureBothTeams(mixed), true);
+  assert.equal(mixed.find((p) => p.id === 'b1')?.team, 'red', 'the bot moves before any human');
+  assert.equal(mixed.filter((p) => p.team === 'red').length, 1);
+
+  const alreadyOk = [
+    { id: 'r', isBot: false, team: 'red' as TeamId },
+    { id: 'u', isBot: false, team: 'blue' as TeamId },
+  ];
+  assert.equal(ensureBothTeams(alreadyOk), true);
+  assert.deepEqual(alreadyOk.map((p) => p.team), ['red', 'blue']);
+
+  const alone = [{ id: 'solo', isBot: false, team: 'red' as TeamId }];
+  assert.equal(ensureBothTeams(alone), false);
 });
 
 test('canDamageTarget blocks friendly fire in teams mode when disabled', () => {

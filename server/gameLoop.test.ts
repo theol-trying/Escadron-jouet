@@ -220,6 +220,34 @@ test('slow sudden-death vacuum kills emit killfeed and credit death', () => {
   assert.equal(killFeed[0].victimName, 'victim');
 });
 
+test('teams round transition: an emptied team is refilled, a lone pilot ends the match', () => {
+  // 3 pilots left, all red after a departure: the next round starts with both teams populated
+  const a = makePlayer('a', { team: 'red' });
+  const b = makePlayer('b', { team: 'red' });
+  const c = makePlayer('c', { team: 'red' });
+  const room = makeRoom([a, b, c]);
+  room.settings.mode = 'last_plane_teams';
+  room.phase = 'round_end';
+  room.roundEndTimer = 0.01;
+  room.teamRoundWins = { red: 1, blue: 0 };
+  stepRoomTick(room, 1 / 30, makeCallbacks());
+  assert.equal(room.phase, 'countdown');
+  assert.equal(room.roundNumber, 2);
+  assert.equal(room.roundHadBothTeams, true);
+  const teams = [a, b, c].map((p) => p.team);
+  assert.ok(teams.includes('red') && teams.includes('blue'));
+
+  // A single pilot left: the match ends instead of running an unwinnable round
+  const solo = makePlayer('solo', { team: 'red' });
+  const room2 = makeRoom([solo]);
+  room2.settings.mode = 'last_plane_teams';
+  room2.phase = 'round_end';
+  room2.roundEndTimer = 0.01;
+  room2.teamRoundWins = { red: 1, blue: 0 };
+  stepRoomTick(room2, 1 / 30, makeCallbacks());
+  assert.equal(room2.phase, 'match_end');
+});
+
 test('2 humans in red with bots off in teams mode do not end round immediately in stepRoomTick', () => {
   const p1 = makePlayer('p1', { team: 'red' });
   const p2 = makePlayer('p2', { team: 'red' });

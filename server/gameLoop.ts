@@ -14,6 +14,7 @@ import {
   applyDamageToSim,
   canDamageTarget,
   checkRoundWinner,
+  ensureBothTeams,
   isMatchOver,
 } from '../shared/rules';
 import type {
@@ -466,17 +467,25 @@ export function stepRoomTick(
     room.roundEndTimer -= dt;
     if (room.roundEndTimer <= 0) {
       const sb = Array.from(room.players.values()).map((p) => ({ roundWins: p.roundWins }));
-      if (isMatchOver(room.settings.mode, room.roundNumber, room.maxRounds, room.teamRoundWins, sb)) {
+      const matchOver = isMatchOver(
+        room.settings.mode,
+        room.roundNumber,
+        room.maxRounds,
+        room.teamRoundWins,
+        sb
+      );
+      const isTeams = room.settings.mode === 'last_plane_teams';
+      // A team emptied mid-match (player left, bots off): refill it from the other team, or end
+      // the match when a single pilot remains — otherwise the next round could only end on the timer.
+      const teamsPlayable =
+        matchOver || !isTeams || ensureBothTeams(Array.from(room.players.values()));
+      if (matchOver || !teamsPlayable) {
         room.phase = 'match_end';
       } else {
         room.roundNumber++;
         room.roundTimer = 240;
         room.lastRoundWinner = null;
-        const roster = Array.from(room.players.values());
-        room.roundHadBothTeams =
-          room.settings.mode === 'last_plane_teams' &&
-          roster.some((p) => p.team === 'red') &&
-          roster.some((p) => p.team === 'blue');
+        room.roundHadBothTeams = isTeams;
         initRoundEntities(room);
         let idx = 0;
         for (const player of room.players.values()) {
