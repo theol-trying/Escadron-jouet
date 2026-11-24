@@ -407,8 +407,11 @@ function applyCombatDamage(
   callbacks: LoopCallbacks
 ): void {
   const now = Date.now();
+  // Spawn protection absorbs the hit entirely: report 0 damage so clients show a light
+  // "deflected" spark instead of a full hit (sound + camera shake) that did nothing.
+  const absorbedBySpawnProtection = target.sim.invulnTimer > 0;
   const res = applyDamageToSim(target.sim, damage);
-  if (target.sim.invulnTimer <= 0 && attacker) {
+  if (!absorbedBySpawnProtection && attacker) {
     target.lastHitBy = attacker.id;
     target.lastHitAt = now;
   }
@@ -416,7 +419,7 @@ function applyCombatDamage(
   callbacks.emitHit(room, {
     targetId: target.id,
     attackerId: attacker?.id ?? target.id,
-    damage: res.shieldBlocked ? 0 : damage,
+    damage: res.shieldBlocked || absorbedBySpawnProtection ? 0 : damage,
     x: round2(hx),
     y: round2(hy),
     z: round2(hz),

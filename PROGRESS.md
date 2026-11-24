@@ -8,7 +8,8 @@ restaurer avec `git checkout refs/autosave/latest -- .`). Commit + push à chaqu
        est un doigt, ou dès qu'on touche l'écran ; la souris la masque).
 2. [x] Mode équipes : une équipe qui se vide en cours de match ne bloque plus la manche suivante
        (`ensureBothTeams` : on déplace le moins de pilotes possible, bots d'abord ; seul pilote → fin de match).
-3. [ ] Détails : commandes tactiles masquées en spectateur, retours de tir sur avion invulnérable, favicon, config Vite.
+3. [x] Détails : commandes tactiles masquées en spectateur, tirs absorbés (protection d'apparition, bouclier,
+       ruban) sans son ni secousse, favicon, config Vite sans `__dirname`, esbuild 0.28.2 (0 vulnérabilité).
 4. [ ] Arènes agrandies et avions ralentis (réglage demandé après essai : cartes trop petites, avions trop rapides).
 5. [ ] Vérification complète (lint, tests, build, sondes réseau, navigateur bureau + mobile), puis propositions.
 

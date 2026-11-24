@@ -571,6 +571,12 @@ export class ThreeGameEngine {
   }
 
   public ingestHitEvent(ev: HitFeedbackEvent): void {
+    if (ev.damage <= 0 && !ev.fatal) {
+      // Absorbed (spawn protection, bubble shield) or repair: light spark only — no hit sound,
+      // no hit flash, no camera shake for something that dealt no damage.
+      this.pool.spawnBurst(ev.x, ev.y, ev.z, 4, [0xbae6fd, 0xffffff], 50, 1.0, 20, 0.25);
+      return;
+    }
     this.pool.spawnBurst(ev.x, ev.y, ev.z, ev.fatal ? 18 : 7, [0xfacc15, 0xf97316, 0xffffff], 50, 1.3, 20, 0.35);
     const pv = this.planeVisuals.get(ev.targetId);
     if (pv) {

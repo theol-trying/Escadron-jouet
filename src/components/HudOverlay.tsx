@@ -70,6 +70,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const oobBannerRef = useRef<HTMLDivElement>(null);
   const oobCountdownRef = useRef<HTMLSpanElement>(null);
   const spectatorBarRef = useRef<HTMLDivElement>(null);
+  const touchWrapRef = useRef<HTMLDivElement>(null);
   const spectatorNameRef = useRef<HTMLSpanElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const labelsContainerRef = useRef<HTMLDivElement>(null);
@@ -141,12 +142,30 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         }
       }
 
+      const spectating = !data.alive && data.lives <= 0 && room.phase === 'playing';
       if (spectatorBarRef.current && spectatorNameRef.current) {
-        if (!data.alive && data.lives <= 0 && room.phase === 'playing') {
+        if (spectating) {
           spectatorBarRef.current.style.display = 'flex';
           spectatorNameRef.current.textContent = data.spectatingName || '—';
         } else {
           spectatorBarRef.current.style.display = 'none';
+        }
+      }
+
+      // Eliminated for the round: hide the flight controls (they overlapped the spectator bar)
+      // and release any held touch input so nothing stays "pressed" until the next round.
+      if (touchWrapRef.current) {
+        const wasHidden = touchWrapRef.current.style.display === 'none';
+        touchWrapRef.current.style.display = spectating ? 'none' : '';
+        if (spectating && !wasHidden) {
+          touchInputRef.current = {
+            aimActive: false,
+            aimX: 0,
+            aimY: 0,
+            throttle: 0,
+            boost: false,
+            fire: false,
+          };
         }
       }
 
@@ -643,14 +662,16 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         </div>
       </div>
 
-      {/* Mobile / Touch Flight Controls */}
-      <TouchControls
-        visible={touchEnabled && room.phase === 'playing' && !paused && !showScoreboard}
-        touchInputRef={touchInputRef}
-        onUseSecondary={onUseSecondary}
-        secondaryBtnRef={touchSecondaryBtnRef}
-        secondaryLabelRef={touchSecondaryLabelRef}
-      />
+      {/* Mobile / Touch Flight Controls (wrapper hidden imperatively while spectating) */}
+      <div ref={touchWrapRef}>
+        <TouchControls
+          visible={touchEnabled && room.phase === 'playing' && !paused && !showScoreboard}
+          touchInputRef={touchInputRef}
+          onUseSecondary={onUseSecondary}
+          secondaryBtnRef={touchSecondaryBtnRef}
+          secondaryLabelRef={touchSecondaryLabelRef}
+        />
+      </div>
 
       {/* Sudden Death: Giant Vacuum Alert */}
       <div
