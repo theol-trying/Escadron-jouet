@@ -135,6 +135,7 @@ export interface ServerRoom {
   roundEndTimer: number;
   suddenDeath: boolean;
   suddenDeathElapsed: number;
+  roundHadBothTeams: boolean;
   teamRoundWins: { red: number; blue: number };
   lastRoundWinner: {
     winnerId: string | null;

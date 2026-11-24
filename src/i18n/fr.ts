@@ -82,6 +82,7 @@ export const FR = {
       { key: 'P / Échap', desc: 'Pause' },
       { key: 'M', desc: 'Couper / rétablir le son' },
       { key: 'Manette', desc: 'Stick gauche : virage · Gâchette : tirer · A : turbo · B : objet' },
+      { key: 'Tactile', desc: 'Joystick gauche : viser · Gaz + / Frein · Boutons droits : Tirer, Turbo, Objet' },
     ],
   },
 
@@ -148,10 +149,20 @@ export const FR = {
     pause: 'Pause',
   },
 
+  touch: {
+    aim: 'Viser',
+    throttleUp: 'Gaz +',
+    throttleDown: 'Frein',
+    fire: 'Tirer',
+    boost: 'Turbo',
+    secondaryEmpty: 'Objet',
+  },
+
   errors: {
     roomNotFound: 'Salon introuvable. Vérifie le code à 5 lettres.',
     roomFull: 'Ce salon est complet.',
     invalidCode: 'Entre un code valide à 5 lettres.',
     disconnected: 'Connexion perdue avec le serveur.',
+    teamsNeedTwoPlayers: 'Il faut au moins deux pilotes (un dans chaque équipe) pour lancer en mode Équipes.',
   },
 } as const;

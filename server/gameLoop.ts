@@ -1,3 +1,4 @@
+import { computeLagCompensationMs, MAX_LAG_COMPENSATION_MS } from '../shared/constants';
 import {
   getFanYawAtTime,
   getPlaneForward,
@@ -204,7 +205,7 @@ export interface LoopCallbacks {
 
 function getRewindSnapshot(room: ServerRoom, rewindMs: number): RewindFrame | null {
   if (room.rewindHistory.length === 0) return null;
-  const clampedMs = Math.min(200, Math.max(0, rewindMs));
+  const clampedMs = Math.min(MAX_LAG_COMPENSATION_MS, Math.max(0, rewindMs));
   const targetTime = Date.now() - clampedMs;
   let best = room.rewindHistory[room.rewindHistory.length - 1];
   let bestDiff = Math.abs(best.time - targetTime);
@@ -471,6 +472,11 @@ export function stepRoomTick(
         room.roundNumber++;
         room.roundTimer = 240;
         room.lastRoundWinner = null;
+        const roster = Array.from(room.players.values());
+        room.roundHadBothTeams =
+          room.settings.mode === 'last_plane_teams' &&
+          roster.some((p) => p.team === 'red') &&
+          roster.some((p) => p.team === 'blue');
         initRoundEntities(room);
         let idx = 0;
         for (const player of room.players.values()) {
@@ -828,7 +834,10 @@ export function stepRoomTick(
     });
   }
   room.rewindHistory.push({ time: now, planes: planePositions });
-  while (room.rewindHistory.length > 0 && now - room.rewindHistory[0].time > 260) {
+  while (
+    room.rewindHistory.length > 0 &&
+    now - room.rewindHistory[0].time > MAX_LAG_COMPENSATION_MS + 50
+  ) {
     room.rewindHistory.shift();
   }
 
@@ -883,7 +892,8 @@ export function stepRoomTick(
     }
 
     const owner = room.players.get(proj.ownerId);
-    const rewind = owner && !owner.isBot ? getRewindSnapshot(room, owner.ping * 0.5) : null;
+    const rewind =
+      owner && !owner.isBot ? getRewindSnapshot(room, computeLagCompensationMs(owner.ping)) : null;
 
     let hitPlayer: ServerPlayer | null = null;
     for (const target of allPlayers) {
@@ -1141,7 +1151,8 @@ export function stepRoomTick(
       lives: p.sim.lives,
     })),
     room.roundTimer,
-    room.suddenDeathElapsed
+    room.suddenDeathElapsed,
+    room.roundHadBothTeams ? { hadBothTeams: true } : undefined
   );
 
   if (outcome.finished) {

@@ -554,6 +554,7 @@ export class RoomManager {
       roundEndTimer: 0,
       suddenDeath: false,
       suddenDeathElapsed: 0,
+      roundHadBothTeams: false,
       teamRoundWins: { red: 0, blue: 0 },
       lastRoundWinner: null,
       rewindHistory: [],
@@ -707,6 +708,30 @@ export class RoomManager {
 
   private startMatch(room: ServerRoom): void {
     this.syncBots(room);
+
+    if (room.settings.mode === 'last_plane_teams') {
+      const roster = Array.from(room.players.values());
+      let hasRed = roster.some((p) => p.team === 'red');
+      let hasBlue = roster.some((p) => p.team === 'blue');
+      if ((!hasRed || !hasBlue) && roster.length >= 2) {
+        autoBalanceTeams(roster);
+        hasRed = roster.some((p) => p.team === 'red');
+        hasBlue = roster.some((p) => p.team === 'blue');
+      }
+      if (!hasRed || !hasBlue) {
+        this.io
+          .to(room.code)
+          .emit(
+            'room:error',
+            'Il faut au moins deux pilotes (un dans chaque équipe) pour lancer en mode Équipes.'
+          );
+        return;
+      }
+      room.roundHadBothTeams = true;
+    } else {
+      room.roundHadBothTeams = false;
+    }
+
     room.roundNumber = 1;
     room.maxRounds = 3;
     room.roundTimer = 240;

@@ -110,7 +110,8 @@ export function checkRoundWinner(
   mode: GameModeId,
   players: RoundCheckPlayer[],
   roundTimerRemaining: number,
-  suddenDeathElapsed = 0
+  suddenDeathElapsed = 0,
+  options?: { hadBothTeams?: boolean }
 ): RoundOutcome {
   const activeContenders = players.filter((p) => p.alive || p.lives > 0);
   const suddenDeathTimedOut = roundTimerRemaining <= 0 && suddenDeathElapsed >= 65;
@@ -143,10 +144,13 @@ export function checkRoundWinner(
   }
 
   // last_plane_teams
+  const hadBothTeams =
+    options?.hadBothTeams ??
+    (players.some((p) => p.team === 'red') && players.some((p) => p.team === 'blue'));
   const redAlive = activeContenders.some((p) => p.team === 'red');
   const blueAlive = activeContenders.some((p) => p.team === 'blue');
 
-  if (players.length > 1 && (!redAlive || !blueAlive)) {
+  if ((players.length > 1 || options?.hadBothTeams === true) && hadBothTeams && (!redAlive || !blueAlive)) {
     const winningTeam: TeamId = redAlive ? 'red' : blueAlive ? 'blue' : 'none';
     return {
       finished: true,

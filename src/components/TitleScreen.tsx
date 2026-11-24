@@ -37,7 +37,7 @@ export function TitleScreen({
   const selectedPlane = PLANE_ARCHETYPES[cosmetics.planeId];
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-5 md:p-10">
+    <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between overflow-y-auto p-4 sm:p-5 md:p-10">
       {/* Soft left gradient scrim for crisp legibility over the live 3D desk flyover */}
       <div
         className="pointer-events-none fixed inset-y-0 left-0 w-full max-w-xl bg-gradient-to-r from-slate-950/75 via-slate-950/35 to-transparent"

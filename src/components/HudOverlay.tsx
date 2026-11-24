@@ -1,10 +1,11 @@
-import { useImperativeHandle, useRef, forwardRef } from 'react';
+import { useImperativeHandle, useRef, forwardRef, type MutableRefObject } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Volume2, VolumeX } from 'lucide-react';
 import { MAPS } from '../../shared/maps/index';
 import { POWERUPS } from '../../shared/powerups';
 import type { HudFrameData } from '../engine/ThreeGameEngine';
 import type { KillFeedEntry, RoomState } from '../../shared/types';
 import { FR } from '../i18n/fr';
+import { TouchControls, type TouchInputState } from './TouchControls';
 
 export interface HudHandle {
   updateFrame: (data: HudFrameData, aimX: number, aimY: number, boosting: boolean) => void;
@@ -18,6 +19,9 @@ interface HudOverlayProps {
   paused: boolean;
   showScoreboard: boolean;
   killFeed: KillFeedEntry[];
+  touchEnabled: boolean;
+  touchInputRef: MutableRefObject<TouchInputState>;
+  onUseSecondary: () => void;
   onToggleMute: () => void;
   onTogglePause: () => void;
   onResume: () => void;
@@ -41,6 +45,9 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
     paused,
     showScoreboard,
     killFeed,
+    touchEnabled,
+    touchInputRef,
+    onUseSecondary,
     onToggleMute,
     onTogglePause,
     onResume,
@@ -55,6 +62,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const heatFillRef = useRef<HTMLDivElement>(null);
   const overheatBadgeRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
+  const mobileSpeedRef = useRef<HTMLSpanElement>(null);
   const timerRef = useRef<HTMLSpanElement>(null);
   const livesWrapRef = useRef<HTMLDivElement>(null);
   const reticleRef = useRef<HTMLDivElement>(null);
@@ -68,7 +76,10 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const secondarySlotRef = useRef<HTMLDivElement>(null);
   const secondaryNameRef = useRef<HTMLDivElement>(null);
   const secondaryUsesRef = useRef<HTMLSpanElement>(null);
+  const touchSecondaryBtnRef = useRef<HTMLButtonElement>(null);
+  const touchSecondaryLabelRef = useRef<HTMLSpanElement>(null);
   const statusBadgesRef = useRef<HTMLDivElement>(null);
+  const mobileStatusBadgesRef = useRef<HTMLDivElement>(null);
   const vacuumBannerRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -94,6 +105,9 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
       }
       if (speedRef.current) {
         speedRef.current.textContent = `${data.speed}`;
+      }
+      if (mobileSpeedRef.current) {
+        mobileSpeedRef.current.textContent = `${data.speed}`;
       }
       if (timerRef.current) {
         timerRef.current.textContent = formatTimer(data.roundTimer);
@@ -156,21 +170,48 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         }
       }
 
+      if (touchSecondaryBtnRef.current && touchSecondaryLabelRef.current) {
+        if (data.secondaryPowerUp && data.secondaryUses > 0) {
+          const def = POWERUPS[data.secondaryPowerUp];
+          touchSecondaryBtnRef.current.style.borderColor = def.colorHex;
+          touchSecondaryBtnRef.current.style.backgroundColor = 'rgba(15, 23, 42, 0.94)';
+          touchSecondaryBtnRef.current.style.color = def.accentHex;
+          touchSecondaryLabelRef.current.textContent = `${def.nameFr} x${data.secondaryUses}`;
+        } else {
+          touchSecondaryBtnRef.current.style.borderColor = '#18181B';
+          touchSecondaryBtnRef.current.style.backgroundColor = 'rgba(30, 41, 59, 0.85)';
+          touchSecondaryBtnRef.current.style.color = '#94A3B8';
+          touchSecondaryLabelRef.current.textContent = FR.touch.secondaryEmpty;
+        }
+      }
+
+      const badgeParts: string[] = [];
+      if (data.shielded) {
+        badgeParts.push(
+          `<span class="rounded-lg border border-black bg-purple-600 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.shieldActive}</span>`
+        );
+      }
+      if (data.turboActive) {
+        badgeParts.push(
+          `<span class="rounded-lg border border-black bg-emerald-500 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.turboActive}</span>`
+        );
+      }
+      if (data.magnetActive) {
+        badgeParts.push(
+          `<span class="rounded-lg border border-black bg-pink-500 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.magnetActive}</span>`
+        );
+      }
+      if (data.glued) {
+        badgeParts.push(
+          `<span class="rounded-lg border border-black bg-yellow-400 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.gluedWarning}</span>`
+        );
+      }
+      const badgesHtml = badgeParts.join('');
       if (statusBadgesRef.current) {
-        let badgesHtml = '';
-        if (data.shielded) {
-          badgesHtml += `<span class="rounded-lg border border-black bg-purple-600 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.shieldActive}</span>`;
-        }
-        if (data.turboActive) {
-          badgesHtml += `<span class="rounded-lg border border-black bg-emerald-500 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.turboActive}</span>`;
-        }
-        if (data.magnetActive) {
-          badgesHtml += `<span class="rounded-lg border border-black bg-pink-500 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.magnetActive}</span>`;
-        }
-        if (data.glued) {
-          badgesHtml += `<span class="rounded-lg border border-black bg-yellow-400 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.gluedWarning}</span>`;
-        }
         statusBadgesRef.current.innerHTML = badgesHtml;
+      }
+      if (mobileStatusBadgesRef.current) {
+        mobileStatusBadgesRef.current.innerHTML = badgesHtml;
       }
 
       if (vacuumBannerRef.current) {
@@ -364,15 +405,95 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         </svg>
       </div>
 
-      {/* Top-Left: Vitality, Lives, Boost, Overheat */}
-      <div className="toy-panel-dark fixed left-4 top-4 flex w-56 flex-col gap-2 rounded-2xl p-3 text-white">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+      {/* Top Row on Mobile (<640px): Match Status Pill + Utility Buttons cleanly separated */}
+      <div className="fixed inset-x-2 top-2 flex items-start justify-between gap-2 sm:contents">
+        {/* Top-Center: Round, Score/Alive, Timer, Ping */}
+        <div
+          data-testid="hud-top-center"
+          className="toy-panel-dark flex items-center gap-2 rounded-2xl px-2.5 py-1.5 text-white sm:fixed sm:left-1/2 sm:top-4 sm:-translate-x-1/2 sm:gap-4 sm:px-4 sm:py-2"
+        >
+          <div className="text-center">
+            <div className="text-[9px] font-bold uppercase text-slate-400 sm:text-[10px]">
+              {FR.hud.round}
+            </div>
+            <div className="font-mono-num text-xs font-extrabold text-amber-300 sm:text-sm">
+              {room.roundNumber}/{room.maxRounds}
+            </div>
+          </div>
+
+          <div className="h-5 w-px bg-slate-700 sm:h-6" />
+
+          {room.settings.mode === 'last_plane_teams' ? (
+            <div className="flex items-center gap-1.5 font-mono-num text-xs font-extrabold sm:gap-2.5 sm:text-sm">
+              <span className="text-red-400">{room.teamRoundWins.red}</span>
+              <span className="text-slate-500">-</span>
+              <span className="text-sky-400">{room.teamRoundWins.blue}</span>
+            </div>
+          ) : (
+            <div className="text-center">
+              <div className="text-[9px] font-bold uppercase text-slate-400 sm:text-[10px]">
+                {FR.hud.alive}
+              </div>
+              <div className="font-mono-num text-xs font-extrabold text-emerald-400 sm:text-sm">
+                {aliveCount}
+              </div>
+            </div>
+          )}
+
+          <div className="h-5 w-px bg-slate-700 sm:h-6" />
+
+          <span ref={timerRef} className="font-mono-num text-base font-extrabold text-white sm:text-xl">
+            04:00
+          </span>
+
+          <div className="h-5 w-px bg-slate-700 sm:h-6" />
+
+          <span className="font-mono-num whitespace-nowrap text-[11px] font-bold text-slate-300 sm:text-xs">
+            {ping} {FR.hud.pingUnit}
+          </span>
+        </div>
+
+        {/* Top-Right Utility Buttons */}
+        <div className="pointer-events-auto flex shrink-0 items-center gap-1.5 sm:fixed sm:right-4 sm:top-4 sm:gap-2">
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={FR.hud.mute}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onToggleMute();
+            }}
+            className="toy-btn flex h-9 w-9 items-center justify-center rounded-xl bg-amber-300 text-slate-950 sm:h-10 sm:w-10"
+          >
+            {muted ? <VolumeX className="h-4 w-4 sm:h-5 sm:w-5" /> : <Volume2 className="h-4 w-4 sm:h-5 sm:w-5" />}
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={FR.hud.pause}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onTogglePause();
+            }}
+            className="toy-btn flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-950 sm:h-10 sm:w-10"
+          >
+            <Pause className="h-4 w-4 sm:h-5 sm:w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Top-Left (Row 2 Left on <640px): Vitality, Lives, Boost, Overheat */}
+      <div
+        data-testid="hud-top-left"
+        className="toy-panel-dark fixed left-2 top-14 flex w-36 flex-col gap-1.5 rounded-2xl p-2 text-white sm:left-4 sm:top-4 sm:w-56 sm:gap-2 sm:p-3"
+      >
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 sm:text-[11px]">
             {FR.hud.lives}
           </span>
-          <div ref={livesWrapRef} className="flex items-center gap-1">
+          <div ref={livesWrapRef} className="flex items-center gap-0.5 sm:gap-1">
             {Array.from({ length: maxLives }).map((_, i) => (
-              <svg key={i} width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <svg key={i} className="h-3.5 w-3.5 sm:h-4 sm:w-4" viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   d="M12 2L15 9L22 12L15 14L14 21L12 19L10 21L9 14L2 12L9 9Z"
                   fill="#FACC15"
@@ -386,32 +507,32 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
 
         {/* HP */}
         <div>
-          <div className="mb-0.5 flex justify-between text-[11px] font-bold">
+          <div className="mb-0.5 flex justify-between text-[10px] font-bold sm:text-[11px]">
             <span className="text-slate-300">{FR.hud.hp}</span>
             <span ref={hpTextRef} className="font-mono-num">
               100/100
             </span>
           </div>
-          <div className="h-3 w-full overflow-hidden rounded-md border border-black bg-slate-800">
+          <div className="h-2.5 w-full overflow-hidden rounded-md border border-black bg-slate-800 sm:h-3">
             <div ref={hpFillRef} className="h-full w-full bg-emerald-500 transition-[width] duration-75" />
           </div>
         </div>
 
         {/* Boost */}
         <div>
-          <div className="mb-0.5 flex justify-between text-[11px] font-bold">
+          <div className="mb-0.5 flex justify-between text-[10px] font-bold sm:text-[11px]">
             <span className="text-sky-300">{FR.hud.boost}</span>
           </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-md border border-black bg-slate-800">
+          <div className="h-2 w-full overflow-hidden rounded-md border border-black bg-slate-800 sm:h-2.5">
             <div ref={boostFillRef} className="h-full w-full bg-sky-400 transition-[width] duration-75" />
           </div>
         </div>
 
         {/* Heat */}
         <div>
-          <div className="mb-0.5 flex items-center justify-between text-[11px] font-bold">
+          <div className="mb-0.5 flex items-center justify-between text-[10px] font-bold sm:text-[11px]">
             <span className="text-orange-300">{FR.hud.heat}</span>
-            <span ref={overheatBadgeRef} className="hidden text-[10px] font-extrabold text-red-400">
+            <span ref={overheatBadgeRef} className="hidden text-[9px] font-extrabold text-red-400 sm:text-[10px]">
               {FR.hud.overheated}
             </span>
           </div>
@@ -421,79 +542,29 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         </div>
       </div>
 
-      {/* Top-Center: Round, Score/Alive, Timer, Ping */}
-      <div className="toy-panel-dark fixed left-1/2 top-4 flex -translate-x-1/2 items-center gap-4 rounded-2xl px-4 py-2 text-white">
-        <div className="text-center">
-          <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.round}</div>
-          <div className="font-mono-num text-sm font-extrabold text-amber-300">
-            {room.roundNumber}/{room.maxRounds}
-          </div>
+      {/* Right Column below utility buttons: Mobile Speed + Buffs + Kill Feed */}
+      <div className="fixed right-2 top-14 flex max-w-[185px] flex-col items-end gap-1 sm:right-4 sm:top-16 sm:max-w-xs sm:gap-1.5">
+        <div
+          className={`${
+            touchEnabled ? 'flex' : 'flex sm:hidden'
+          } toy-panel-dark items-baseline gap-1 rounded-xl px-2.5 py-1 text-white`}
+        >
+          <span ref={mobileSpeedRef} className="font-mono-num text-sm font-extrabold text-amber-300">
+            95
+          </span>
+          <span className="text-[9px] font-bold uppercase text-slate-400">{FR.hud.speedUnit}</span>
         </div>
 
-        <div className="h-6 w-px bg-slate-700" />
-
-        {room.settings.mode === 'last_plane_teams' ? (
-          <div className="flex items-center gap-2.5 font-mono-num text-sm font-extrabold">
-            <span className="text-red-400">{room.teamRoundWins.red}</span>
-            <span className="text-slate-500">-</span>
-            <span className="text-sky-400">{room.teamRoundWins.blue}</span>
-          </div>
-        ) : (
-          <div className="text-center">
-            <div className="text-[10px] font-bold uppercase text-slate-400">{FR.hud.alive}</div>
-            <div className="font-mono-num text-sm font-extrabold text-emerald-400">
-              {aliveCount}
-            </div>
-          </div>
-        )}
-
-        <div className="h-6 w-px bg-slate-700" />
-
-        <span ref={timerRef} className="font-mono-num text-xl font-extrabold text-white">
-          04:00
-        </span>
-
-        <div className="h-6 w-px bg-slate-700" />
-
-        <span className="font-mono-num text-xs font-bold text-slate-300">
-          {ping} {FR.hud.pingUnit}
-        </span>
-      </div>
-
-      {/* Top-Right: Utility Buttons + Kill Feed */}
-      <div className="fixed right-4 top-4 flex flex-col items-end gap-2">
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label={FR.hud.mute}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onToggleMute();
-            }}
-            className="toy-btn flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300 text-slate-950"
-          >
-            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-          </button>
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label={FR.hud.pause}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onTogglePause();
-            }}
-            className="toy-btn flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-950"
-          >
-            <Pause className="h-5 w-5" />
-          </button>
-        </div>
+        <div
+          ref={mobileStatusBadgesRef}
+          className={`${touchEnabled ? 'flex' : 'flex sm:hidden'} flex-wrap justify-end gap-1`}
+        />
 
         <div className="flex flex-col items-end gap-1">
           {killFeed.slice(0, 4).map((kf) => (
             <div
               key={kf.id}
-              className="rounded-lg border border-black bg-slate-900/90 px-2.5 py-1 text-xs font-bold text-white"
+              className="rounded-lg border border-black bg-slate-900/90 px-2 py-0.5 text-[10px] font-bold text-white sm:px-2.5 sm:py-1 sm:text-xs"
             >
               {kf.reason === 'gun' ? (
                 <>
@@ -533,13 +604,21 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         </div>
       </div>
 
-      {/* Bottom-Left: Minimap */}
-      <div className="toy-panel-dark fixed bottom-4 left-4 overflow-hidden rounded-2xl p-1.5">
+      {/* Bottom-Left: Minimap (hidden on touch/narrow mobile to keep joystick clear) */}
+      <div
+        className={`${
+          touchEnabled ? 'hidden' : 'hidden sm:block'
+        } toy-panel-dark fixed bottom-4 left-4 overflow-hidden rounded-2xl p-1.5`}
+      >
         <canvas ref={minimapCanvasRef} width={144} height={108} className="block rounded-xl" />
       </div>
 
-      {/* Bottom-Right: Active Buffs + Secondary Power-Up Slot + Speed */}
-      <div className="fixed bottom-4 right-4 flex flex-col items-end gap-2">
+      {/* Bottom-Right: Active Buffs + Secondary Power-Up Slot + Speed (desktop) */}
+      <div
+        className={`${
+          touchEnabled ? 'hidden' : 'hidden sm:flex'
+        } fixed bottom-4 right-4 flex-col items-end gap-2`}
+      >
         <div ref={statusBadgesRef} className="flex flex-wrap justify-end gap-1.5" />
         <div className="toy-panel-dark flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-white">
           <div
@@ -564,26 +643,37 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         </div>
       </div>
 
+      {/* Mobile / Touch Flight Controls */}
+      <TouchControls
+        visible={touchEnabled && room.phase === 'playing' && !paused && !showScoreboard}
+        touchInputRef={touchInputRef}
+        onUseSecondary={onUseSecondary}
+        secondaryBtnRef={touchSecondaryBtnRef}
+        secondaryLabelRef={touchSecondaryLabelRef}
+      />
+
       {/* Sudden Death: Giant Vacuum Alert */}
       <div
         ref={vacuumBannerRef}
-        className="fixed left-1/2 top-20 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-rose-600 px-6 py-2 text-white shadow-[0_5px_0_#09090b]"
+        className="fixed left-1/2 top-28 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-rose-600 px-4 py-1.5 text-center text-white shadow-[0_5px_0_#09090b] sm:top-20 sm:px-6 sm:py-2"
       >
-        <div className="font-display text-base font-extrabold uppercase tracking-wide text-amber-200">
+        <div className="font-display text-sm font-extrabold uppercase tracking-wide text-amber-200 sm:text-base">
           {FR.hud.vacuumWarning}
         </div>
-        <div className="text-[11px] font-semibold text-rose-100">{FR.hud.vacuumDangerSub}</div>
+        <div className="text-[10px] font-semibold text-rose-100 sm:text-[11px]">
+          {FR.hud.vacuumDangerSub}
+        </div>
       </div>
 
       {/* Out of bounds alert */}
       <div
         ref={oobBannerRef}
-        className="fixed left-1/2 top-36 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-red-600 px-6 py-2.5 text-white shadow-[0_5px_0_#09090b]"
+        className="fixed left-1/2 top-44 hidden -translate-x-1/2 flex-col items-center rounded-2xl border-3 border-slate-950 bg-red-600 px-4 py-2 text-center text-white shadow-[0_5px_0_#09090b] sm:top-36 sm:px-6 sm:py-2.5"
       >
-        <div className="font-display text-lg font-extrabold">
+        <div className="font-display text-base font-extrabold sm:text-lg">
           {FR.hud.outOfBounds} <span ref={oobCountdownRef} className="font-mono-num">4.0s</span>
         </div>
-        <div className="text-xs font-semibold text-red-100">{FR.hud.outOfBoundsSub}</div>
+        <div className="text-[11px] font-semibold text-red-100 sm:text-xs">{FR.hud.outOfBoundsSub}</div>
       </div>
 
       {/* Spectator Mode Bar */}

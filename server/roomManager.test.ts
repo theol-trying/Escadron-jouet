@@ -275,3 +275,61 @@ test('RoomManager reconnects player by sessionToken and updates socket binding',
     rm.dispose();
   }
 });
+
+test('RoomManager with 2 humans in Red and bots disabled rebalances on launch so round does not end immediately', () => {
+  const { io, rm, connect } = createHarness();
+  try {
+    const s1 = connect('s1');
+    let res1: { ok: boolean; room?: RoomState } = { ok: false };
+    s1.trigger(
+      'room:join',
+      {
+        mode: 'create',
+        nickname: 'Rouge1',
+        cosmetics: { planeId: 'plastic_jet', paintId: 'red', stickerId: 'star' },
+        sessionToken: 'red1',
+      },
+      (res: { ok: boolean; room?: RoomState }) => {
+        res1 = res;
+      }
+    );
+    const code = res1.room!.code;
+    s1.trigger('room:updateSettings', { mode: 'last_plane_teams', botsEnabled: false });
+
+    // Solo player in teams mode with bots off cannot start
+    s1.trigger('room:startMatch');
+    const errBroadcast = io.broadcasts.find((b) => b.room === code && b.event === 'room:error');
+    assert.ok(errBroadcast, 'solo teams launch must emit room:error');
+
+    const s2 = connect('s2');
+    s2.trigger('room:join', {
+      mode: 'join',
+      roomCode: code,
+      nickname: 'Rouge2',
+      cosmetics: { planeId: 'plastic_jet', paintId: 'red', stickerId: 'star' },
+      sessionToken: 'red2',
+    });
+    s1.trigger('room:switchTeam', 'red');
+    s2.trigger('room:switchTeam', 'red');
+    s1.trigger('room:startMatch');
+
+    const internalRoom = (
+      rm as unknown as {
+        rooms: Map<
+          string,
+          {
+            phase: string;
+            players: Map<string, { team: string }>;
+          }
+        >;
+      }
+    ).rooms.get(code)!;
+    assert.equal(internalRoom.phase, 'countdown');
+    const teams = Array.from(internalRoom.players.values()).map((p) => p.team);
+    assert.equal(teams.filter((t) => t === 'red').length, 1);
+    assert.equal(teams.filter((t) => t === 'blue').length, 1);
+  } finally {
+    rm.dispose();
+  }
+});
+

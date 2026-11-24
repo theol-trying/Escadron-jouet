@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  MAX_LAG_COMPENSATION_MS,
+  REMOTE_INTERP_DELAY_MS,
+  computeLagCompensationMs,
+} from './constants';
+import {
   applyDamageToSim,
   assignBalancedTeam,
   canDamageTarget,
@@ -12,6 +17,14 @@ import {
   sanitizeNickname,
 } from './rules';
 import type { PlaneSimState, TeamId } from './types';
+
+test('computeLagCompensationMs adds ping/2 and client interpolation delay capped at 250ms', () => {
+  assert.equal(REMOTE_INTERP_DELAY_MS, 95);
+  assert.equal(MAX_LAG_COMPENSATION_MS, 250);
+  assert.equal(computeLagCompensationMs(0), 95);
+  assert.equal(computeLagCompensationMs(80), 135);
+  assert.equal(computeLagCompensationMs(400), 250);
+});
 
 test('generateRoomCode returns 5 uppercase letters', () => {
   const code = generateRoomCode();
@@ -58,7 +71,7 @@ test('canDamageTarget blocks friendly fire in teams mode when disabled', () => {
   assert.equal(canDamageTarget('last_plane_ffa', false, 'a', 'none', 'b', 'none'), true);
 });
 
-test('checkRoundWinner detects last plane standing in FFA and Teams including empty opposing team', () => {
+test('checkRoundWinner detects last plane standing in FFA and Teams without instant win when one team started empty', () => {
   const ffaWin = checkRoundWinner(
     'last_plane_ffa',
     [
@@ -82,7 +95,8 @@ test('checkRoundWinner detects last plane standing in FFA and Teams including em
   assert.equal(teamWin.finished, true);
   assert.equal(teamWin.winnerTeam, 'red');
 
-  const allSameTeamWin = checkRoundWinner(
+  // 2 humans in red, 0 in blue -> must NOT finish immediately
+  const allSameTeamNoInstantWin = checkRoundWinner(
     'last_plane_teams',
     [
       { id: '1', nickname: 'A', team: 'red', alive: true, lives: 3 },
@@ -90,8 +104,18 @@ test('checkRoundWinner detects last plane standing in FFA and Teams including em
     ],
     240
   );
-  assert.equal(allSameTeamWin.finished, true);
-  assert.equal(allSameTeamWin.winnerTeam, 'red');
+  assert.equal(allSameTeamNoInstantWin.finished, false);
+
+  // If both teams started the round and opposing team all left mid-round -> Red wins
+  const opponentLeftWin = checkRoundWinner(
+    'last_plane_teams',
+    [{ id: '1', nickname: 'A', team: 'red', alive: true, lives: 3 }],
+    200,
+    0,
+    { hadBothTeams: true }
+  );
+  assert.equal(opponentLeftWin.finished, true);
+  assert.equal(opponentLeftWin.winnerTeam, 'red');
 });
 
 test('applyDamageToSim decrements lives and marks final elimination', () => {

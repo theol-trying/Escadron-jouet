@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { REMOTE_INTERP_DELAY_MS } from '../../shared/constants';
 import {
   getPlaneForward,
   quatFromYaw,
@@ -896,7 +897,7 @@ export class ThreeGameEngine {
     }
 
     // Playing mode: update all plane visuals
-    const renderTime = now - 95; // ~95ms interpolation buffer for remote planes
+    const renderTime = now - REMOTE_INTERP_DELAY_MS;
     const minimapBlips: MinimapBlip[] = [];
     const livingPlanes: ActivePlaneVisual[] = [];
 

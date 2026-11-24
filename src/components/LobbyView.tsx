@@ -9,6 +9,7 @@ interface LobbyViewProps {
   room: RoomState;
   localPlayerId: string;
   ping: number;
+  errorMessage?: string | null;
   onUpdateSettings: (partial: Partial<RoomSettings>) => void;
   onToggleReady: (ready: boolean) => void;
   onSwitchTeam: (team: TeamId) => void;
@@ -21,6 +22,7 @@ export function LobbyView({
   room,
   localPlayerId,
   ping,
+  errorMessage,
   onUpdateSettings,
   onToggleReady,
   onSwitchTeam,
@@ -340,6 +342,14 @@ export function LobbyView({
 
             {/* Bottom Actions */}
             <div className="mt-5 flex flex-col gap-2.5 border-t-2 border-slate-200 pt-4">
+              {errorMessage && (
+                <div
+                  role="alert"
+                  className="rounded-xl border-2 border-red-900 bg-red-100 px-3 py-2 text-xs font-bold text-red-900"
+                >
+                  {errorMessage}
+                </div>
+              )}
               {!isHost && (
                 <button
                   type="button"

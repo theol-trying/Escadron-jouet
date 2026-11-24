@@ -94,6 +94,7 @@ function makeRoom(players: ServerPlayer[]): ServerRoom {
     roundEndTimer: 0,
     suddenDeath: false,
     suddenDeathElapsed: 0,
+    roundHadBothTeams: false,
     teamRoundWins: { red: 0, blue: 0 },
     lastRoundWinner: null,
     rewindHistory: [],
@@ -218,3 +219,67 @@ test('slow sudden-death vacuum kills emit killfeed and credit death', () => {
   assert.equal(killFeed[0].reason, 'vacuum');
   assert.equal(killFeed[0].victimName, 'victim');
 });
+
+test('2 humans in red with bots off in teams mode do not end round immediately in stepRoomTick', () => {
+  const p1 = makePlayer('p1', { team: 'red' });
+  const p2 = makePlayer('p2', { team: 'red' });
+  const room = makeRoom([p1, p2]);
+  room.settings.mode = 'last_plane_teams';
+  room.settings.botsEnabled = false;
+
+  for (let i = 0; i < 30; i++) {
+    stepRoomTick(room, 1 / 30, makeCallbacks());
+  }
+
+  assert.equal(room.phase, 'playing');
+  assert.equal(room.lastRoundWinner, null);
+});
+
+test('lag compensation rewinds by ping/2 + REMOTE_INTERP_DELAY_MS (95ms)', () => {
+  const shooter = makePlayer('shooter', { ping: 80, team: 'none' });
+  const target = makePlayer('target', { team: 'none' });
+  // Target has moved far right now, but 135ms ago (80/2 + 95) was at (0, 120, 0)
+  target.sim.x = 120;
+  target.sim.y = 120;
+  target.sim.z = 0;
+
+  const room = makeRoom([shooter, target]);
+  const now = Date.now();
+  room.rewindHistory.push(
+    {
+      time: now - 135,
+      planes: new Map([
+        ['shooter', { x: 0, y: 120, z: 60, radius: 5, alive: true }],
+        ['target', { x: 0, y: 120, z: 0, radius: 5, alive: true }],
+      ]),
+    },
+    {
+      time: now,
+      planes: new Map([
+        ['shooter', { x: 0, y: 120, z: 60, radius: 5, alive: true }],
+        ['target', { x: 120, y: 120, z: 0, radius: 5, alive: true }],
+      ]),
+    }
+  );
+
+  // Fire projectile passing straight through (0, 120, 0)
+  room.projectiles.push({
+    id: 99,
+    ownerId: shooter.id,
+    team: 'none',
+    x: 0,
+    y: 120,
+    z: 5,
+    vx: 0,
+    vy: 0,
+    vz: -300,
+    damage: 25,
+    heavy: false,
+    ttl: 1.0,
+  });
+
+  const initialHp = target.sim.hp;
+  stepRoomTick(room, 1 / 30, makeCallbacks());
+  assert.ok(target.sim.hp < initialHp, 'shot aimed at 135ms rewound position must hit target');
+});
+

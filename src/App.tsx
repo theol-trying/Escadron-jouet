@@ -15,6 +15,7 @@ import { LobbyView } from './components/LobbyView';
 import { MatchEndModal } from './components/MatchEndModal';
 import { SettingsModal, type GameplaySettings } from './components/SettingsModal';
 import { TitleScreen } from './components/TitleScreen';
+import type { TouchInputState } from './components/TouchControls';
 import { ThreeGameEngine, type HudFrameData } from './engine/ThreeGameEngine';
 import { FR } from './i18n/fr';
 import { getSessionToken, getSocket } from './net/socketClient';
@@ -67,12 +68,22 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [paused, setPaused] = useState(false);
   const [showScoreboard, setShowScoreboard] = useState(false);
+  const [touchEnabled, setTouchEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      'ontouchstart' in window ||
+      navigator.maxTouchPoints > 0 ||
+      Boolean(window.matchMedia?.('(pointer: coarse)')?.matches)
+    );
+  });
 
   // Refs for stable event handlers without re-mounting WebGL
   const roomRef = useRef<RoomState | null>(null);
   roomRef.current = room;
   const pausedRef = useRef(false);
   pausedRef.current = paused;
+  const touchEnabledRef = useRef(touchEnabled);
+  touchEnabledRef.current = touchEnabled;
   const gameplayRef = useRef(gameplaySettings);
   gameplayRef.current = gameplaySettings;
   const cosmeticsRef = useRef(cosmetics);
@@ -85,6 +96,15 @@ export default function App() {
   const gamepadSecondaryHeldRef = useRef(false);
   const lastTapRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
   const autostartDoneRef = useRef(false);
+  const touchInputRef = useRef<TouchInputState>({
+    aimActive: false,
+    aimX: 0,
+    aimY: 0,
+    throttle: 0,
+    boost: false,
+    fire: false,
+  });
+  const wasTouchAimActiveRef = useRef(false);
 
   // Persist nickname & cosmetics
   useEffect(() => {
@@ -344,6 +364,15 @@ export default function App() {
     const clearInputs = () => {
       keysHeldRef.current.clear();
       mouseDownRef.current = false;
+      touchInputRef.current = {
+        aimActive: false,
+        aimX: 0,
+        aimY: 0,
+        throttle: 0,
+        boost: false,
+        fire: false,
+      };
+      wasTouchAimActiveRef.current = false;
       setShowScoreboard(false);
     };
 
@@ -427,6 +456,9 @@ export default function App() {
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      if (touchEnabledRef.current && touchInputRef.current.aimActive) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-touch-control="true"]')) return;
       const engine = engineRef.current;
       const mount = canvasMountRef.current;
       if (!engine || !mount) return;
@@ -449,12 +481,22 @@ export default function App() {
     const onMouseDown = (e: MouseEvent) => {
       if (roomRef.current?.phase === 'playing' && !pausedRef.current) {
         const target = e.target as HTMLElement | null;
-        if (target?.closest('button, input, select')) return;
+        if (target?.closest('button, input, select, [data-touch-control="true"]')) return;
+        if (touchEnabledRef.current) return;
         soundEngine.unlock();
         if (e.button === 0) {
           mouseDownRef.current = true;
         } else if (e.button === 2 && engineRef.current) {
           engineRef.current.inputState.useSecondaryQueued = true;
+        }
+      }
+    };
+
+    const onPointerDownGlobal = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        soundEngine.unlock();
+        if (!touchEnabledRef.current) {
+          setTouchEnabled(true);
         }
       }
     };
@@ -474,6 +516,7 @@ export default function App() {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('pointerdown', onPointerDownGlobal, { passive: true });
     window.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('blur', clearInputs);
     document.addEventListener('visibilitychange', clearInputs);
@@ -521,10 +564,21 @@ export default function App() {
         gamepadSecondaryHeldRef.current = false;
       }
 
-      engine.inputState.throttle = throttle;
+      const touch = touchInputRef.current;
+      if (touch.aimActive) {
+        engine.inputState.aimX = touch.aimX;
+        engine.inputState.aimY = gameplayRef.current.invertY ? -touch.aimY : touch.aimY;
+        wasTouchAimActiveRef.current = true;
+      } else if (wasTouchAimActiveRef.current) {
+        engine.inputState.aimX = 0;
+        engine.inputState.aimY = 0;
+        wasTouchAimActiveRef.current = false;
+      }
+
+      engine.inputState.throttle = Math.max(-1, Math.min(1, throttle + touch.throttle));
       engine.inputState.roll = roll;
-      engine.inputState.boost = boost;
-      engine.inputState.fire = fire;
+      engine.inputState.boost = boost || touch.boost;
+      engine.inputState.fire = fire || touch.fire;
 
       const canControl = currentRoom.phase === 'playing' && !pausedRef.current;
       const socket = getSocket();
@@ -546,6 +600,7 @@ export default function App() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('pointerdown', onPointerDownGlobal);
       window.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('blur', clearInputs);
       document.removeEventListener('visibilitychange', clearInputs);
@@ -564,28 +619,33 @@ export default function App() {
 
   const handleUpdateSettings = (partial: Partial<RoomSettings>) => {
     soundEngine.playUiClick();
+    setErrorMessage(null);
     getSocket().emit('room:updateSettings', partial);
   };
 
   const handleToggleReady = (ready: boolean) => {
     soundEngine.playUiClick();
+    setErrorMessage(null);
     getSocket().emit('room:setReady', ready);
   };
 
   const handleSwitchTeam = (team: TeamId) => {
     soundEngine.playUiClick();
+    setErrorMessage(null);
     getSocket().emit('room:switchTeam', team);
   };
 
   const handleStartMatch = () => {
     soundEngine.playUiClick();
     soundEngine.unlock();
+    setErrorMessage(null);
     getSocket().emit('room:startMatch');
   };
 
   const handlePlayAgain = () => {
     soundEngine.playUiClick();
     soundEngine.unlock();
+    setErrorMessage(null);
     getSocket().emit('room:playAgain');
   };
 
@@ -645,6 +705,7 @@ export default function App() {
           room={room}
           localPlayerId={localPlayerId}
           ping={ping}
+          errorMessage={errorMessage}
           onUpdateSettings={handleUpdateSettings}
           onToggleReady={handleToggleReady}
           onSwitchTeam={handleSwitchTeam}
@@ -668,6 +729,14 @@ export default function App() {
           paused={paused}
           showScoreboard={showScoreboard}
           killFeed={killFeed}
+          touchEnabled={touchEnabled}
+          touchInputRef={touchInputRef}
+          onUseSecondary={() => {
+            soundEngine.unlock();
+            if (engineRef.current) {
+              engineRef.current.inputState.useSecondaryQueued = true;
+            }
+          }}
           onToggleMute={() => handleChangeAudio({ muted: !audioSettings.muted })}
           onTogglePause={() => setPaused((p) => !p)}
           onResume={() => setPaused(false)}
