@@ -12,7 +12,11 @@ restaurer avec `git checkout refs/autosave/latest -- .`). Commit + push à chaqu
        ruban) sans son ni secousse, favicon, config Vite sans `__dirname`, esbuild 0.28.2 (0 vulnérabilité).
 4. [x] Arènes agrandies ×1,4 (700 × 518 au lieu de 500 × 370) et avions ralentis ×0,85 (croisière 58 au lieu de 68) :
        traversée ~11 s au lieu de ~6,7 s. Réglages dans `shared/constants.ts` (`ARENA_SCALE`, `PLANE_SPEED_SCALE`).
-5. [ ] Vérification complète (lint, tests, build, sondes réseau, navigateur bureau + mobile), puis propositions.
+5. [x] Vérification complète : lint, 41/41 tests, build, CI GitHub verte, sondes réseau (21 messages piégés,
+       reconnexion, anti-triche, équipes), navigateur bureau + format iPhone 13 (portrait), scan garde-fou propre.
+
+➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`), essai sur un vrai iPhone 13,
+  puis choix parmi les propositions d'amélioration (gameplay, graphismes, son, technique).
 
 ## Completed Milestones
 - **Milestone 1**: Core flight physics (`shared/flightPhysics.ts`), 3D desk arena (`Le bureau`), Socket.io room manager, client-side prediction & reconciliation.
