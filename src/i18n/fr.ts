@@ -44,6 +44,13 @@ export const FR = {
     mapSoon: 'Bientôt',
     livesLabel: 'Vies par manche',
     botsLabel: 'Compléter avec des bots',
+    botDifficultyLabel: 'Niveau des bots',
+    invite: 'Inviter',
+    inviteCopied: 'Lien d’invitation copié !',
+    inviteFailed: 'Copie impossible, partage ce lien :',
+    inviteShareTitle: 'Escadrille Jouet',
+    inviteShareText: 'Viens jouer avec moi à Escadrille Jouet !',
+    botDifficulty: { easy: 'Facile', normal: 'Normal', expert: 'Expert' },
     botsOn: 'Activés',
     botsOff: 'Désactivés',
     maxPlayersLabel: 'Joueurs maximum',
@@ -120,6 +127,24 @@ export const FR = {
   },
 
   leaveGuard: 'Quitter la partie en cours ?',
+
+  wake: {
+    title: 'Le serveur se réveille…',
+    detail:
+      'Sur l’hébergement gratuit, il s’endort après 15 minutes sans joueur et met jusqu’à une minute à repartir. La connexion reprendra toute seule.',
+  },
+
+  titles: {
+    heading: 'Les titres du match',
+    ace: { name: 'As du jour', detail: (n: number) => `${n} avion${n > 1 ? 's' : ''} abattu${n > 1 ? 's' : ''}` },
+    kamikaze: { name: 'Kamikaze', detail: (n: number) => `${n} crash${n > 1 ? 's' : ''}` },
+    collector: { name: 'Ramasse-tout', detail: (n: number) => `${n} objet${n > 1 ? 's' : ''} ramassé${n > 1 ? 's' : ''}` },
+    wrecker: { name: 'Démolisseur', detail: (n: number) => `${n} décor${n > 1 ? 's' : ''} cassé${n > 1 ? 's' : ''}` },
+    survivor: {
+      name: 'Increvable',
+      detail: (n: number) => (n === 0 ? 'jamais abattu' : `seulement ${n} chute${n > 1 ? 's' : ''}`),
+    },
+  },
 
   camera: {
     label: 'Vue de la caméra',

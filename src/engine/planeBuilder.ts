@@ -16,6 +16,8 @@ export interface BuiltPlaneRig {
   hitFlashMaterials: THREE.Material[];
   stickerMesh: THREE.Mesh;
   shieldMesh: THREE.Mesh;
+  /** Spawn protection: golden lattice bubble shown while the plane cannot be damaged. */
+  spawnShieldMesh: THREE.Mesh;
   magnetRingMesh: THREE.Mesh;
   glueBlobMesh: THREE.Mesh;
   dispose: () => void;
@@ -338,6 +340,29 @@ export function buildToyPlane(
   shieldMesh.visible = false;
   root.add(shieldMesh);
 
+  // Spawn protection bubble: golden wire lattice, distinct from the purple bubble-shield power-up
+  const spawnShieldGeo = new THREE.IcosahedronGeometry(7.4, 1);
+  const spawnShieldMat = new THREE.MeshBasicMaterial({
+    color: 0xfde047,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.6,
+    depthWrite: false,
+  });
+  const spawnShieldMesh = new THREE.Mesh(spawnShieldGeo, spawnShieldMat);
+  spawnShieldMesh.visible = false;
+  root.add(spawnShieldMesh);
+  // Soft golden glow inside the lattice (wire lines alone are only 1 px wide)
+  const spawnGlowGeo = new THREE.SphereGeometry(7.1, 18, 14);
+  const spawnGlowMat = new THREE.MeshBasicMaterial({
+    color: 0xfacc15,
+    transparent: true,
+    opacity: 0.17,
+    depthWrite: false,
+  });
+  spawnShieldMesh.add(new THREE.Mesh(spawnGlowGeo, spawnGlowMat));
+  disposables.push(spawnShieldGeo, spawnShieldMat, spawnGlowGeo, spawnGlowMat);
+
   const magnetGeo = new THREE.TorusGeometry(6.4, 0.36, 8, 22);
   magnetGeo.rotateX(Math.PI / 2);
   const magnetMat = new THREE.MeshBasicMaterial({
@@ -371,6 +396,7 @@ export function buildToyPlane(
     hitFlashMaterials: [hullMat, secondaryMat, accentMat],
     stickerMesh,
     shieldMesh,
+    spawnShieldMesh,
     magnetRingMesh,
     glueBlobMesh,
     dispose: () => {

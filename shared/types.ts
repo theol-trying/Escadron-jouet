@@ -43,11 +43,14 @@ export type RoomPhase =
   | 'round_end'
   | 'match_end';
 
+export type BotDifficulty = 'easy' | 'normal' | 'expert';
+
 export interface RoomSettings {
   mode: GameModeId;
   mapId: MapId;
   livesPerRound: number;
   botsEnabled: boolean;
+  botDifficulty: BotDifficulty;
   maxPlayers: number;
   friendlyFire: boolean;
   isPrivate: boolean;
@@ -80,6 +83,12 @@ export interface MatchScoreEntry {
   paintId: PaintId;
   kills: number;
   deaths: number;
+  /** Deaths by own fault: crash, out of bounds, hazard, vacuum */
+  crashes: number;
+  /** Power-ups picked up */
+  pickups: number;
+  /** Household props destroyed */
+  propsBroken: number;
   roundWins: number;
   score: number;
   alive: boolean;

@@ -1,4 +1,5 @@
-import { RotateCcw, Trophy } from 'lucide-react';
+import { Bomb, Crosshair, Hammer, Package, RotateCcw, Shield, Trophy } from 'lucide-react';
+import { computeMatchTitles, type MatchTitleId } from '../../shared/rules';
 import type { RoomState } from '../../shared/types';
 import { FR } from '../i18n/fr';
 
@@ -9,6 +10,14 @@ interface MatchEndModalProps {
   onLeaveToMenu: () => void;
 }
 
+const TITLE_ICONS: Record<MatchTitleId, typeof Trophy> = {
+  ace: Crosshair,
+  kamikaze: Bomb,
+  collector: Package,
+  wrecker: Hammer,
+  survivor: Shield,
+};
+
 export function MatchEndModal({
   room,
   localPlayerId,
@@ -17,6 +26,7 @@ export function MatchEndModal({
 }: MatchEndModalProps) {
   const isHost = Boolean(room.players.find((p) => p.id === localPlayerId)?.isHost);
   const top3 = room.scoreboard.slice(0, 3);
+  const titles = computeMatchTitles(room.scoreboard);
 
   return (
     <div
@@ -25,7 +35,7 @@ export function MatchEndModal({
       aria-modal="true"
       aria-labelledby="podium-title"
     >
-      <div className="toy-panel w-full max-w-2xl rounded-2xl p-6 text-slate-900">
+      <div className="toy-panel max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl p-6 text-slate-900">
         <div className="flex items-center justify-center gap-3">
           <Trophy className="h-8 w-8 text-amber-500" />
           <h2 id="podium-title" className="font-display text-3xl font-extrabold">
@@ -69,6 +79,35 @@ export function MatchEndModal({
             );
           })}
         </div>
+
+        {/* Fun titles */}
+        {titles.length > 0 && (
+          <div className="mt-5">
+            <div className="mb-2 text-center text-xs font-extrabold uppercase tracking-wider text-slate-500">
+              {FR.titles.heading}
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {titles.map((t) => {
+                const Icon = TITLE_ICONS[t.id];
+                return (
+                  <div
+                    key={t.id}
+                    className={`flex items-center gap-2 rounded-xl border-2 border-slate-900 px-3 py-1.5 ${
+                      t.playerId === localPlayerId ? 'bg-amber-200' : 'bg-white'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-slate-800" />
+                    <div className="text-left leading-tight">
+                      <div className="text-[11px] font-extrabold uppercase text-slate-500">{FR.titles[t.id].name}</div>
+                      <div className="text-sm font-extrabold">{t.nickname}</div>
+                      <div className="text-[11px] font-semibold text-slate-600">{FR.titles[t.id].detail(t.value)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Full Standings */}
         <div className="mt-5 max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 p-2">

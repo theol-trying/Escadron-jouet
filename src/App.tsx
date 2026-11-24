@@ -20,6 +20,7 @@ import {
   saveGameplaySettings,
   type GameplaySettings,
 } from './components/SettingsModal';
+import { ServerWakeBanner } from './components/ServerWakeBanner';
 import { TitleScreen } from './components/TitleScreen';
 import type { TouchInputState } from './components/TouchControls';
 import { ThreeGameEngine, type HudFrameData } from './engine/ThreeGameEngine';
@@ -117,6 +118,7 @@ export default function App() {
   const gamepadSecondaryHeldRef = useRef(false);
   const gamepadBumpersRef = useRef({ lb: false, rb: false });
   const autostartDoneRef = useRef(false);
+  const inviteDoneRef = useRef(false);
   const touchInputRef = useRef<TouchInputState>({
     aimActive: false,
     aimX: 0,
@@ -330,6 +332,17 @@ export default function App() {
 
       // ?autostart=1 (&map=kitchen|garden) immediately launches solo/bot flight
       const params = new URLSearchParams(window.location.search);
+
+      // Invitation link ?salon=ABCDE: join that room right away, then clean the address bar
+      const invitedCode = (params.get('salon') ?? '').trim().toUpperCase();
+      if (/^[A-Z]{5}$/.test(invitedCode) && !inviteDoneRef.current && !roomRef.current) {
+        inviteDoneRef.current = true;
+        params.delete('salon');
+        const query = params.toString();
+        window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+        joinRoom('join', invitedCode);
+        return;
+      }
       if (params.get('autostart') === '1' && !autostartDoneRef.current && !roomRef.current) {
         autostartDoneRef.current = true;
         const rawMap = params.get('map');
@@ -868,6 +881,8 @@ export default function App() {
           }}
         />
       )}
+
+      <ServerWakeBanner connected={connected} />
 
       {showControls && (
         <ControlsModal

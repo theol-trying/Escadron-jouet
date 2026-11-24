@@ -243,6 +243,8 @@ function damageDestructible(
   if (d.hp > 0) return true;
 
   d.destroyed = true;
+  const breaker = room.players.get(attackerId);
+  if (breaker) breaker.propsBroken++;
   room.destroyedColliderIds.add(d.colliderId);
 
   callbacks.emitHit(room, {
@@ -758,6 +760,7 @@ export function stepRoomTick(
         if (dist < 13) {
           player.sim.secondaryPowerUp = pu.powerUpId;
           player.sim.secondaryUses = POWERUPS[pu.powerUpId].uses;
+          player.pickups++;
           if (pu.spotId) {
             const spot = room.powerUpSpots.find((s) => s.id === pu.spotId);
             if (spot) spot.respawnTimer = 14;
@@ -1214,6 +1217,7 @@ function handlePlaneCrashDamage(
   if (res.eliminated) {
     const now = Date.now();
     player.deaths++;
+    player.crashes++;
     const recentAttacker =
       player.lastHitBy && now - player.lastHitAt < 5000
         ? room.players.get(player.lastHitBy)

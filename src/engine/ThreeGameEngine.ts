@@ -1069,6 +1069,15 @@ export class ThreeGameEngine {
 
       // Power-up status auras
       pv.rig.shieldMesh.visible = latest.shielded;
+      // Spawn protection: pulsing golden lattice so everyone sees why shots do nothing
+      const protectedNow = latest.invuln && latest.alive;
+      pv.rig.spawnShieldMesh.visible = protectedNow;
+      if (protectedNow) {
+        pv.rig.spawnShieldMesh.rotation.y += dt * 1.2;
+        pv.rig.spawnShieldMesh.rotation.x += dt * 0.5;
+        (pv.rig.spawnShieldMesh.material as THREE.MeshBasicMaterial).opacity =
+          0.4 + 0.3 * Math.sin(this.elapsedTime * 9);
+      }
       pv.rig.magnetRingMesh.visible = latest.magnetActive;
       if (latest.magnetActive) {
         pv.rig.magnetRingMesh.rotation.y += dt * 4.5;

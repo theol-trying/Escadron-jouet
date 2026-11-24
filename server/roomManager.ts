@@ -464,6 +464,9 @@ export class RoomManager {
       dtBudget: 0.05,
       lastProcessedSeq: 0,
       kills: 0,
+      crashes: 0,
+      pickups: 0,
+      propsBroken: 0,
       deaths: 0,
       roundWins: 0,
       score: 0,
@@ -582,6 +585,13 @@ export class RoomManager {
     if (typeof partial.botsEnabled === 'boolean') {
       room.settings.botsEnabled = partial.botsEnabled;
     }
+    if (
+      partial.botDifficulty === 'easy' ||
+      partial.botDifficulty === 'normal' ||
+      partial.botDifficulty === 'expert'
+    ) {
+      room.settings.botDifficulty = partial.botDifficulty;
+    }
     if (typeof partial.maxPlayers === 'number' && Number.isFinite(partial.maxPlayers)) {
       room.settings.maxPlayers = Math.max(4, Math.min(16, Math.round(partial.maxPlayers)));
     }
@@ -691,6 +701,9 @@ export class RoomManager {
         dtBudget: 0.05,
         lastProcessedSeq: 0,
         kills: 0,
+        crashes: 0,
+        pickups: 0,
+        propsBroken: 0,
         deaths: 0,
         roundWins: 0,
         score: 0,
@@ -744,6 +757,9 @@ export class RoomManager {
     for (const player of room.players.values()) {
       player.kills = 0;
       player.deaths = 0;
+      player.crashes = 0;
+      player.pickups = 0;
+      player.propsBroken = 0;
       player.roundWins = 0;
       player.score = 0;
       player.lastHitBy = null;
@@ -799,6 +815,9 @@ export class RoomManager {
         paintId: p.cosmetics.paintId,
         kills: p.kills,
         deaths: p.deaths,
+        crashes: p.crashes,
+        pickups: p.pickups,
+        propsBroken: p.propsBroken,
         roundWins: p.roundWins,
         score: p.score,
         alive: p.sim.alive,

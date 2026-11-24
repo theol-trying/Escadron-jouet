@@ -8,8 +8,26 @@ import {
 import type { MapCollider, MapDefinition } from '../shared/maps/types';
 import { PLANE_ARCHETYPES, PAINT_ORDER, PLANE_ORDER, STICKER_ORDER } from '../shared/planes';
 import { canDamageTarget } from '../shared/rules';
-import type { PlayerCosmetics, PlayerInputState, RoomSettings } from '../shared/types';
+import type { BotDifficulty, PlayerCosmetics, PlayerInputState, RoomSettings } from '../shared/types';
 import type { BotPersonality, ServerPlayer } from './types';
+
+/**
+ * Skill levels chosen by the host. "normal" is the original behaviour.
+ * - steer: gain from desired direction to stick input (lower = wider, slower turns)
+ * - wobble: aiming sway as a fraction of the distance to the target (0 = steady)
+ * - lead: share of the target's travel anticipated (0 = aims where the target is now)
+ * - fireCone / fireRange: how well aligned and how close the target must be to shoot
+ * - burst: share of the time the trigger may be held (fires in bursts below 1)
+ * - grace: seconds after the round start before bots open fire
+ */
+export const BOT_SKILL: Record<
+  BotDifficulty,
+  { steer: number; wobble: number; lead: number; fireCone: number; fireRange: number; burst: number; grace: number }
+> = {
+  easy: { steer: 1.4, wobble: 0.14, lead: 0, fireCone: 0.955, fireRange: 165, burst: 0.5, grace: 5 },
+  normal: { steer: 2.2, wobble: 0, lead: 1, fireCone: 0.91, fireRange: 220, burst: 1, grace: 3 },
+  expert: { steer: 2.9, wobble: 0, lead: 1.1, fireCone: 0.885, fireRange: 265, burst: 1, grace: 2 },
+};
 
 const BOT_NAMES = [
   'Capitaine Brique',
@@ -105,6 +123,10 @@ export function computeBotInput(
   const right = getPlaneRight(sim);
   const up = getPlaneUp(sim);
   const personality = bot.botPersonality ?? 'hunter';
+  const skill = BOT_SKILL[settings.botDifficulty] ?? BOT_SKILL.normal;
+  // Per-bot phase so bots do not sway or burst in sync
+  const botPhase = (bot.id.charCodeAt(bot.id.length - 1) % 13) * 0.48;
+  const triggerWindow = skill.burst >= 1 || (elapsedTime * 0.8 + botPhase) % 1 < skill.burst;
 
   // Room-related distances (patrol circle, altitudes, floor/ceiling) follow the arena scale;
   // combat distances (to enemies, power-ups, obstacle probes) stay at plane scale.
@@ -156,7 +178,7 @@ export function computeBotInput(
   } else if (nearestEnemy) {
     const enemyFwd = getPlaneForward(nearestEnemy.sim);
     const arch = PLANE_ARCHETYPES[bot.cosmetics.planeId];
-    const leadTime = Math.min(0.45, enemyDist / arch.projectileSpeed);
+    const leadTime = Math.min(0.45, enemyDist / arch.projectileSpeed) * skill.lead;
 
     if (personality === 'evader' && enemyDist < 65) {
       // Evader breaks away laterally & climbs
@@ -177,6 +199,13 @@ export function computeBotInput(
       targetX = nearestEnemy.sim.x + enemyFwd.x * nearestEnemy.sim.speed * leadTime;
       targetY = nearestEnemy.sim.y + enemyFwd.y * nearestEnemy.sim.speed * leadTime;
       targetZ = nearestEnemy.sim.z + enemyFwd.z * nearestEnemy.sim.speed * leadTime;
+      if (skill.wobble > 0) {
+        // Unsteady aim for easy bots: the aim point drifts around the target
+        const sway = skill.wobble * enemyDist;
+        targetX += Math.sin(elapsedTime * 1.3 + botPhase) * sway;
+        targetY += Math.cos(elapsedTime * 1.7 + botPhase) * sway * 0.6;
+        targetZ += Math.cos(elapsedTime * 1.1 + botPhase * 2) * sway;
+      }
       if (enemyDist > 150 && sim.boost > 45) {
         wantsBoost = true;
       }
@@ -251,16 +280,17 @@ export function computeBotInput(
   const dotUp = dirX * up.x + dirY * up.y + dirZ * up.z;
   const dotFwd = dirX * fwd.x + dirY * fwd.y + dirZ * fwd.z;
 
-  const aimX = Math.max(-1, Math.min(1, dotRight * 2.2));
-  const aimY = Math.max(-1, Math.min(1, dotUp * 2.0));
+  const aimX = Math.max(-1, Math.min(1, dotRight * skill.steer));
+  const aimY = Math.max(-1, Math.min(1, dotUp * skill.steer * 0.91));
 
   // Shoot when enemy is in front cone and weapon is cool enough (after 3s opening grace)
   if (
-    elapsedTime > 3.0 &&
+    elapsedTime > skill.grace &&
+    triggerWindow &&
     nearestEnemy &&
     !obstacleAhead &&
-    enemyDist < 220 &&
-    dotFwd > 0.91 &&
+    enemyDist < skill.fireRange &&
+    dotFwd > skill.fireCone &&
     !sim.overheated &&
     sim.heat < 82
   ) {

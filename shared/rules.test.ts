@@ -10,6 +10,7 @@ import {
   assignBalancedTeam,
   canDamageTarget,
   checkRoundWinner,
+  computeMatchTitles,
   ensureBothTeams,
   generateRoomCode,
   isMatchOver,
@@ -223,4 +224,29 @@ test('isMatchOver detects best of 3 victory', () => {
   assert.equal(isMatchOver('last_plane_teams', 2, 3, { red: 2, blue: 0 }, []), true);
   assert.equal(isMatchOver('last_plane_teams', 1, 3, { red: 1, blue: 0 }, []), false);
   assert.equal(isMatchOver('last_plane_ffa', 2, 3, { red: 0, blue: 0 }, [{ roundWins: 2 }]), true);
+});
+
+test('computeMatchTitles hands out fun titles to the right pilots and skips unearned ones', () => {
+  const base = { deaths: 0, crashes: 0, pickups: 0, propsBroken: 0, score: 0, kills: 0 };
+  const entries = [
+    { ...base, playerId: 'a', nickname: 'Alice', kills: 5, deaths: 1, score: 600 },
+    { ...base, playerId: 'b', nickname: 'Bruno', kills: 2, deaths: 4, crashes: 3, pickups: 1, score: 200 },
+    { ...base, playerId: 'c', nickname: 'Chloé', kills: 2, deaths: 2, pickups: 4, propsBroken: 2, score: 250 },
+  ];
+  const byId = Object.fromEntries(computeMatchTitles(entries).map((t) => [t.id, t]));
+  assert.equal(byId.ace?.nickname, 'Alice');
+  assert.equal(byId.ace?.value, 5);
+  assert.equal(byId.kamikaze?.nickname, 'Bruno');
+  assert.equal(byId.collector?.nickname, 'Chloé');
+  assert.equal(byId.wrecker?.nickname, 'Chloé');
+  assert.equal(byId.survivor?.nickname, 'Alice');
+
+  // Nobody crashed or broke anything: those titles are not awarded
+  const calm = computeMatchTitles([
+    { ...base, playerId: 'x', nickname: 'X', kills: 1, deaths: 1 },
+    { ...base, playerId: 'y', nickname: 'Y', kills: 0, deaths: 1 },
+  ]).map((t) => t.id);
+  assert.ok(!calm.includes('kamikaze'));
+  assert.ok(!calm.includes('wrecker'));
+  assert.ok(calm.includes('ace'));
 });

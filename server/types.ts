@@ -107,6 +107,10 @@ export interface ServerPlayer {
   lastProcessedSeq: number;
   kills: number;
   deaths: number;
+  /** Match stats for end-of-match titles */
+  crashes: number;
+  pickups: number;
+  propsBroken: number;
   roundWins: number;
   score: number;
   lastHitBy: string | null;
@@ -151,6 +155,7 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   mapId: 'desk' as MapId,
   livesPerRound: 3,
   botsEnabled: true,
+  botDifficulty: 'normal',
   maxPlayers: 12,
   friendlyFire: false,
   isPrivate: false,

@@ -290,3 +290,56 @@ export function isMatchOver(
   }
   return roundNumber >= maxRounds;
 }
+
+export type MatchTitleId = 'ace' | 'kamikaze' | 'collector' | 'wrecker' | 'survivor';
+
+export interface MatchTitle {
+  id: MatchTitleId;
+  playerId: string;
+  nickname: string;
+  value: number;
+}
+
+type TitleEntry = Pick<
+  MatchScoreEntry,
+  'playerId' | 'nickname' | 'kills' | 'deaths' | 'crashes' | 'pickups' | 'propsBroken' | 'score'
+>;
+
+/**
+ * Fun end-of-match titles. Each goes to the best pilot for its stat (ties: higher score wins);
+ * a title is skipped when nobody earned it (e.g. no kill at all → no "As du jour").
+ */
+export function computeMatchTitles(entries: TitleEntry[]): MatchTitle[] {
+  const titles: MatchTitle[] = [];
+  const pick = (
+    id: MatchTitleId,
+    stat: (e: TitleEntry) => number,
+    opts: { lowest?: boolean; tieBreak?: (e: TitleEntry) => number } = {}
+  ) => {
+    const tieBreak = opts.tieBreak ?? ((x: TitleEntry) => x.score);
+    let best: TitleEntry | null = null;
+    for (const e of entries) {
+      if (!best) {
+        best = e;
+        continue;
+      }
+      const a = stat(e);
+      const b = stat(best);
+      const better = opts.lowest ? a < b : a > b;
+      if (better || (a === b && tieBreak(e) > tieBreak(best))) best = e;
+    }
+    if (!best) return;
+    const value = stat(best);
+    if (!opts.lowest && value <= 0) return;
+    titles.push({ id, playerId: best.playerId, nickname: best.nickname, value });
+  };
+
+  pick('ace', (e) => e.kills);
+  pick('kamikaze', (e) => e.crashes);
+  pick('collector', (e) => e.pickups);
+  pick('wrecker', (e) => e.propsBroken);
+  if (entries.length >= 2) {
+    pick('survivor', (e) => e.deaths, { lowest: true, tieBreak: (e) => e.kills * 1000 + e.score });
+  }
+  return titles;
+}

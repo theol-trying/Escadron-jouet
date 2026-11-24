@@ -11,8 +11,9 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
 2. [x] Caméra : poursuite plus éloignée (et bornée par la vraie taille de la pièce) + vue cockpit (touche V ou
        Paramètres) : œil du pilote propre à chaque avion, verrière masquée, tableau de bord à son style
        (jet numérique, biplan laiton et bois, planeur mousse, bombardier acier riveté) avec horizon artificiel.
-3. [ ] Difficulté des bots, bulle de protection visible, titres de fin de match, lien d'invitation,
-       écran « le serveur se réveille ».
+3. [x] Niveau des bots (Facile / Normal / Expert, réglé par l'hôte), bulle dorée de protection d'apparition,
+       titres de fin de match (As du jour, Kamikaze, Ramasse-tout, Démolisseur, Increvable), bouton « Inviter »
+       (lien ?salon=CODE qui rejoint directement), bandeau « Le serveur se réveille… ».
 4. [ ] Son : moteur propre à chaque avion + effet de passage, son spatialisé, sons tir absorbé / bouclier,
        musique procédurale + lecteur prêt pour des musiques externes (mp3/ogg).
 5. [ ] Graphismes : traînées et balles visibles, accessoires qui éclatent, podium 3D, peintures/autocollants à débloquer.

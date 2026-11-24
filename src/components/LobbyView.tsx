@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, LogOut, Plane, Play, Shield, Users } from 'lucide-react';
+import { Check, Copy, LogOut, Plane, Play, Share2, Shield, Users } from 'lucide-react';
 import { MAP_ORDER, MAPS } from '../../shared/maps/index';
 import { PAINT_PALETTES, PLANE_ARCHETYPES } from '../../shared/planes';
 import type { RoomSettings, RoomState, TeamId } from '../../shared/types';
@@ -35,6 +35,32 @@ export function LobbyView({
   const isHost = Boolean(localPlayer?.isHost);
   const isTeams = room.settings.mode === 'last_plane_teams';
 
+  const [inviteState, setInviteState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  // Invite link: opens the share menu when the browser has one (Windows/Edge/Chrome do),
+  // otherwise copies the link. Opening the link joins this room directly.
+  const handleInvite = async () => {
+    const url = `${window.location.origin}/?salon=${room.code}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: FR.lobby.inviteShareTitle, text: FR.lobby.inviteShareText, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setInviteState('copied');
+    } catch (err) {
+      // Share sheet dismissed by the user: nothing to report
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setInviteState('copied');
+      } catch {
+        setInviteState('failed');
+      }
+    }
+    setTimeout(() => setInviteState('idle'), 2200);
+  };
+
   const handleCopyCode = async () => {
     try {
       await navigator.clipboard.writeText(room.code);
@@ -68,8 +94,24 @@ export function LobbyView({
                 {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleInvite}
+              className="toy-btn flex items-center gap-1.5 rounded-xl bg-sky-400 px-3 py-1.5 text-sm font-extrabold text-slate-950"
+            >
+              <Share2 className="h-4 w-4" />
+              <span>{FR.lobby.invite}</span>
+            </button>
             {copied && (
               <span className="text-xs font-bold text-emerald-900">{FR.lobby.codeCopied}</span>
+            )}
+            {inviteState === 'copied' && (
+              <span className="text-xs font-bold text-emerald-900">{FR.lobby.inviteCopied}</span>
+            )}
+            {inviteState === 'failed' && (
+              <span className="text-xs font-bold text-red-800">
+                {FR.lobby.inviteFailed} {window.location.origin}/?salon={room.code}
+              </span>
             )}
           </div>
 
@@ -324,6 +366,37 @@ export function LobbyView({
                     className="h-5 w-5 accent-sky-500"
                   />
                 </label>
+
+                {room.settings.botsEnabled && (
+                  <div className="rounded-xl border-2 border-slate-900 bg-white px-3.5 py-2.5">
+                    <div className="mb-1.5 text-xs font-bold uppercase text-slate-600">
+                      {FR.lobby.botDifficultyLabel}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label={FR.lobby.botDifficultyLabel}>
+                      {(['easy', 'normal', 'expert'] as const).map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          role="radio"
+                          disabled={!isHost}
+                          aria-checked={room.settings.botDifficulty === level}
+                          onClick={() => onUpdateSettings({ botDifficulty: level })}
+                          className={`toy-btn rounded-lg px-2 py-1.5 text-xs font-bold disabled:opacity-65 ${
+                            room.settings.botDifficulty === level
+                              ? level === 'easy'
+                                ? 'bg-emerald-300 text-slate-950'
+                                : level === 'normal'
+                                  ? 'bg-amber-300 text-slate-950'
+                                  : 'bg-rose-400 text-slate-950'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {FR.lobby.botDifficulty[level]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {isTeams && (
                   <label className="flex cursor-pointer items-center justify-between rounded-xl border-2 border-slate-900 bg-white px-3.5 py-2.5 text-sm font-bold">
