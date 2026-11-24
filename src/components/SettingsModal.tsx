@@ -141,6 +141,23 @@ export function SettingsModal({
             />
           </div>
 
+          <div>
+            <div className="mb-1 flex justify-between text-sm font-semibold">
+              <label htmlFor="vol-music">{FR.settings.musicVolume}</label>
+              <span className="font-mono-num">{Math.round(audio.musicVolume * 100)}%</span>
+            </div>
+            <input
+              id="vol-music"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={audio.musicVolume}
+              onChange={(e) => onChangeAudio({ musicVolume: Number(e.target.value) })}
+              className="w-full accent-sky-500"
+            />
+          </div>
+
           <div className="border-t-2 border-slate-200 pt-4">
             <div className="mb-1.5 flex items-baseline justify-between text-sm font-semibold">
               <span>{FR.camera.label}</span>

@@ -29,6 +29,7 @@ import type {
   StickerId,
   TeamId,
 } from '../../shared/types';
+import { music } from '../audio/music';
 import { soundEngine } from '../audio/soundEngine';
 import { MatchExtrasRenderer } from './m3Visuals';
 import { buildDeskScene } from './maps/buildDeskScene';
@@ -133,6 +134,9 @@ interface ActivePlaneVisual {
   interpQuat: THREE.Quaternion;
   smokeTimer: number;
   wasAlive: boolean;
+  /** Distance to our plane last frame and cooldown, for the fly-by whoosh */
+  lastDistToLocal: number;
+  flybyCooldown: number;
   hitFlashTimer: number;
 }
 
@@ -249,6 +253,11 @@ export class ThreeGameEngine {
   private readonly _q1 = new THREE.Quaternion();
   private readonly _q2 = new THREE.Quaternion();
   private readonly _raycaster = new THREE.Raycaster();
+  private readonly _listenFwd = new THREE.Vector3();
+  private readonly _listenUp = new THREE.Vector3();
+  /** Projectile ids present in the previous snapshot (new ids = new shots to hear) */
+  private heardProjectileIds = new Set<number>();
+  private lastShotSoundAt = new Map<string, number>();
   private readonly _emissiveFlash = new THREE.Color(0xffffff);
   private readonly _emissiveZero = new THREE.Color(0x000000);
 
@@ -535,6 +544,8 @@ export class ThreeGameEngine {
           smokeTimer: 0,
           wasAlive: pData.alive,
           hitFlashTimer: 0,
+          lastDistToLocal: Infinity,
+          flybyCooldown: 0,
         };
         this.planeVisuals.set(pData.id, pv);
       }
@@ -555,7 +566,9 @@ export class ThreeGameEngine {
           45,
           0.75
         );
-        soundEngine.playPopExplosion();
+        soundEngine.playPopExplosion(
+          pData.id === this.localPlayerId ? undefined : { x: pData.x, y: pData.y, z: pData.z }
+        );
         if (pData.id === this.localPlayerId) {
           this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.75);
         }
@@ -603,7 +616,7 @@ export class ThreeGameEngine {
               0.75
             );
           }
-          soundEngine.playPropBreak();
+          soundEngine.playPropBreak(cfg ? { x: cfg.x, y: cfg.y, z: cfg.z } : undefined);
         }
       }
     }
@@ -612,20 +625,42 @@ export class ThreeGameEngine {
     if (snapshot.suddenDeath && !this.wasSuddenDeath) {
       this.wasSuddenDeath = true;
       soundEngine.playVacuumAlert();
+      music.setIntensity(true);
       this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.55);
     } else if (!snapshot.suddenDeath) {
+      if (this.wasSuddenDeath) music.setIntensity(false);
       this.wasSuddenDeath = false;
     }
+
+    // Hear other pilots' new shots where they are fired (own shots are played at input time)
+    const currentIds = new Set<number>();
+    const nowMs = performance.now();
+    for (const p of snapshot.projectiles) {
+      currentIds.add(p.id);
+      if (this.heardProjectileIds.has(p.id) || p.ownerId === this.localPlayerId) continue;
+      const last = this.lastShotSoundAt.get(p.ownerId) ?? 0;
+      if (nowMs - last < 70) continue;
+      this.lastShotSoundAt.set(p.ownerId, nowMs);
+      soundEngine.playPelletShot(p.heavy, { x: p.x, y: p.y, z: p.z });
+    }
+    this.heardProjectileIds = currentIds;
 
     // Sync projectiles immediately
     this.pool.syncProjectiles(snapshot.projectiles);
   }
 
   public ingestHitEvent(ev: HitFeedbackEvent): void {
+    const involvesMe = ev.targetId === this.localPlayerId || ev.attackerId === this.localPlayerId;
+    const where = involvesMe ? undefined : { x: ev.x, y: ev.y, z: ev.z };
     if (ev.damage <= 0 && !ev.fatal) {
-      // Absorbed (spawn protection, bubble shield) or repair: light spark only — no hit sound,
-      // no hit flash, no camera shake for something that dealt no damage.
+      // Absorbed (spawn protection, bubble shield) or repair: light spark only — no hit flash or
+      // camera shake, and a sound that says why nothing happened.
       this.pool.spawnBurst(ev.x, ev.y, ev.z, 4, [0xbae6fd, 0xffffff], 50, 1.0, 20, 0.25);
+      if (ev.attackerId !== ev.targetId) {
+        const target = this.planeVisuals.get(ev.targetId)?.buffer.at(-1)?.data;
+        if (target?.invuln) soundEngine.playDeflect(where);
+        else soundEngine.playShieldBoing(where);
+      }
       return;
     }
     this.pool.spawnBurst(ev.x, ev.y, ev.z, ev.fatal ? 18 : 7, [0xfacc15, 0xf97316, 0xffffff], 50, 1.3, 20, 0.35);
@@ -633,9 +668,8 @@ export class ThreeGameEngine {
     if (pv) {
       pv.hitFlashTimer = 0.08;
     }
-    if (ev.targetId === this.localPlayerId || ev.attackerId === this.localPlayerId) {
-      soundEngine.playHit();
-    }
+    // Our own hits are played up front; other duels are heard from where they happen
+    soundEngine.playHit(where);
     if (ev.targetId === this.localPlayerId) {
       this.cameraTrauma = Math.min(1, this.cameraTrauma + (ev.fatal ? 0.8 : 0.35));
     }
@@ -706,6 +740,7 @@ export class ThreeGameEngine {
     this.localSim.boost = auth.boost;
     this.localSim.secondaryPowerUp = auth.secondaryPowerUp;
     this.localSim.secondaryUses = auth.secondaryUses;
+    if (this.localSim.shieldTimer > 0 && !auth.shielded && auth.alive) soundEngine.playShieldPop();
     this.localSim.shieldTimer = auth.shielded ? 1 : 0;
     this.localSim.turboTimer = auth.turboActive ? 1 : 0;
     this.localSim.glueTimer = auth.glued ? 1 : 0;
@@ -1062,6 +1097,27 @@ export class ThreeGameEngine {
       pv.rig.root.position.copy(pv.interpPos);
       pv.rig.root.quaternion.copy(pv.interpQuat);
 
+      // Fly-by whoosh when another plane brushes past ours (closest approach just passed)
+      if (pv.id !== this.localPlayerId) {
+        pv.flybyCooldown = Math.max(0, pv.flybyCooldown - dt);
+        const localVisual = this.localPlayerId ? this.planeVisuals.get(this.localPlayerId) : null;
+        if (localVisual && this.localSim?.alive && latest.alive) {
+          const dist = pv.interpPos.distanceTo(localVisual.interpPos);
+          if (pv.lastDistToLocal < 38 && dist > pv.lastDistToLocal && pv.flybyCooldown <= 0 && latest.speed > 30) {
+            const meta = this.roomPlayersMeta.get(pv.id);
+            soundEngine.playFlyby(meta?.planeId ?? 'plastic_jet', {
+              x: pv.interpPos.x,
+              y: pv.interpPos.y,
+              z: pv.interpPos.z,
+            });
+            pv.flybyCooldown = 1.6;
+          }
+          pv.lastDistToLocal = dist;
+        } else {
+          pv.lastDistToLocal = Infinity;
+        }
+      }
+
       // Animate propellers & windup key
       const speedSpin = 18 + latest.speed * 0.25;
       for (const prop of pv.rig.propellers) prop.rotation.z += dt * speedSpin;
@@ -1252,6 +1308,21 @@ export class ThreeGameEngine {
         this.camera.updateProjectionMatrix();
       }
     }
+
+    // 3D sound: the listener is the camera (works in chase, cockpit and spectator views)
+    this._listenFwd.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    this._listenUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    soundEngine.setListener(
+      this.camera.position.x,
+      this.camera.position.y,
+      this.camera.position.z,
+      this._listenFwd.x,
+      this._listenFwd.y,
+      this._listenFwd.z,
+      this._listenUp.x,
+      this._listenUp.y,
+      this._listenUp.z
+    );
 
     // Project enemy/ally labels & off-screen arrows for HUD
     if (this.hudCallback) {

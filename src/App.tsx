@@ -7,7 +7,8 @@ import type {
   RoomState,
   TeamId,
 } from '../shared/types';
-import { soundEngine, type AudioSettings } from './audio/soundEngine';
+import { music } from './audio/music';
+import { DEFAULT_AUDIO_SETTINGS, soundEngine, type AudioSettings } from './audio/soundEngine';
 import { ControlsModal } from './components/ControlsModal';
 import { HangarModal } from './components/HangarModal';
 import { HudOverlay, type HudHandle } from './components/HudOverlay';
@@ -83,6 +84,8 @@ export default function App() {
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [localPlayerId, setLocalPlayerId] = useState<string>('');
+  const localPlayerIdRef = useRef('');
+  localPlayerIdRef.current = localPlayerId;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
 
@@ -118,6 +121,7 @@ export default function App() {
   const gamepadSecondaryHeldRef = useRef(false);
   const gamepadBumpersRef = useRef({ lb: false, rb: false });
   const autostartDoneRef = useRef(false);
+  const lastPhaseRef = useRef<string>('title');
   const inviteDoneRef = useRef(false);
   const touchInputRef = useRef<TouchInputState>({
     aimActive: false,
@@ -181,6 +185,13 @@ export default function App() {
   // Sync document.body.dataset.state, active map, & ThreeGameEngine mode
   useEffect(() => {
     const engine = engineRef.current;
+    // Music: menus vs flight; the victory fanfare plays once when the match ends
+    const phase = room?.phase ?? 'title';
+    const inFlight = phase === 'countdown' || phase === 'playing' || phase === 'round_end';
+    music.setMoment(inFlight ? 'match' : 'menu');
+    const phaseChanged = lastPhaseRef.current !== phase;
+    lastPhaseRef.current = phase;
+
     if (!room) {
       document.body.dataset.state = 'title';
       engine?.setMap('desk');
@@ -199,12 +210,13 @@ export default function App() {
       document.body.dataset.state = 'gameover';
       engine?.setMode('playing');
       soundEngine.stopFlightAudio();
-      soundEngine.playVictoryFanfare();
+      if (phaseChanged) soundEngine.playVictoryFanfare();
     } else {
       document.body.dataset.state = paused ? 'paused' : 'playing';
       engine?.setMode('playing');
       if (room.phase === 'playing' && !paused) {
-        soundEngine.startFlightAudio();
+        const me = room.players.find((p) => p.id === localPlayerIdRef.current);
+        soundEngine.startFlightAudio(me?.cosmetics.planeId ?? cosmeticsRef.current.planeId);
       } else {
         soundEngine.stopFlightAudio();
       }
@@ -903,12 +915,7 @@ export default function App() {
             setGameplaySettings((prev) => ({ ...prev, ...partial }))
           }
           onReset={() => {
-            const defAudio = {
-              masterVolume: 0.7,
-              sfxVolume: 0.85,
-              ambienceVolume: 0.45,
-              muted: false,
-            };
+            const defAudio = { ...DEFAULT_AUDIO_SETTINGS };
             setAudioSettings(defAudio);
             soundEngine.updateSettings(defAudio);
             setGameplaySettings(DEFAULT_GAMEPLAY);

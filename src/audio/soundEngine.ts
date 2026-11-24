@@ -1,10 +1,56 @@
-import type { PowerUpId } from '../../shared/types';
+import type { PlaneId, PowerUpId } from '../../shared/types';
 
 export interface AudioSettings {
   masterVolume: number; // 0..1
   sfxVolume: number; // 0..1
   ambienceVolume: number; // 0..1
+  musicVolume: number; // 0..1
   muted: boolean;
+}
+
+/** World position (cm) of a sound source: spatialised relative to the camera. */
+export interface SoundPos {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
+  masterVolume: 0.7,
+  sfxVolume: 0.85,
+  ambienceVolume: 0.45,
+  musicVolume: 0.5,
+  muted: false,
+};
+
+function loadAudioSettings(): AudioSettings {
+  try {
+    const raw = JSON.parse(localStorage.getItem('ej_audio') || '{}') as Partial<AudioSettings>;
+    const vol = (v: unknown, fallback: number) =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
+    return {
+      masterVolume: vol(raw.masterVolume, DEFAULT_AUDIO_SETTINGS.masterVolume),
+      sfxVolume: vol(raw.sfxVolume, DEFAULT_AUDIO_SETTINGS.sfxVolume),
+      ambienceVolume: vol(raw.ambienceVolume, DEFAULT_AUDIO_SETTINGS.ambienceVolume),
+      musicVolume: vol(raw.musicVolume, DEFAULT_AUDIO_SETTINGS.musicVolume),
+      muted: raw.muted === true,
+    };
+  } catch {
+    return { ...DEFAULT_AUDIO_SETTINGS };
+  }
+}
+
+/**
+ * Continuous engine sound of the local plane. Each toy has its own voice:
+ * - jet: rising whine + airy rush
+ * - biplane: buzzy propeller chop + wind-up spring ratchet clicks
+ * - glider: mostly wind, a faint hum
+ * - bomber: two detuned deep propellers throbbing
+ */
+interface EngineVoice {
+  update(speedRatio: number, boosting: boolean, t: number): void;
+  silence(t: number): void;
+  stop(): void;
 }
 
 class SoundEngine {
@@ -12,15 +58,14 @@ class SoundEngine {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private ambienceGain: GainNode | null = null;
-  private engineOsc: OscillatorNode | null = null;
-  private engineGain: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
+  private engineVoice: EngineVoice | null = null;
+  private enginePlane: PlaneId | null = null;
+  private flightActive = false;
   private ambienceTimer: number | null = null;
-  private settings: AudioSettings = {
-    masterVolume: 0.7,
-    sfxVolume: 0.85,
-    ambienceVolume: 0.45,
-    muted: false,
-  };
+  private unlockListeners: Array<() => void> = [];
+  private settings: AudioSettings = loadAudioSettings();
 
   public getSettings(): AudioSettings {
     return { ...this.settings };
@@ -28,7 +73,31 @@ class SoundEngine {
 
   public updateSettings(partial: Partial<AudioSettings>): void {
     this.settings = { ...this.settings, ...partial };
+    try {
+      localStorage.setItem('ej_audio', JSON.stringify(this.settings));
+    } catch {
+      // storage unavailable: settings simply won't persist
+    }
     this.syncGains();
+  }
+
+  /** Audio context and music bus, for the music player (null until the first user gesture). */
+  public getContext(): AudioContext | null {
+    return this.ctx;
+  }
+
+  public getMusicBus(): GainNode | null {
+    return this.musicGain;
+  }
+
+  public getNoiseBuffer(): AudioBuffer | null {
+    return this.noiseBuffer;
+  }
+
+  /** Runs `cb` once audio is unlocked (immediately if it already is). */
+  public onUnlock(cb: () => void): void {
+    if (this.ctx) cb();
+    else this.unlockListeners.push(cb);
   }
 
   public unlock(): void {
@@ -45,46 +114,314 @@ class SoundEngine {
     const master = ctx.createGain();
     const sfx = ctx.createGain();
     const ambience = ctx.createGain();
+    const music = ctx.createGain();
 
     sfx.connect(master);
     ambience.connect(master);
+    music.connect(master);
     master.connect(ctx.destination);
+
+    // 2 s of white noise, shared by wind, whooshes and percussion
+    const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
     this.ctx = ctx;
     this.masterGain = master;
     this.sfxGain = sfx;
     this.ambienceGain = ambience;
+    this.musicGain = music;
+    this.noiseBuffer = noise;
     this.syncGains();
+
+    const listeners = this.unlockListeners;
+    this.unlockListeners = [];
+    for (const cb of listeners) cb();
   }
 
   private syncGains(): void {
-    if (!this.ctx || !this.masterGain || !this.sfxGain || !this.ambienceGain) return;
+    if (!this.ctx || !this.masterGain || !this.sfxGain || !this.ambienceGain || !this.musicGain) return;
     const t = this.ctx.currentTime;
     const m = this.settings.muted ? 0 : this.settings.masterVolume;
     this.masterGain.gain.setTargetAtTime(m, t, 0.03);
     this.sfxGain.gain.setTargetAtTime(this.settings.sfxVolume, t, 0.03);
     this.ambienceGain.gain.setTargetAtTime(this.settings.ambienceVolume, t, 0.03);
+    this.musicGain.gain.setTargetAtTime(this.settings.musicVolume, t, 0.03);
   }
 
-  public startFlightAudio(): void {
+  // ── 3D positioning ────────────────────────────────────────────────────────────────────────────
+
+  /** Places the listener at the camera (called every frame by the 3D engine). */
+  public setListener(
+    px: number,
+    py: number,
+    pz: number,
+    fx: number,
+    fy: number,
+    fz: number,
+    ux: number,
+    uy: number,
+    uz: number
+  ): void {
+    if (!this.ctx) return;
+    const l = this.ctx.listener;
+    if (l.positionX) {
+      const t = this.ctx.currentTime;
+      l.positionX.setValueAtTime(px, t);
+      l.positionY.setValueAtTime(py, t);
+      l.positionZ.setValueAtTime(pz, t);
+      l.forwardX.setValueAtTime(fx, t);
+      l.forwardY.setValueAtTime(fy, t);
+      l.forwardZ.setValueAtTime(fz, t);
+      l.upX.setValueAtTime(ux, t);
+      l.upY.setValueAtTime(uy, t);
+      l.upZ.setValueAtTime(uz, t);
+    } else {
+      // Older Safari API
+      (l as unknown as { setPosition: (x: number, y: number, z: number) => void }).setPosition(px, py, pz);
+      (l as unknown as {
+        setOrientation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+      }).setOrientation(fx, fy, fz, ux, uy, uz);
+    }
+  }
+
+  /** Output for a one-shot sound: straight to the effects bus, or through a 3D panner. */
+  private output(pos?: SoundPos): AudioNode | null {
+    if (!this.ctx || !this.sfxGain) return null;
+    if (!pos) return this.sfxGain;
+    const p = this.ctx.createPanner();
+    p.panningModel = 'HRTF';
+    p.distanceModel = 'inverse';
+    p.refDistance = 40;
+    p.maxDistance = 1400;
+    p.rolloffFactor = 1.1;
+    if (p.positionX) {
+      p.positionX.value = pos.x;
+      p.positionY.value = pos.y;
+      p.positionZ.value = pos.z;
+    } else {
+      (p as unknown as { setPosition: (x: number, y: number, z: number) => void }).setPosition(pos.x, pos.y, pos.z);
+    }
+    p.connect(this.sfxGain);
+    return p;
+  }
+
+  /** Short pitched blip helper: oscillator with an exponential pitch and volume decay. */
+  private blip(
+    type: OscillatorType,
+    f0: number,
+    f1: number,
+    gain: number,
+    dur: number,
+    pos?: SoundPos,
+    delay = 0
+  ): void {
+    const out = this.output(pos);
+    if (!this.ctx || !out) return;
+    const t = this.ctx.currentTime + delay;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur * 0.9);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    osc.connect(g);
+    g.connect(out);
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
+  }
+
+  /** Filtered noise burst helper (whooshes, splashes, rattles). */
+  private noiseBurst(
+    filterType: BiquadFilterType,
+    f0: number,
+    f1: number,
+    gain: number,
+    dur: number,
+    pos?: SoundPos,
+    q = 1.2
+  ): void {
+    const out = this.output(pos);
+    if (!this.ctx || !out || !this.noiseBuffer) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = filterType;
+    filter.Q.value = q;
+    filter.frequency.setValueAtTime(f0, t);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0008, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(out);
+    src.start(t, Math.random() * 1.5);
+    src.stop(t + dur + 0.02);
+  }
+
+  // ── Engine voices ─────────────────────────────────────────────────────────────────────────────
+
+  private buildEngineVoice(planeId: PlaneId): EngineVoice | null {
+    const ctx = this.ctx;
+    const bus = this.sfxGain;
+    if (!ctx || !bus || !this.noiseBuffer) return null;
+    const nodes: AudioScheduledSourceNode[] = [];
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(bus);
+
+    const osc = (type: OscillatorType, freq: number) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = freq;
+      o.start();
+      nodes.push(o);
+      return o;
+    };
+    const noise = () => {
+      const n = ctx.createBufferSource();
+      n.buffer = this.noiseBuffer;
+      n.loop = true;
+      n.start(0, Math.random() * 1.5);
+      nodes.push(n);
+      return n;
+    };
+    const filter = (type: BiquadFilterType, freq: number, q = 0.8) => {
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      return f;
+    };
+    // Amplitude chop (propeller blades): gain node whose gain is driven by an LFO
+    const chopper = (rate: number, depth: number) => {
+      const g = ctx.createGain();
+      g.gain.value = 1 - depth;
+      const lfo = osc('square', rate);
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = depth;
+      lfo.connect(lfoGain);
+      lfoGain.connect(g.gain);
+      return { g, lfo };
+    };
+
+    const stopAll = () => {
+      for (const n of nodes) {
+        try {
+          n.stop();
+        } catch {
+          // already stopped
+        }
+      }
+      out.disconnect();
+    };
+    const silence = (t: number) => out.gain.setTargetAtTime(0, t, 0.06);
+
+    if (planeId === 'plastic_jet') {
+      const whine = osc('sawtooth', 180);
+      const whineF = filter('lowpass', 900);
+      const rush = noise();
+      const rushF = filter('bandpass', 1200, 0.7);
+      const rushG = ctx.createGain();
+      rushG.gain.value = 0.6;
+      whine.connect(whineF);
+      whineF.connect(out);
+      rush.connect(rushF);
+      rushF.connect(rushG);
+      rushG.connect(out);
+      return {
+        update: (r, boost, t) => {
+          whine.frequency.setTargetAtTime(170 + r * 220 + (boost ? 90 : 0), t, 0.08);
+          rushF.frequency.setTargetAtTime(900 + r * 1600 + (boost ? 900 : 0), t, 0.08);
+          out.gain.setTargetAtTime(boost ? 0.06 : 0.035, t, 0.08);
+        },
+        silence,
+        stop: stopAll,
+      };
+    }
+
+    if (planeId === 'windup_biplane') {
+      const motor = osc('square', 70);
+      const motorF = filter('lowpass', 650);
+      const { g: chop, lfo } = chopper(22, 0.7);
+      motor.connect(motorF);
+      motorF.connect(chop);
+      chop.connect(out);
+      // Spring ratchet: a pulse train through a narrow bandpass gives dry clicks
+      const ratchet = osc('square', 9);
+      const clickF = filter('bandpass', 3200, 9);
+      const clickG = ctx.createGain();
+      clickG.gain.value = 0.35;
+      ratchet.connect(clickF);
+      clickF.connect(clickG);
+      clickG.connect(out);
+      return {
+        update: (r, boost, t) => {
+          motor.frequency.setTargetAtTime(62 + r * 58 + (boost ? 25 : 0), t, 0.08);
+          lfo.frequency.setTargetAtTime(18 + r * 18 + (boost ? 8 : 0), t, 0.08);
+          ratchet.frequency.setTargetAtTime(6 + r * 9, t, 0.1);
+          out.gain.setTargetAtTime(boost ? 0.07 : 0.045, t, 0.08);
+        },
+        silence,
+        stop: stopAll,
+      };
+    }
+
+    if (planeId === 'foam_glider') {
+      const wind = noise();
+      const windF = filter('bandpass', 600, 0.6);
+      const hum = osc('triangle', 220);
+      const humG = ctx.createGain();
+      humG.gain.value = 0.18;
+      wind.connect(windF);
+      windF.connect(out);
+      hum.connect(humG);
+      humG.connect(out);
+      return {
+        update: (r, boost, t) => {
+          windF.frequency.setTargetAtTime(380 + r * 900 + (boost ? 500 : 0), t, 0.1);
+          hum.frequency.setTargetAtTime(200 + r * 90, t, 0.1);
+          out.gain.setTargetAtTime(boost ? 0.07 : 0.045, t, 0.1);
+        },
+        silence,
+        stop: stopAll,
+      };
+    }
+
+    // diecast_bomber: twin deep propellers slightly out of tune → slow beating
+    const left = osc('sawtooth', 48);
+    const right = osc('sawtooth', 50.5);
+    const lowF = filter('lowpass', 320);
+    const { g: chop, lfo } = chopper(14, 0.55);
+    left.connect(lowF);
+    right.connect(lowF);
+    lowF.connect(chop);
+    chop.connect(out);
+    return {
+      update: (r, boost, t) => {
+        left.frequency.setTargetAtTime(46 + r * 26 + (boost ? 12 : 0), t, 0.1);
+        right.frequency.setTargetAtTime(48.5 + r * 27 + (boost ? 12 : 0), t, 0.1);
+        lfo.frequency.setTargetAtTime(12 + r * 9, t, 0.1);
+        out.gain.setTargetAtTime(boost ? 0.09 : 0.065, t, 0.1);
+      },
+      silence,
+      stop: stopAll,
+    };
+  }
+
+  public startFlightAudio(planeId: PlaneId = 'plastic_jet'): void {
     this.unlock();
     if (!this.ctx || !this.sfxGain || !this.ambienceGain) return;
+    this.flightActive = true;
 
-    if (!this.engineOsc) {
-      const osc = this.ctx.createOscillator();
-      const filter = this.ctx.createBiquadFilter();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.value = 95;
-      filter.type = 'lowpass';
-      filter.frequency.value = 340;
-      gain.gain.value = 0.035;
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.sfxGain);
-      osc.start();
-      this.engineOsc = osc;
-      this.engineGain = gain;
+    if (!this.engineVoice || this.enginePlane !== planeId) {
+      this.engineVoice?.stop();
+      this.engineVoice = this.buildEngineVoice(planeId);
+      this.enginePlane = planeId;
     }
 
     if (this.ambienceTimer === null) {
@@ -96,8 +433,9 @@ class SoundEngine {
   }
 
   public stopFlightAudio(): void {
-    if (this.engineGain && this.ctx) {
-      this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.06);
+    this.flightActive = false;
+    if (this.engineVoice && this.ctx) {
+      this.engineVoice.silence(this.ctx.currentTime);
     }
     if (this.ambienceTimer !== null) {
       clearInterval(this.ambienceTimer);
@@ -106,16 +444,13 @@ class SoundEngine {
   }
 
   public updateEnginePitch(speedRatio: number, alive: boolean, boosting: boolean): void {
-    if (!this.ctx || !this.engineOsc || !this.engineGain) return;
+    if (!this.ctx || !this.engineVoice) return;
     const t = this.ctx.currentTime;
-    if (!alive) {
-      this.engineGain.gain.setTargetAtTime(0, t, 0.05);
+    if (!alive || !this.flightActive) {
+      this.engineVoice.silence(t);
       return;
     }
-    const targetFreq = 75 + speedRatio * 95 + (boosting ? 38 : 0);
-    const targetGain = boosting ? 0.055 : 0.032;
-    this.engineOsc.frequency.setTargetAtTime(targetFreq, t, 0.06);
-    this.engineGain.gain.setTargetAtTime(targetGain, t, 0.06);
+    this.engineVoice.update(Math.max(0, Math.min(1, speedRatio)), boosting, t);
   }
 
   private playClockTick(): void {
@@ -134,190 +469,99 @@ class SoundEngine {
     osc.stop(t + 0.035);
   }
 
+  // ── One-shot effects (optional `pos` = heard from that point in the room) ────────────────────
+
   public playUiClick(): void {
     this.unlock();
-    if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(660, t);
-    osc.frequency.exponentialRampToValueAtTime(940, t + 0.04);
-    g.gain.setValueAtTime(0.11, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-    osc.connect(g);
-    g.connect(this.sfxGain);
-    osc.start(t);
-    osc.stop(t + 0.055);
+    this.blip('sine', 660, 940, 0.11, 0.05);
   }
 
-  public playPelletShot(heavy: boolean): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
+  public playPelletShot(heavy: boolean, pos?: SoundPos): void {
     const jitter = 0.94 + Math.random() * 0.12;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = heavy ? 'square' : 'triangle';
-    osc.frequency.setValueAtTime((heavy ? 240 : 480) * jitter, t);
-    osc.frequency.exponentialRampToValueAtTime(heavy ? 85 : 150, t + 0.07);
-    g.gain.setValueAtTime(heavy ? 0.16 : 0.11, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    osc.connect(g);
-    g.connect(this.sfxGain);
-    osc.start(t);
-    osc.stop(t + 0.085);
+    this.blip(heavy ? 'square' : 'triangle', (heavy ? 240 : 480) * jitter, heavy ? 85 : 150, heavy ? 0.16 : 0.11, 0.08, pos);
   }
 
-  public playHit(): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(320, t);
-    osc.frequency.exponentialRampToValueAtTime(110, t + 0.08);
-    g.gain.setValueAtTime(0.18, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-    osc.connect(g);
-    g.connect(this.sfxGain);
-    osc.start(t);
-    osc.stop(t + 0.095);
+  public playHit(pos?: SoundPos): void {
+    this.blip('sine', 320, 110, 0.18, 0.09, pos);
   }
 
-  public playPopExplosion(): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(380, t);
-    osc.frequency.exponentialRampToValueAtTime(55, t + 0.24);
-    g.gain.setValueAtTime(0.28, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
-    osc.connect(g);
-    g.connect(this.sfxGain);
-    osc.start(t);
-    osc.stop(t + 0.27);
+  public playPopExplosion(pos?: SoundPos): void {
+    this.blip('sawtooth', 380, 55, 0.28, 0.26, pos);
+    this.noiseBurst('lowpass', 1800, 200, 0.22, 0.35, pos);
+  }
+
+  /** Shot bouncing off the golden spawn-protection bubble: bright glassy "plink". */
+  public playDeflect(pos?: SoundPos): void {
+    this.blip('sine', 2100, 2600, 0.08, 0.12, pos);
+    this.blip('triangle', 3150, 3300, 0.05, 0.09, pos, 0.02);
+  }
+
+  /** Shot absorbed by the bubble-shield power-up: rubbery "boing". */
+  public playShieldBoing(pos?: SoundPos): void {
+    this.blip('sine', 180, 420, 0.14, 0.16, pos);
+  }
+
+  /** The bubble shield runs out and pops. */
+  public playShieldPop(): void {
+    this.noiseBurst('highpass', 2400, 900, 0.18, 0.12);
+    this.blip('sine', 900, 300, 0.1, 0.1);
+  }
+
+  /** Repair tape: quick tape-rip zip. */
+  public playRepair(): void {
+    this.noiseBurst('bandpass', 1600, 4200, 0.16, 0.22, undefined, 3);
+  }
+
+  /**
+   * Another plane brushing past: whoosh with a falling pitch (doppler-like), coloured by its
+   * engine type so a jet hisses and a propeller plane buzzes.
+   */
+  public playFlyby(planeId: PlaneId, pos: SoundPos): void {
+    const buzzy = planeId === 'windup_biplane' || planeId === 'diecast_bomber';
+    this.noiseBurst('bandpass', buzzy ? 900 : 2600, buzzy ? 300 : 700, buzzy ? 0.2 : 0.24, 0.55, pos, 1.6);
+    const f0 = planeId === 'diecast_bomber' ? 120 : planeId === 'windup_biplane' ? 180 : planeId === 'foam_glider' ? 320 : 520;
+    this.blip(buzzy ? 'sawtooth' : 'triangle', f0 * 1.25, f0 * 0.7, 0.07, 0.5, pos);
   }
 
   public playVictoryFanfare(): void {
     this.unlock();
-    if (!this.ctx || !this.sfxGain) return;
-    const notes = [523.25, 659.25, 783.99, 1046.5];
-    const now = this.ctx.currentTime;
-    notes.forEach((freq, i) => {
-      if (!this.ctx || !this.sfxGain) return;
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = 'triangle';
-      const start = now + i * 0.09;
-      osc.frequency.setValueAtTime(freq, start);
-      g.gain.setValueAtTime(0.14, start);
-      g.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(start);
-      osc.stop(start + 0.3);
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+      this.blip('triangle', freq, freq, 0.14, 0.28, undefined, i * 0.09);
     });
   }
 
   public playPickup(): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const now = this.ctx.currentTime;
     [587.33, 880].forEach((freq, idx) => {
-      if (!this.ctx || !this.sfxGain) return;
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = 'sine';
-      const t = now + idx * 0.055;
-      osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.15, t + 0.09);
-      g.gain.setValueAtTime(0.16, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(t);
-      osc.stop(t + 0.12);
+      this.blip('sine', freq, freq * 1.15, 0.16, 0.11, undefined, idx * 0.055);
     });
   }
 
-  public playPropBreak(): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
+  public playPropBreak(pos?: SoundPos): void {
     // Toy plastic/ceramic pop & crunch
     [420, 260, 620].forEach((freq, idx) => {
-      if (!this.ctx || !this.sfxGain) return;
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = idx === 2 ? 'sine' : 'square';
-      const st = t + idx * 0.03;
-      osc.frequency.setValueAtTime(freq, st);
-      osc.frequency.exponentialRampToValueAtTime(freq * 0.45, st + 0.08);
-      g.gain.setValueAtTime(0.13, st);
-      g.gain.exponentialRampToValueAtTime(0.001, st + 0.09);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(st);
-      osc.stop(st + 0.095);
+      this.blip(idx === 2 ? 'sine' : 'square', freq, freq * 0.45, 0.13, 0.09, pos, idx * 0.03);
     });
+    this.noiseBurst('bandpass', 2200, 600, 0.12, 0.25, pos, 1.5);
   }
 
-  public playSecondaryUse(powerUpId: PowerUpId): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-
+  public playSecondaryUse(powerUpId: PowerUpId, pos?: SoundPos): void {
     if (powerUpId === 'rubber_missile' || powerUpId === 'firecracker') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(powerUpId === 'firecracker' ? 720 : 520, t);
-      osc.frequency.exponentialRampToValueAtTime(160, t + 0.22);
-      g.gain.setValueAtTime(0.18, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(t);
-      osc.stop(t + 0.25);
+      this.blip('sawtooth', powerUpId === 'firecracker' ? 720 : 520, 160, 0.18, 0.24, pos);
     } else if (powerUpId === 'water_bomb' || powerUpId === 'glue_mine') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(340, t);
-      osc.frequency.exponentialRampToValueAtTime(170, t + 0.14);
-      g.gain.setValueAtTime(0.19, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(t);
-      osc.stop(t + 0.17);
+      this.blip('sine', 340, 170, 0.19, 0.16, pos);
+    } else if (powerUpId === 'bubble_shield') {
+      // Bubble inflating
+      this.blip('sine', 220, 660, 0.15, 0.3, pos);
+    } else if (powerUpId === 'repair_tape') {
+      this.playRepair();
     } else {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(440, t);
-      osc.frequency.exponentialRampToValueAtTime(880, t + 0.18);
-      g.gain.setValueAtTime(0.16, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(t);
-      osc.stop(t + 0.23);
+      this.blip('triangle', 440, 880, 0.16, 0.22, pos);
     }
   }
 
   public playVacuumAlert(): void {
-    if (!this.ctx || !this.sfxGain) return;
-    const now = this.ctx.currentTime;
     [480, 360, 480].forEach((freq, i) => {
-      if (!this.ctx || !this.sfxGain) return;
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      const st = now + i * 0.18;
-      osc.frequency.setValueAtTime(freq, st);
-      osc.frequency.linearRampToValueAtTime(freq * 0.72, st + 0.15);
-      g.gain.setValueAtTime(0.15, st);
-      g.gain.exponentialRampToValueAtTime(0.001, st + 0.16);
-      osc.connect(g);
-      g.connect(this.sfxGain);
-      osc.start(st);
-      osc.stop(st + 0.17);
+      this.blip('sawtooth', freq, freq * 0.72, 0.15, 0.16, undefined, i * 0.18);
     });
   }
 }

@@ -14,8 +14,10 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
 3. [x] Niveau des bots (Facile / Normal / Expert, réglé par l'hôte), bulle dorée de protection d'apparition,
        titres de fin de match (As du jour, Kamikaze, Ramasse-tout, Démolisseur, Increvable), bouton « Inviter »
        (lien ?salon=CODE qui rejoint directement), bandeau « Le serveur se réveille… ».
-4. [ ] Son : moteur propre à chaque avion + effet de passage, son spatialisé, sons tir absorbé / bouclier,
-       musique procédurale + lecteur prêt pour des musiques externes (mp3/ogg).
+4. [x] Son : moteur propre à chaque avion (jet, biplan à ressort, planeur, bombardier) + whoosh de passage,
+       son 3D (tirs, touches, explosions, décors des autres), sons tir dévié / bouclier / ruban / bulle qui éclate,
+       musique synthétisée (boîte à musique au menu, marche des jouets en vol, accélère en mort subite) +
+       lecteur de musiques externes (src/audio/musicTracks.ts, fichiers dans public/music/), volume « Musique ».
 5. [ ] Graphismes : traînées et balles visibles, accessoires qui éclatent, podium 3D, peintures/autocollants à débloquer.
 6. [ ] Modes : course d'anneaux (jouable seul), roi du ciel.
 7. [ ] Pièces : événements (chat, lumière, frigo), 4e pièce « Le grenier ».

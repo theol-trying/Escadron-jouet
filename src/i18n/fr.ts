@@ -115,6 +115,7 @@ export const FR = {
     masterVolume: 'Volume général',
     sfxVolume: 'Effets sonores',
     ambienceVolume: 'Ambiance de la pièce',
+    musicVolume: 'Musique',
     mouseSensitivity: 'Sensibilité souris',
     keyboardSensitivity: 'Sensibilité clavier (virages)',
     invertY: 'Inverser l’axe vertical (tangage)',
