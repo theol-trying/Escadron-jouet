@@ -15,7 +15,9 @@ export const FR = {
     settings: 'Paramètres',
     back: 'Retour',
     close: 'Fermer',
-    controlsHint: 'Souris Viser · Z/S Gaz · Q/D Roulis · Maj Turbo · Clic Tirer · E Objet',
+    controlsHint: 'Souris Viser · Clic/Espace Tirer · Maj Turbo · Ctrl Objet · A/E Tonneaux · Z/S Gaz',
+    controlsHintKeyboard:
+      'ZQSD Diriger · Espace/Entrée Tirer · Maj Turbo · Ctrl Objet · A/E Tonneaux · ↑/↓ Gaz',
     connecting: 'Connexion au serveur…',
     connectionError: 'Connexion au serveur impossible. Nouvel essai…',
   },
@@ -70,18 +72,32 @@ export const FR = {
 
   controls: {
     title: 'Commandes de vol',
-    subtitle: 'Clavier physique (AZERTY / QWERTY pris en charge) et souris.',
-    items: [
+    subtitle: 'Touches physiques : la disposition AZERTY est indiquée (QWERTY pris en charge).',
+    schemeLabel: 'Mode de contrôle',
+    // Keys shown for the "Clavier seul" scheme (no mouse needed)
+    itemsKeyboard: [
+      { key: 'Z / S', desc: 'Monter / descendre (tangage)' },
+      { key: 'Q / D', desc: 'Virer à gauche / à droite' },
+      { key: '↑ / ↓', desc: 'Accélérer / freiner (sans décrocher)' },
+    ],
+    // Keys shown for the "Clavier + souris" scheme
+    itemsMouse: [
       { key: 'Souris', desc: 'Orienter le nez de l’avion vers le viseur' },
-      { key: 'Z / S (ou ↑ / ↓)', desc: 'Accélérer / Ralentir (sans décrochage)' },
-      { key: 'Q / D (ou ← / →)', desc: 'Roulis gauche / droite (double-tap : tonneau esquive)' },
-      { key: 'Maj gauche', desc: 'Turbo (jauge rechargeable)' },
-      { key: 'Clic gauche / Espace', desc: 'Tirer (attention à la surchauffe !)' },
-      { key: 'E / Clic droit', desc: 'Utiliser l’objet ou l’arme secondaire' },
+      { key: 'Clic gauche', desc: 'Tirer' },
+      { key: 'Clic droit', desc: 'Utiliser l’objet ou l’arme spéciale' },
+      { key: 'Z / S (ou ↑ / ↓)', desc: 'Accélérer / freiner (sans décrocher)' },
+      { key: 'Q / D (ou ← / →)', desc: 'Roulis gauche / droite' },
+    ],
+    // Keys common to both schemes
+    itemsCommon: [
+      { key: 'Espace / Entrée', desc: 'Tirer (attention à la surchauffe !)' },
+      { key: 'Maj', desc: 'Turbo (jauge rechargeable)' },
+      { key: 'Ctrl', desc: 'Missile, bombe ou objet spécial ramassé' },
+      { key: 'A / E', desc: 'Tonneau d’esquive vers la gauche / la droite' },
       { key: 'Tab', desc: 'Afficher le tableau des scores' },
       { key: 'P / Échap', desc: 'Pause' },
       { key: 'M', desc: 'Couper / rétablir le son' },
-      { key: 'Manette', desc: 'Stick gauche : virage · Gâchette : tirer · A : turbo · B : objet' },
+      { key: 'Manette', desc: 'Stick gauche : virage · Gâchette : tirer · A : turbo · B : objet · LB/RB : tonneaux' },
       { key: 'Tactile', desc: 'Joystick gauche : viser · Gaz + / Frein · Boutons droits : Tirer, Turbo, Objet' },
     ],
   },
@@ -92,9 +108,17 @@ export const FR = {
     sfxVolume: 'Effets sonores',
     ambienceVolume: 'Ambiance de la pièce',
     mouseSensitivity: 'Sensibilité souris',
+    keyboardSensitivity: 'Sensibilité clavier (virages)',
     invertY: 'Inverser l’axe vertical (tangage)',
+    aimAssist: 'Aide à la visée légère',
+    aimAssistHint: 'Corrige un peu la trajectoire quand un adversaire est presque dans le viseur.',
+    controlScheme: 'Mode de contrôle',
+    schemeMouse: 'Clavier + souris',
+    schemeKeyboard: 'Clavier seul',
     resetDefaults: 'Réinitialiser',
   },
+
+  leaveGuard: 'Quitter la partie en cours ?',
 
   hud: {
     round: 'Manche',

@@ -3,8 +3,10 @@ import { Gamepad2, Plane, Play, Settings, Users } from 'lucide-react';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
 import type { PlayerCosmetics } from '../../shared/types';
 import { FR } from '../i18n/fr';
+import type { ControlScheme } from './SettingsModal';
 
 interface TitleScreenProps {
+  controlScheme: ControlScheme;
   nickname: string;
   cosmetics: PlayerCosmetics;
   connected: boolean;
@@ -19,6 +21,7 @@ interface TitleScreenProps {
 }
 
 export function TitleScreen({
+  controlScheme,
   nickname,
   cosmetics,
   connected,
@@ -245,7 +248,7 @@ export function TitleScreen({
 
       {/* Bottom clean single-line controls hint */}
       <div className="relative z-10 text-xs font-semibold text-white drop-shadow-[0_2px_0_rgba(15,23,42,0.9)]">
-        {FR.menu.controlsHint}
+        {controlScheme === 'keyboard' ? FR.menu.controlsHintKeyboard : FR.menu.controlsHint}
       </div>
     </div>
   );

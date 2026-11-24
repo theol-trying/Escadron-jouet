@@ -1,9 +1,26 @@
 # PROGRESS.md — Escadrille Jouet
 
-## ➜ REPRENDRE ICI (24/11/2026 — chantier « correctifs + arènes plus grandes / avions plus lents »)
+## ➜ REPRENDRE ICI (24/11/2026 — grand chantier d'améliorations, priorité au jeu PC)
 Sauvegarde locale : `npm run autosave` (instantané toutes les 2 min sur `refs/autosave/latest`,
 restaurer avec `git checkout refs/autosave/latest -- .`). Commit + push à chaque étape.
+Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
 
+1. [x] Contrôles 100 % clavier (réglage « Clavier seul » : ZQSD diriger, ↑/↓ gaz) ; dans les deux modes
+       Espace/Entrée tirer, Maj turbo, Ctrl objet spécial, A/E tonneaux ; LB/RB tonneaux à la manette ;
+       aide à la visée légère ; réglages enregistrés ; confirmation avant de quitter la page en partie.
+2. [ ] Caméra : poursuite un peu plus éloignée + vue cockpit avec tableau de bord propre à chaque avion (touche V).
+3. [ ] Difficulté des bots, bulle de protection visible, titres de fin de match, lien d'invitation,
+       écran « le serveur se réveille ».
+4. [ ] Son : moteur propre à chaque avion + effet de passage, son spatialisé, sons tir absorbé / bouclier,
+       musique procédurale + lecteur prêt pour des musiques externes (mp3/ogg).
+5. [ ] Graphismes : traînées et balles visibles, accessoires qui éclatent, podium 3D, peintures/autocollants à débloquer.
+6. [ ] Modes : course d'anneaux (jouable seul), roi du ciel.
+7. [ ] Pièces : événements (chat, lumière, frigo), 4e pièce « Le grenier ».
+8. [ ] Technique : chargement découpé (Three.js à part, cartes à la demande), données réseau compactes.
+9. [ ] Salon unique.
+10. [ ] Vérification finale.
+
+### Chantier précédent (terminé) : correctifs d'audit + arènes ×1,4 / avions ×0,85
 1. [x] Tir à la souris rétabli sur les PC à écran tactile (interface tactile seulement si le pointeur principal
        est un doigt, ou dès qu'on touche l'écran ; la souris la masque).
 2. [x] Mode équipes : une équipe qui se vide en cours de match ne bloque plus la manche suivante
@@ -15,8 +32,7 @@ restaurer avec `git checkout refs/autosave/latest -- .`). Commit + push à chaqu
 5. [x] Vérification complète : lint, 41/41 tests, build, CI GitHub verte, sondes réseau (21 messages piégés,
        reconnexion, anti-triche, équipes), navigateur bureau + format iPhone 13 (portrait), scan garde-fou propre.
 
-➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`), essai sur un vrai iPhone 13,
-  puis choix parmi les propositions d'amélioration (gameplay, graphismes, son, technique).
+➜ Mise en ligne sur Render (Blueprint `render.yaml`) : à faire par l'utilisateur.
 
 ## Completed Milestones
 - **Milestone 1**: Core flight physics (`shared/flightPhysics.ts`), 3D desk arena (`Le bureau`), Socket.io room manager, client-side prediction & reconciliation.

@@ -38,6 +38,10 @@ import { ParticleAndProjectilePool } from './particlePool';
 import { buildToyPlane, type BuiltPlaneRig } from './planeBuilder';
 
 // Hangar preview spot on the desk (design units 18, 115, 18), following the arena scale
+// Aim assist only engages for targets this close to the nose (radians) and within this range
+const AIM_ASSIST_CONE = 0.2;
+const AIM_ASSIST_RANGE = 320;
+
 const HANGAR_SPOT = { x: 18 * ARENA_SCALE, y: 115 * ARENA_SCALE, z: 18 * ARENA_SCALE };
 
 export type EngineMode = 'title_tour' | 'hangar_preview' | 'playing';
@@ -198,6 +202,9 @@ export class ThreeGameEngine {
     barrelRollQueued: 0 as -1 | 0 | 1,
     paused: false,
   };
+
+  /** Light aim assist: 0 = off, otherwise the share of the aiming correction applied (≤ 1). */
+  public aimAssistStrength = 0;
 
   private hudCallback: ((data: HudFrameData) => void) | null = null;
   private resizeObserver: ResizeObserver;
@@ -454,6 +461,8 @@ export class ThreeGameEngine {
   }
 
   public cycleSpectator(dir: -1 | 1): void {
+    // Q/D also steer: only switch the watched pilot when the local plane is out of the round
+    if (this.localSim?.alive) return;
     this.spectatorIndex += dir;
   }
 
@@ -725,6 +734,53 @@ export class ThreeGameEngine {
     }
   }
 
+  /**
+   * Light aim assist. When an opponent (with lead for pellet travel time) sits within a small cone
+   * around the nose, returns the steering input that would centre it and a blend weight that fades
+   * to 0 at the cone edge. The server stays authoritative: this only shapes the input sent.
+   */
+  private computeAimAssist(
+    arch: (typeof PLANE_ARCHETYPES)[keyof typeof PLANE_ARCHETYPES]
+  ): { x: number; y: number; weight: number } | null {
+    if (this.aimAssistStrength <= 0 || !this.localSim || !this.localPlayerId) return null;
+    const sim = this.localSim;
+    const fwd = getPlaneForward(sim);
+    const heading = Math.atan2(-fwd.x, -fwd.z);
+    const elevation = Math.asin(Math.max(-1, Math.min(1, fwd.y)));
+    const myTeam = this.roomPlayersMeta.get(this.localPlayerId)?.team ?? 'none';
+    const pelletSpeed = arch.projectileSpeed + sim.speed * 0.35;
+
+    let best: { yawErr: number; pitchErr: number; score: number } | null = null;
+    for (const pv of this.planeVisuals.values()) {
+      if (pv.id === this.localPlayerId) continue;
+      const data = pv.buffer[pv.buffer.length - 1]?.data;
+      if (!data || !data.alive || data.invuln) continue;
+      if (myTeam !== 'none' && data.team === myTeam) continue;
+      const dist = Math.hypot(data.x - sim.x, data.y - sim.y, data.z - sim.z);
+      if (dist < 8 || dist > AIM_ASSIST_RANGE) continue;
+      const tFwd = getPlaneForward(data);
+      const lead = dist / pelletSpeed;
+      const dx = data.x + tFwd.x * data.speed * lead - sim.x;
+      const dy = data.y + tFwd.y * data.speed * lead - sim.y;
+      const dz = data.z + tFwd.z * data.speed * lead - sim.z;
+      const d = Math.hypot(dx, dy, dz) || 1;
+      let yawErr = Math.atan2(-dx, -dz) - heading;
+      yawErr = Math.atan2(Math.sin(yawErr), Math.cos(yawErr));
+      const pitchErr = Math.asin(Math.max(-1, Math.min(1, dy / d))) - elevation;
+      const score = Math.hypot(yawErr, pitchErr);
+      if (score > AIM_ASSIST_CONE) continue;
+      if (!best || score < best.score) best = { yawErr, pitchErr, score };
+    }
+    if (!best) return null;
+
+    // Steering that would centre the target in ~0.35 s (heading grows by -aimX·turnRate·dt)
+    const tau = 0.35;
+    const x = Math.max(-1, Math.min(1, -best.yawErr / (arch.turnRate * tau)));
+    const y = Math.max(-1, Math.min(1, best.pitchErr / (arch.turnRate * 0.9 * tau)));
+    const weight = this.aimAssistStrength * (1 - best.score / AIM_ASSIST_CONE);
+    return { x, y, weight };
+  }
+
   public stepAndSendInput(
     dt: number,
     emitInput: (inp: PlayerInputState) => void,
@@ -738,11 +794,21 @@ export class ThreeGameEngine {
     const useSecondary = canControl ? this.inputState.useSecondaryQueued : false;
     this.inputState.useSecondaryQueued = false;
 
+    let aimX = canControl ? this.inputState.aimX : 0;
+    let aimY = canControl ? this.inputState.aimY : 0;
+    if (canControl) {
+      const assist = this.computeAimAssist(PLANE_ARCHETYPES[this.localCosmetics.planeId]);
+      if (assist) {
+        aimX += (assist.x - aimX) * assist.weight;
+        aimY += (assist.y - aimY) * assist.weight;
+      }
+    }
+
     const inp: PlayerInputState = {
       seq: ++this.inputSeq,
       dt,
-      aimX: canControl ? this.inputState.aimX : 0,
-      aimY: canControl ? this.inputState.aimY : 0,
+      aimX,
+      aimY,
       throttle: canControl ? this.inputState.throttle : 0,
       roll: canControl ? this.inputState.roll : 0,
       boost: canControl ? this.inputState.boost : false,

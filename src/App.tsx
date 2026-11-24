@@ -13,7 +13,13 @@ import { HangarModal } from './components/HangarModal';
 import { HudOverlay, type HudHandle } from './components/HudOverlay';
 import { LobbyView } from './components/LobbyView';
 import { MatchEndModal } from './components/MatchEndModal';
-import { SettingsModal, type GameplaySettings } from './components/SettingsModal';
+import {
+  DEFAULT_GAMEPLAY,
+  SettingsModal,
+  loadGameplaySettings,
+  saveGameplaySettings,
+  type GameplaySettings,
+} from './components/SettingsModal';
 import { TitleScreen } from './components/TitleScreen';
 import type { TouchInputState } from './components/TouchControls';
 import { ThreeGameEngine, type HudFrameData } from './engine/ThreeGameEngine';
@@ -26,10 +32,26 @@ const DEFAULT_COSMETICS: PlayerCosmetics = {
   stickerId: 'star',
 };
 
-const DEFAULT_GAMEPLAY: GameplaySettings = {
-  mouseSensitivity: 1.0,
-  invertY: false,
-};
+// Keys used in flight whose default browser action must be prevented during a match
+const FLIGHT_KEYS = new Set([
+  'Space',
+  'Enter',
+  'NumpadEnter',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'KeyQ',
+  'KeyE',
+  'ShiftLeft',
+  'ShiftRight',
+  'ControlLeft',
+  'ControlRight',
+]);
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement>(null);
@@ -56,7 +78,7 @@ export default function App() {
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(() =>
     soundEngine.getSettings()
   );
-  const [gameplaySettings, setGameplaySettings] = useState<GameplaySettings>(DEFAULT_GAMEPLAY);
+  const [gameplaySettings, setGameplaySettings] = useState<GameplaySettings>(loadGameplaySettings);
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [localPlayerId, setLocalPlayerId] = useState<string>('');
@@ -93,7 +115,7 @@ export default function App() {
   const keysHeldRef = useRef<Set<string>>(new Set());
   const mouseDownRef = useRef(false);
   const gamepadSecondaryHeldRef = useRef(false);
-  const lastTapRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+  const gamepadBumpersRef = useRef({ lb: false, rb: false });
   const autostartDoneRef = useRef(false);
   const touchInputRef = useRef<TouchInputState>({
     aimActive: false,
@@ -107,6 +129,25 @@ export default function App() {
   // Browsers emit compatibility mouse events right after a tap: ignore them so a tap on the
   // 3D view neither jerks the aim nor fires, while a real mouse keeps working everywhere.
   const lastTouchAtRef = useRef(-Infinity);
+
+  // Persist gameplay settings (control scheme, sensitivities, aim assist…)
+  useEffect(() => {
+    saveGameplaySettings(gameplaySettings);
+  }, [gameplaySettings]);
+
+  // In a match, ask before leaving the page: with AZERTY "Z" = KeyW, pressing Ctrl (special item)
+  // while steering triggers Ctrl+W, which browsers never let a page block.
+  const inMatchPhase = room?.phase === 'playing' || room?.phase === 'countdown' || room?.phase === 'round_end';
+  useEffect(() => {
+    if (!inMatchPhase) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = FR.leaveGuard;
+      return FR.leaveGuard;
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [inMatchPhase]);
 
   // Persist nickname & cosmetics
   useEffect(() => {
@@ -424,27 +465,24 @@ export default function App() {
         return;
       }
 
-      if (!e.repeat && e.code === 'KeyE') {
-        if (engineRef.current) {
-          engineRef.current.inputState.useSecondaryQueued = true;
-        }
+      // Flight keys must not scroll the page, press a focused button (Space/Enter) or trigger a
+      // Ctrl shortcut of the browser (Ctrl+S, Ctrl+D…). Ctrl+W cannot be blocked: see the leave guard.
+      if (FLIGHT_KEYS.has(e.code) || e.ctrlKey) {
+        e.preventDefault();
       }
 
-      // Double-tap Q/D (KeyA/KeyD on physical layout) or ArrowLeft/ArrowRight for barrel roll
-      if (!e.repeat && (e.code === 'KeyA' || e.code === 'ArrowLeft' || e.code === 'KeyD' || e.code === 'ArrowRight')) {
-        const now = performance.now();
-        if (lastTapRef.current.code === e.code && now - lastTapRef.current.time < 260) {
-          if (engineRef.current) {
-            engineRef.current.inputState.barrelRollQueued =
-              e.code === 'KeyA' || e.code === 'ArrowLeft' ? -1 : 1;
-            engineRef.current.cycleSpectator(
-              e.code === 'KeyA' || e.code === 'ArrowLeft' ? -1 : 1
-            );
-          }
-          lastTapRef.current = { code: '', time: 0 };
-        } else {
-          lastTapRef.current = { code: e.code, time: now };
+      const engine = engineRef.current;
+      if (!e.repeat && engine) {
+        // Ctrl : missile / special item
+        if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+          engine.inputState.useSecondaryQueued = true;
         }
+        // A / E (physical keys Q / E on AZERTY) : barrel roll to the left / right
+        if (e.code === 'KeyQ') engine.inputState.barrelRollQueued = -1;
+        if (e.code === 'KeyE') engine.inputState.barrelRollQueued = 1;
+        // Q / D or ← / → : previous / next pilot when spectating (ignored while flying)
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') engine.cycleSpectator(-1);
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') engine.cycleSpectator(1);
       }
 
       keysHeldRef.current.add(e.code);
@@ -461,6 +499,8 @@ export default function App() {
 
     const onMouseMove = (e: MouseEvent) => {
       if (isCompatMouseEvent()) return;
+      // "Clavier seul": the mouse never steers (ZQSD does)
+      if (gameplayRef.current.controlScheme === 'keyboard') return;
       if (touchEnabledRef.current && touchInputRef.current.aimActive) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest('[data-touch-control="true"]')) return;
@@ -543,16 +583,40 @@ export default function App() {
       lastInputTime = now;
 
       const keys = keysHeldRef.current;
+      const settings = gameplayRef.current;
+      const keyboardOnly = settings.controlScheme === 'keyboard';
+      const held = (...codes: string[]) => codes.some((c) => keys.has(c));
+
       let throttle = 0;
-      if (keys.has('KeyW') || keys.has('ArrowUp')) throttle += 1;
-      if (keys.has('KeyS') || keys.has('ArrowDown')) throttle -= 1;
-
       let roll = 0;
-      if (keys.has('KeyA') || keys.has('ArrowLeft')) roll -= 1;
-      if (keys.has('KeyD') || keys.has('ArrowRight')) roll += 1;
+      if (keyboardOnly) {
+        // 100 % clavier : ZQSD (touches physiques W/A/S/D) dirigent, ↑/↓ règlent les gaz
+        if (held('ArrowUp')) throttle += 1;
+        if (held('ArrowDown')) throttle -= 1;
+        const sens = settings.keyboardSensitivity;
+        let steerX = 0;
+        let steerY = 0;
+        if (held('KeyA', 'ArrowLeft')) steerX -= 1;
+        if (held('KeyD', 'ArrowRight')) steerX += 1;
+        if (held('KeyW')) steerY += 1;
+        if (held('KeyS')) steerY -= 1;
+        if (settings.invertY) steerY = -steerY;
+        // Smooth ramp (~0.12 s) so short taps give fine corrections and holds give full turns
+        const k = 1 - Math.exp(-dt / 0.12);
+        engine.inputState.aimX += (steerX * sens - engine.inputState.aimX) * k;
+        engine.inputState.aimY += (steerY * sens - engine.inputState.aimY) * k;
+        engine.inputState.aimX = Math.max(-1, Math.min(1, engine.inputState.aimX));
+        engine.inputState.aimY = Math.max(-1, Math.min(1, engine.inputState.aimY));
+      } else {
+        // Clavier + souris : la souris vise, Z/S règlent les gaz, Q/D le roulis
+        if (held('KeyW', 'ArrowUp')) throttle += 1;
+        if (held('KeyS', 'ArrowDown')) throttle -= 1;
+        if (held('KeyA', 'ArrowLeft')) roll -= 1;
+        if (held('KeyD', 'ArrowRight')) roll += 1;
+      }
 
-      let boost = keys.has('ShiftLeft') || keys.has('ShiftRight');
-      let fire = mouseDownRef.current || keys.has('Space');
+      let boost = held('ShiftLeft', 'ShiftRight');
+      let fire = mouseDownRef.current || held('Space', 'Enter', 'NumpadEnter');
 
       // Optional Gamepad support
       const pads = navigator.getGamepads?.();
@@ -560,7 +624,7 @@ export default function App() {
       if (gp) {
         if (Math.abs(gp.axes[0]) > 0.14) engine.inputState.aimX = gp.axes[0];
         if (Math.abs(gp.axes[1]) > 0.14) {
-          engine.inputState.aimY = gameplayRef.current.invertY ? gp.axes[1] : -gp.axes[1];
+          engine.inputState.aimY = settings.invertY ? gp.axes[1] : -gp.axes[1];
         }
         if (gp.buttons[0]?.pressed) boost = true;
         if (gp.buttons[7]?.pressed) fire = true;
@@ -569,14 +633,24 @@ export default function App() {
           engine.inputState.useSecondaryQueued = true;
         }
         gamepadSecondaryHeldRef.current = bPressed;
+        // LB / RB: barrel rolls
+        const lb = Boolean(gp.buttons[4]?.pressed);
+        const rb = Boolean(gp.buttons[5]?.pressed);
+        if (lb && !gamepadBumpersRef.current.lb) engine.inputState.barrelRollQueued = -1;
+        if (rb && !gamepadBumpersRef.current.rb) engine.inputState.barrelRollQueued = 1;
+        gamepadBumpersRef.current = { lb, rb };
       } else {
         gamepadSecondaryHeldRef.current = false;
+        gamepadBumpersRef.current = { lb: false, rb: false };
       }
+
+      // Light aim assist: stronger for keyboard-only steering, which is less precise than a mouse
+      engine.aimAssistStrength = settings.aimAssist ? (keyboardOnly ? 0.6 : 0.4) : 0;
 
       const touch = touchInputRef.current;
       if (touch.aimActive) {
         engine.inputState.aimX = touch.aimX;
-        engine.inputState.aimY = gameplayRef.current.invertY ? -touch.aimY : touch.aimY;
+        engine.inputState.aimY = settings.invertY ? -touch.aimY : touch.aimY;
         wasTouchAimActiveRef.current = true;
       } else if (wasTouchAimActiveRef.current) {
         engine.inputState.aimX = 0;
@@ -685,6 +759,7 @@ export default function App() {
       {/* Title Screen */}
       {!room && !showHangar && (
         <TitleScreen
+          controlScheme={gameplaySettings.controlScheme}
           nickname={nickname}
           cosmetics={cosmetics}
           connected={connected}
@@ -779,7 +854,15 @@ export default function App() {
         />
       )}
 
-      {showControls && <ControlsModal onClose={() => setShowControls(false)} />}
+      {showControls && (
+        <ControlsModal
+          scheme={gameplaySettings.controlScheme}
+          onChangeScheme={(controlScheme) =>
+            setGameplaySettings((prev) => ({ ...prev, controlScheme }))
+          }
+          onClose={() => setShowControls(false)}
+        />
+      )}
 
       {showSettings && (
         <SettingsModal

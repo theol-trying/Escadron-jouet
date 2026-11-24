@@ -2,9 +2,48 @@ import { X } from 'lucide-react';
 import type { AudioSettings } from '../audio/soundEngine';
 import { FR } from '../i18n/fr';
 
+export type ControlScheme = 'mouse' | 'keyboard';
+
 export interface GameplaySettings {
+  controlScheme: ControlScheme; // 'keyboard' = 100 % clavier (ZQSD), 'mouse' = viser à la souris
   mouseSensitivity: number; // 0.5..2.0
+  keyboardSensitivity: number; // 0.5..1.5 (max turn input reached with ZQSD)
   invertY: boolean;
+  aimAssist: boolean;
+}
+
+export const DEFAULT_GAMEPLAY: GameplaySettings = {
+  controlScheme: 'mouse',
+  mouseSensitivity: 1.0,
+  keyboardSensitivity: 1.0,
+  invertY: false,
+  aimAssist: true,
+};
+
+/** Reads saved gameplay settings, ignoring unknown or invalid values. */
+export function loadGameplaySettings(): GameplaySettings {
+  try {
+    const raw = JSON.parse(localStorage.getItem('ej_gameplay') || '{}') as Partial<GameplaySettings>;
+    const num = (v: unknown, min: number, max: number, fallback: number) =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+    return {
+      controlScheme: raw.controlScheme === 'keyboard' ? 'keyboard' : 'mouse',
+      mouseSensitivity: num(raw.mouseSensitivity, 0.5, 2, DEFAULT_GAMEPLAY.mouseSensitivity),
+      keyboardSensitivity: num(raw.keyboardSensitivity, 0.5, 1.5, DEFAULT_GAMEPLAY.keyboardSensitivity),
+      invertY: raw.invertY === true,
+      aimAssist: raw.aimAssist !== false,
+    };
+  } catch {
+    return { ...DEFAULT_GAMEPLAY };
+  }
+}
+
+export function saveGameplaySettings(settings: GameplaySettings): void {
+  try {
+    localStorage.setItem('ej_gameplay', JSON.stringify(settings));
+  } catch {
+    // storage unavailable (private mode): settings simply won't persist
+  }
 }
 
 interface SettingsModalProps {
@@ -31,7 +70,7 @@ export function SettingsModal({
       aria-modal="true"
       aria-labelledby="settings-title"
     >
-      <div className="toy-panel w-full max-w-lg rounded-2xl p-6 text-slate-900">
+      <div className="toy-panel max-h-full w-full max-w-lg overflow-y-auto rounded-2xl p-6 text-slate-900">
         <div className="flex items-center justify-between border-b-2 border-slate-200 pb-4">
           <h2 id="settings-title" className="font-display text-2xl font-extrabold">
             {FR.settings.title}
@@ -99,6 +138,45 @@ export function SettingsModal({
           </div>
 
           <div className="border-t-2 border-slate-200 pt-4">
+            <div className="mb-1.5 text-sm font-semibold">{FR.settings.controlScheme}</div>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={FR.settings.controlScheme}>
+              {(['mouse', 'keyboard'] as const).map((scheme) => (
+                <button
+                  key={scheme}
+                  type="button"
+                  role="radio"
+                  aria-checked={gameplay.controlScheme === scheme}
+                  onClick={() => onChangeGameplay({ controlScheme: scheme })}
+                  className={`toy-btn rounded-xl px-3 py-2 text-sm font-bold ${
+                    gameplay.controlScheme === scheme ? 'bg-sky-400 text-slate-950' : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {scheme === 'mouse' ? FR.settings.schemeMouse : FR.settings.schemeKeyboard}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {gameplay.controlScheme === 'keyboard' && (
+            <div>
+              <div className="mb-1 flex justify-between text-sm font-semibold">
+                <label htmlFor="kb-sens">{FR.settings.keyboardSensitivity}</label>
+                <span className="font-mono-num">{gameplay.keyboardSensitivity.toFixed(2)}x</span>
+              </div>
+              <input
+                id="kb-sens"
+                type="range"
+                min={0.5}
+                max={1.5}
+                step={0.05}
+                value={gameplay.keyboardSensitivity}
+                onChange={(e) => onChangeGameplay({ keyboardSensitivity: Number(e.target.value) })}
+                className="w-full accent-amber-500"
+              />
+            </div>
+          )}
+
+          <div className={gameplay.controlScheme === 'keyboard' ? 'hidden' : ''}>
             <div className="mb-1 flex justify-between text-sm font-semibold">
               <label htmlFor="mouse-sens">{FR.settings.mouseSensitivity}</label>
               <span className="font-mono-num">{gameplay.mouseSensitivity.toFixed(2)}x</span>
@@ -122,6 +200,19 @@ export function SettingsModal({
               checked={gameplay.invertY}
               onChange={(e) => onChangeGameplay({ invertY: e.target.checked })}
               className="h-5 w-5 accent-sky-500"
+            />
+          </label>
+
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold">
+            <span>
+              {FR.settings.aimAssist}
+              <span className="mt-0.5 block text-xs font-medium text-slate-500">{FR.settings.aimAssistHint}</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={gameplay.aimAssist}
+              onChange={(e) => onChangeGameplay({ aimAssist: e.target.checked })}
+              className="h-5 w-5 shrink-0 accent-sky-500"
             />
           </label>
         </div>
