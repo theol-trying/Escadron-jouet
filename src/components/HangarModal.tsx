@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react';
+import { Check, Lock, X } from 'lucide-react';
 import {
   PAINT_ORDER,
   PAINT_PALETTES,
@@ -9,9 +9,18 @@ import {
 } from '../../shared/planes';
 import type { PlayerCosmetics } from '../../shared/types';
 import { FR } from '../i18n/fr';
+import {
+  PAINT_UNLOCKS,
+  STICKER_UNLOCKS,
+  isPaintUnlocked,
+  isStickerUnlocked,
+  requirementLabel,
+  type PlayerProgress,
+} from '../progression';
 
 interface HangarModalProps {
   cosmetics: PlayerCosmetics;
+  progress: PlayerProgress;
   onChange: (next: PlayerCosmetics) => void;
   onClose: () => void;
 }
@@ -34,7 +43,7 @@ function StatBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function HangarModal({ cosmetics, onChange, onClose }: HangarModalProps) {
+export function HangarModal({ cosmetics, progress, onChange, onClose }: HangarModalProps) {
   const activeArch = PLANE_ARCHETYPES[cosmetics.planeId];
 
   return (
@@ -113,16 +122,21 @@ export function HangarModal({ cosmetics, onChange, onClose }: HangarModalProps) 
             {PAINT_ORDER.map((pid) => {
               const p = PAINT_PALETTES[pid];
               const active = cosmetics.paintId === pid;
+              const req = PAINT_UNLOCKS[pid];
+              const unlocked = isPaintUnlocked(progress, pid);
+              const label = unlocked || !req ? p.nameFr : `${p.nameFr} — ${FR.hangar.locked} : ${requirementLabel(progress, req)}`;
               return (
                 <button
                   key={pid}
                   type="button"
-                  aria-label={p.nameFr}
-                  title={p.nameFr}
+                  aria-label={label}
+                  title={label}
+                  disabled={!unlocked}
                   onClick={() => onChange({ ...cosmetics, paintId: pid })}
-                  className="toy-btn flex h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: p.primary }}
+                  className="toy-btn relative flex h-10 w-10 items-center justify-center rounded-xl disabled:cursor-not-allowed"
+                  style={{ backgroundColor: p.primary, opacity: unlocked ? 1 : 0.45 }}
                 >
+                  {!unlocked && <Lock className="h-4 w-4 text-white drop-shadow-[0_1px_0_#000]" />}
                   {active && (
                     <Check
                       className={`h-5 w-5 ${
@@ -145,16 +159,26 @@ export function HangarModal({ cosmetics, onChange, onClose }: HangarModalProps) 
             {STICKER_ORDER.map((sid) => {
               const st = STICKERS[sid];
               const active = cosmetics.stickerId === sid;
+              const req = STICKER_UNLOCKS[sid];
+              const unlocked = isStickerUnlocked(progress, sid);
               return (
                 <button
                   key={sid}
                   type="button"
+                  disabled={!unlocked}
+                  title={unlocked || !req ? st.nameFr : `${FR.hangar.locked} : ${requirementLabel(progress, req)}`}
                   onClick={() => onChange({ ...cosmetics, stickerId: sid })}
-                  className={`toy-btn rounded-xl px-2 py-2 text-xs font-bold ${
-                    active ? 'bg-amber-300 text-slate-950' : 'bg-white text-slate-800'
+                  className={`toy-btn flex flex-col items-center rounded-xl px-2 py-1.5 text-xs font-bold disabled:cursor-not-allowed ${
+                    active ? 'bg-amber-300 text-slate-950' : unlocked ? 'bg-white text-slate-800' : 'bg-slate-200 text-slate-500'
                   }`}
                 >
-                  {st.nameFr}
+                  <span className="flex items-center gap-1">
+                    {!unlocked && <Lock className="h-3 w-3" />}
+                    {st.nameFr}
+                  </span>
+                  {!unlocked && req && (
+                    <span className="text-[9px] font-semibold text-slate-500">{requirementLabel(progress, req)}</span>
+                  )}
                 </button>
               );
             })}

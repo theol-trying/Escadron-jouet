@@ -2,10 +2,13 @@ import { Bomb, Crosshair, Hammer, Package, RotateCcw, Shield, Trophy } from 'luc
 import { computeMatchTitles, type MatchTitleId } from '../../shared/rules';
 import type { RoomState } from '../../shared/types';
 import { FR } from '../i18n/fr';
+import type { UnlockedItem } from '../progression';
 
 interface MatchEndModalProps {
   room: RoomState;
   localPlayerId: string;
+  /** Paints / stickers this match just unlocked */
+  newUnlocks?: UnlockedItem[];
   onPlayAgain: () => void;
   onLeaveToMenu: () => void;
 }
@@ -21,6 +24,7 @@ const TITLE_ICONS: Record<MatchTitleId, typeof Trophy> = {
 export function MatchEndModal({
   room,
   localPlayerId,
+  newUnlocks = [],
   onPlayAgain,
   onLeaveToMenu,
 }: MatchEndModalProps) {
@@ -79,6 +83,12 @@ export function MatchEndModal({
             );
           })}
         </div>
+
+        {newUnlocks.length > 0 && (
+          <div className="mt-4 rounded-xl border-2 border-emerald-700 bg-emerald-100 px-4 py-2.5 text-center text-sm font-bold text-emerald-900">
+            {FR.hangar.newUnlocks} {newUnlocks.map((u) => u.nameFr).join(', ')} !
+          </div>
+        )}
 
         {/* Fun titles */}
         {titles.length > 0 && (

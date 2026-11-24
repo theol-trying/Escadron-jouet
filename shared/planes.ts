@@ -196,6 +196,27 @@ export const PAINT_PALETTES: Record<PaintId, PaintPalette> = {
     secondary: '#DC2626',
     accent: '#1D4ED8',
   },
+  purple: {
+    id: 'purple',
+    nameFr: 'Violet Galaxie',
+    primary: '#7C3AED',
+    secondary: '#F5F3FF',
+    accent: '#22D3EE',
+  },
+  pink: {
+    id: 'pink',
+    nameFr: 'Rose Bonbon',
+    primary: '#EC4899',
+    secondary: '#FDF2F8',
+    accent: '#A3E635',
+  },
+  gold: {
+    id: 'gold',
+    nameFr: 'Or Trophée',
+    primary: '#D4A017',
+    secondary: '#1F2937',
+    accent: '#FEF3C7',
+  },
 };
 
 export const PAINT_ORDER: PaintId[] = [
@@ -205,6 +226,9 @@ export const PAINT_ORDER: PaintId[] = [
   'green',
   'orange',
   'white',
+  'purple',
+  'pink',
+  'gold',
 ];
 
 export interface StickerDefinition {
@@ -217,6 +241,8 @@ export const STICKERS: Record<StickerId, StickerDefinition> = {
   lightning: { id: 'lightning', nameFr: 'Éclair' },
   target: { id: 'target', nameFr: 'Cocarde' },
   flame: { id: 'flame', nameFr: 'Flamme' },
+  heart: { id: 'heart', nameFr: 'Cœur' },
+  crown: { id: 'crown', nameFr: 'Couronne' },
 };
 
-export const STICKER_ORDER: StickerId[] = ['star', 'lightning', 'target', 'flame'];
+export const STICKER_ORDER: StickerId[] = ['star', 'lightning', 'target', 'flame', 'heart', 'crown'];

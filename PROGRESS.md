@@ -18,7 +18,8 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
        son 3D (tirs, touches, explosions, décors des autres), sons tir dévié / bouclier / ruban / bulle qui éclate,
        musique synthétisée (boîte à musique au menu, marche des jouets en vol, accélère en mort subite) +
        lecteur de musiques externes (src/audio/musicTracks.ts, fichiers dans public/music/), volume « Musique ».
-5. [ ] Graphismes : traînées et balles visibles, accessoires qui éclatent, podium 3D, peintures/autocollants à débloquer.
+5. [x] Graphismes : traînées d'ailes, balles traçantes fluides, accessoires qui éclatent en morceaux, podium 3D,
+       peintures/autocollants à débloquer (3 nouvelles peintures, Cœur et Couronne ; src/progression.ts).
 6. [ ] Modes : course d'anneaux (jouable seul), roi du ciel.
 7. [ ] Pièces : événements (chat, lumière, frigo), 4e pièce « Le grenier ».
 8. [ ] Technique : chargement découpé (Three.js à part, cartes à la demande), données réseau compactes.

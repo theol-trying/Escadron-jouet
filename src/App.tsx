@@ -22,6 +22,7 @@ import {
   type GameplaySettings,
 } from './components/SettingsModal';
 import { ServerWakeBanner } from './components/ServerWakeBanner';
+import { loadProgress, recordMatch, saveProgress, type PlayerProgress, type UnlockedItem } from './progression';
 import { TitleScreen } from './components/TitleScreen';
 import type { TouchInputState } from './components/TouchControls';
 import { ThreeGameEngine, type HudFrameData } from './engine/ThreeGameEngine';
@@ -77,6 +78,11 @@ export default function App() {
       return DEFAULT_COSMETICS;
     }
   });
+  // Paints & stickers unlocked by playing (saved on this device)
+  const [progress, setProgress] = useState<PlayerProgress>(() => loadProgress(cosmetics));
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  const [newUnlocks, setNewUnlocks] = useState<UnlockedItem[]>([]);
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(() =>
     soundEngine.getSettings()
   );
@@ -191,6 +197,7 @@ export default function App() {
     music.setMoment(inFlight ? 'match' : 'menu');
     const phaseChanged = lastPhaseRef.current !== phase;
     lastPhaseRef.current = phase;
+    if (phaseChanged && phase !== 'match_end') setNewUnlocks([]);
 
     if (!room) {
       document.body.dataset.state = 'title';
@@ -211,6 +218,19 @@ export default function App() {
       soundEngine.stopFlightAudio();
       if (phaseChanged) {
         soundEngine.playVictoryFanfare();
+        // Count the match for unlocks: kills, and a win when first (FFA) or on the winning team
+        const me = room.scoreboard.find((e) => e.playerId === localPlayerIdRef.current);
+        if (me) {
+          const wins = room.teamRoundWins;
+          const won =
+            room.settings.mode === 'last_plane_teams'
+              ? (me.team === 'red' && wins.red > wins.blue) || (me.team === 'blue' && wins.blue > wins.red)
+              : room.scoreboard[0]?.playerId === me.playerId;
+          const result = recordMatch(progressRef.current, { kills: me.kills, won });
+          saveProgress(result.progress);
+          setProgress(result.progress);
+          setNewUnlocks(result.unlocked);
+        }
         // 3D podium with the top-3 planes in their own colours
         const teams = room.settings.mode === 'last_plane_teams';
         engine?.showPodium(
@@ -885,6 +905,7 @@ export default function App() {
         <MatchEndModal
           room={room}
           localPlayerId={localPlayerId}
+          newUnlocks={newUnlocks}
           onPlayAgain={handlePlayAgain}
           onLeaveToMenu={handleLeaveRoom}
         />
@@ -894,6 +915,7 @@ export default function App() {
       {showHangar && (
         <HangarModal
           cosmetics={cosmetics}
+          progress={progress}
           onChange={(next) => {
             soundEngine.playUiClick();
             setCosmetics(next);

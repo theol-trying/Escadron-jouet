@@ -242,6 +242,38 @@ export function createStickerTexture(stickerId: string): THREE.CanvasTexture {
     ctx.beginPath();
     ctx.arc(0, 0, 16, 0, Math.PI * 2);
     ctx.fill();
+  } else if (stickerId === 'heart') {
+    ctx.fillStyle = '#EF4444';
+    ctx.beginPath();
+    ctx.moveTo(0, 44);
+    ctx.bezierCurveTo(-60, 2, -36, -50, 0, -18);
+    ctx.bezierCurveTo(36, -50, 60, 2, 0, 44);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#FECACA';
+    ctx.beginPath();
+    ctx.arc(-18, -14, 7, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (stickerId === 'crown') {
+    ctx.fillStyle = '#FACC15';
+    ctx.beginPath();
+    ctx.moveTo(-46, 30);
+    ctx.lineTo(-46, -22);
+    ctx.lineTo(-23, 2);
+    ctx.lineTo(0, -40);
+    ctx.lineTo(23, 2);
+    ctx.lineTo(46, -22);
+    ctx.lineTo(46, 30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    for (const [x, c] of [[-23, '#EF4444'], [0, '#2563EB'], [23, '#22C55E']] as const) {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(x, 16, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else {
     // Flame
     ctx.fillStyle = '#F97316';

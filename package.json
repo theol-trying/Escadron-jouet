@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test shared/flightPhysics.test.ts shared/rules.test.ts shared/powerups.test.ts shared/maps/maps.test.ts server/roomManager.test.ts server/gameLoop.test.ts server/bots.test.ts",
+    "test": "tsx --test shared/flightPhysics.test.ts shared/rules.test.ts shared/powerups.test.ts shared/maps/maps.test.ts server/roomManager.test.ts server/gameLoop.test.ts server/bots.test.ts src/progression.test.ts",
     "autosave": "node scripts/autosave.mjs"
   },
   "dependencies": {

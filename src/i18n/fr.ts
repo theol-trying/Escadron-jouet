@@ -75,6 +75,9 @@ export const FR = {
       firepower: 'Puissance',
     },
     confirm: 'Valider l’avion',
+    locked: 'à débloquer',
+    progressHint: 'Peintures et autocollants se débloquent en jouant (parties, avions abattus, victoires).',
+    newUnlocks: 'Nouveau dans le hangar :',
   },
 
   controls: {

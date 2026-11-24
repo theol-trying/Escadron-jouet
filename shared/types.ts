@@ -10,9 +10,12 @@ export type PaintId =
   | 'yellow'
   | 'green'
   | 'orange'
-  | 'white';
+  | 'white'
+  | 'purple'
+  | 'pink'
+  | 'gold';
 
-export type StickerId = 'star' | 'lightning' | 'target' | 'flame';
+export type StickerId = 'star' | 'lightning' | 'target' | 'flame' | 'heart' | 'crown';
 
 export type PowerUpId =
   | 'rubber_missile'
