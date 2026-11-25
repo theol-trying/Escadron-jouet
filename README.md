@@ -181,6 +181,9 @@ npm run dev        # serveur + client sur http://localhost:3000 (ouvre plusieurs
 - `shared/` : code commun serveur / client (physique, règles, cartes, modes, événements, format réseau).
 - `src/` : client React + moteur Three.js (`src/engine/`), interface (`src/components/`), sons (`src/audio/`),
   textes français (`src/i18n/fr.ts`).
+- Image d’aperçu des liens partagés (Discord, WhatsApp…) : `public/og-image.png`, dessinée dans
+  [`scripts/og-image.html`](scripts/og-image.html) (la commande pour la régénérer est en tête du fichier). Le serveur
+  complète les adresses de l’aperçu avec l’adresse publique du site (`APP_URL` si elle est définie, sinon celle de Render).
 - Le réseau envoie des mises à jour binaires compactes (`shared/snapshotCodec.ts`). Si la forme d’un message change,
   incrémenter `PROTOCOL_VERSION` (`shared/constants.ts`) : les pages restées ouvertes se rechargent après un déploiement.
 

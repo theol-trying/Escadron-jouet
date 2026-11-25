@@ -5,7 +5,17 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        // index.html carries __ORIGIN__ for the link-preview tags; the production server fills it
+        // with the public address. In development, relative addresses are enough.
+        name: 'og-origin-dev',
+        apply: 'serve',
+        transformIndexHtml: (html: string) => html.replaceAll('__ORIGIN__', ''),
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

@@ -10,6 +10,20 @@ import type { ClientToServerEvents, ServerToClientEvents } from './shared/types'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Public address of the site, for the absolute links of the preview tags: APP_URL if set (custom
+ * domain), else Render's address, else the address the page was requested from. The host header is
+ * checked so a forged request cannot slip markup into the page.
+ */
+function publicOrigin(req: express.Request): string {
+  const configured = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || '').split(',')[0].trim();
+  if (/^https?:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(configured)) return configured.replace(/\/$/, '');
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (!/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return '';
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol).split(',')[0].trim() === 'https' ? 'https' : 'http';
+  return `${proto}://${host}`;
+}
+
 async function bootstrap() {
   const app = express();
   const server = http.createServer(app);
@@ -90,14 +104,26 @@ async function bootstrap() {
     // When bundled to dist-server/server.js, dist/ is at ../dist
     const candidateDist = path.resolve(__dirname, 'dist');
     const parentDist = path.resolve(__dirname, '../dist');
-    const distPath = (await import('node:fs')).existsSync(candidateDist)
-      ? candidateDist
-      : parentDist;
+    const fs = await import('node:fs');
+    const distPath = fs.existsSync(candidateDist) ? candidateDist : parentDist;
 
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    // index.html: link previews (Discord, WhatsApp, Messenger…) need absolute addresses, so the
+    // __ORIGIN__ placeholders are filled with the public address of the site. Never cached, so a new
+    // deploy is picked up at once.
+    const indexTemplate = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
+    const sendIndex = (req: express.Request, res: express.Response) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.type('html').send(indexTemplate.replaceAll('__ORIGIN__', publicOrigin(req)));
+    };
+    app.get('/index.html', sendIndex);
+    // Built scripts and styles carry a content hash in their name: they never change, keep them a year
+    app.use(
+      '/assets',
+      express.static(path.join(distPath, 'assets'), { immutable: true, maxAge: '365d', index: false, fallthrough: false })
+    );
+    // Other files (preview image, music…) are revalidated on each visit (ETag)
+    app.use(express.static(distPath, { index: false }));
+    app.get('*', sendIndex);
   }
 
   const port = Number(process.env.PORT) || 3000;
