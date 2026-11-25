@@ -1,4 +1,5 @@
 import type { PlaneId, PowerUpId } from '../../shared/types';
+import { EARSHOT, spatialModel } from './spatialMix';
 
 export interface AudioSettings {
   masterVolume: number; // 0..1
@@ -60,6 +61,9 @@ class SoundEngine {
   private ambienceGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  /** Camera position (setListener) and HRTF sounds still playing, for the 3D sound budget */
+  private listenerPos = { x: 0, y: 0, z: 0 };
+  private hrtfVoices = 0;
   private engineVoice: EngineVoice | null = null;
   private enginePlane: PlaneId | null = null;
   private flightActive = false;
@@ -164,6 +168,9 @@ class SoundEngine {
     uz: number
   ): void {
     if (!this.ctx) return;
+    this.listenerPos.x = px;
+    this.listenerPos.y = py;
+    this.listenerPos.z = pz;
     const l = this.ctx.listener;
     if (l.positionX) {
       const t = this.ctx.currentTime;
@@ -185,15 +192,22 @@ class SoundEngine {
     }
   }
 
-  /** Output for a one-shot sound: straight to the effects bus, or through a 3D panner. */
-  private output(pos?: SoundPos): AudioNode | null {
+  /**
+   * Output for a one-shot sound lasting `dur` seconds: straight to the effects bus, or through a 3D
+   * panner — HRTF for the few nearest sounds, the cheap equal-power panner otherwise
+   * (src/audio/spatialMix.ts). The panner is released once the sound is over.
+   */
+  private output(pos: SoundPos | undefined, dur: number): AudioNode | null {
     if (!this.ctx || !this.sfxGain) return null;
     if (!pos) return this.sfxGain;
+    const lp = this.listenerPos;
+    const model = spatialModel(Math.hypot(pos.x - lp.x, pos.y - lp.y, pos.z - lp.z), this.hrtfVoices);
+    if (!model) return null;
     const p = this.ctx.createPanner();
-    p.panningModel = 'HRTF';
+    p.panningModel = model;
     p.distanceModel = 'inverse';
     p.refDistance = 40;
-    p.maxDistance = 1400;
+    p.maxDistance = EARSHOT;
     p.rolloffFactor = 1.1;
     if (p.positionX) {
       p.positionX.value = pos.x;
@@ -203,6 +217,11 @@ class SoundEngine {
       (p as unknown as { setPosition: (x: number, y: number, z: number) => void }).setPosition(pos.x, pos.y, pos.z);
     }
     p.connect(this.sfxGain);
+    if (model === 'HRTF') this.hrtfVoices++;
+    globalThis.setTimeout(() => {
+      p.disconnect();
+      if (model === 'HRTF') this.hrtfVoices = Math.max(0, this.hrtfVoices - 1);
+    }, (dur + 0.3) * 1000);
     return p;
   }
 
@@ -216,7 +235,7 @@ class SoundEngine {
     pos?: SoundPos,
     delay = 0
   ): void {
-    const out = this.output(pos);
+    const out = this.output(pos, delay + dur);
     if (!this.ctx || !out) return;
     const t = this.ctx.currentTime + delay;
     const osc = this.ctx.createOscillator();
@@ -242,7 +261,7 @@ class SoundEngine {
     pos?: SoundPos,
     q = 1.2
   ): void {
-    const out = this.output(pos);
+    const out = this.output(pos, dur);
     if (!this.ctx || !out || !this.noiseBuffer) return;
     const t = this.ctx.currentTime;
     const src = this.ctx.createBufferSource();
