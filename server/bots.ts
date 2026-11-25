@@ -7,7 +7,7 @@ import {
 } from '../shared/flightPhysics';
 import type { MapCollider, MapDefinition } from '../shared/maps/types';
 import { PLANE_ARCHETYPES, PAINT_ORDER, PLANE_ORDER, STICKER_ORDER } from '../shared/planes';
-import { getKingZone, getRaceCourse } from '../shared/objectives';
+import { RING_RADIUS, getKingZone, getRaceCourse } from '../shared/objectives';
 import { canDamageTarget } from '../shared/rules';
 import type { BotDifficulty, PlayerCosmetics, PlayerInputState, RoomSettings } from '../shared/types';
 import type { BotPersonality, ServerPlayer } from './types';
@@ -157,6 +157,8 @@ export function computeBotInput(
   }
 
   let wantsFire = false;
+  // True while the steering target is the enemy (lead point): shots then follow the steering alignment
+  let targetIsEnemy = false;
   let wantsSecondary = false;
   let wantsBoost = false;
   let barrelRollDir: -1 | 0 | 1 = 0;
@@ -199,6 +201,7 @@ export function computeBotInput(
       targetZ = nearestEnemy.sim.z;
     } else {
       // Lead target slightly
+      targetIsEnemy = true;
       targetX = nearestEnemy.sim.x + enemyFwd.x * nearestEnemy.sim.speed * leadTime;
       targetY = nearestEnemy.sim.y + enemyFwd.y * nearestEnemy.sim.speed * leadTime;
       targetZ = nearestEnemy.sim.z + enemyFwd.z * nearestEnemy.sim.speed * leadTime;
@@ -216,27 +219,63 @@ export function computeBotInput(
   }
 
   // Objective modes: race through the rings / head for the king zone
+  // Race: distance to the next ring when the bot is heading at it (obstacle probes beyond it are ignored)
+  let ringAheadDist = Infinity;
+  let throttleOverride: number | null = null;
   if (settings.mode === 'ring_race') {
     const course = getRaceCourse(map);
     const ring = course[bot.objective % course.length];
-    // Aim a little past the centre so the bot flies through the ring, not at its edge
-    targetX = ring.x + ring.nx * 12;
-    targetY = ring.y + ring.ny * 12;
-    targetZ = ring.z + ring.nz * 12;
-    wantsBoost = sim.boost > 40 && Math.hypot(ring.x - sim.x, ring.y - sim.y, ring.z - sim.z) > 90;
+    const ox = sim.x - ring.x;
+    const oy = sim.y - ring.y;
+    const oz = sim.z - ring.z;
+    const dist = Math.hypot(ox, oy, oz) || 1;
+    // Which face of the ring the bot is on (passing counts from either side)
+    const side = ox * ring.nx + oy * ring.ny + oz * ring.nz < 0 ? -1 : 1;
+    // Line up on the ring axis from the bot's own side: aim at a point on the axis that slides to the
+    // centre as the bot closes in, so it flies through instead of circling around the ring.
+    const back = Math.min(55, dist * 0.45) * side;
+    targetX = ring.x + ring.nx * back;
+    targetY = ring.y + ring.ny * back;
+    targetZ = ring.z + ring.nz * back;
+    const facing = -(ox * fwd.x + oy * fwd.y + oz * fwd.z) / dist;
+    if (facing > 0.85) ringAheadDist = dist;
+    // Brake (tighter turns) when the ring is close but not ahead
+    if (dist < 80 && facing < 0.6) throttleOverride = -0.6;
+    wantsBoost = sim.boost > 40 && dist > 110 && facing > 0.9;
   } else if (settings.mode === 'king_of_sky') {
     const zone = getKingZone(map, roundElapsed);
     const toZone = Math.hypot(zone.x - sim.x, zone.y - sim.y, zone.z - sim.z);
-    const enemyClose = nearestEnemy !== null && enemyDist < 70;
-    if (toZone > zone.radius * 0.6 && !enemyClose) {
-      targetX = zone.x;
+    // The zone is what scores: a fight only takes over when an enemy is right there
+    const enemyClose = nearestEnemy !== null && enemyDist < 40;
+    if (toZone > zone.radius * 0.8) {
+      // Get into the zone unless a fight is on
+      if (!enemyClose) {
+        targetIsEnemy = false;
+        targetX = zone.x;
+        targetY = zone.y;
+        targetZ = zone.z;
+      }
+    } else if (!enemyClose) {
+      targetIsEnemy = false;
+      // Inside: circle the centre (planes cannot hover), braking to keep the turn tight. The plane
+      // closest to the centre scores, so the circle stays well inside the zone.
+      const rx = sim.x - zone.x;
+      const rz = sim.z - zone.z;
+      const rLen = Math.hypot(rx, rz) || 1;
+      // Turn the way the plane is already going round
+      const spin = rx * fwd.z - rz * fwd.x >= 0 ? 1 : -1;
+      const orbit = zone.radius * 0.45;
+      const ang = Math.atan2(rz, rx) + spin * 0.9;
+      targetX = zone.x + Math.cos(ang) * orbit;
       targetY = zone.y;
-      targetZ = zone.z;
+      targetZ = zone.z + Math.sin(ang) * orbit;
+      if (rLen > orbit * 0.6) throttleOverride = -0.7;
     }
   }
 
   // Soft boundary priority recovery
   if (isOutsideSoftBounds(sim.x, sim.y, sim.z, map)) {
+    targetIsEnemy = false;
     targetX = 0;
     targetY = 128 * A;
     targetZ = 0;
@@ -249,6 +288,8 @@ export function computeBotInput(
   let obstacleAhead = false;
 
   for (const dist of [26, 48]) {
+    // Heading straight through the next ring: what lies beyond it is the next hop's business
+    if (dist > ringAheadDist + RING_RADIUS) continue;
     const px = sim.x + fwd.x * dist;
     const py = sim.y + fwd.y * dist;
     const pz = sim.z + fwd.z * dist;
@@ -302,6 +343,19 @@ export function computeBotInput(
   const dotRight = dirX * right.x + dirY * right.y + dirZ * right.z;
   const dotUp = dirX * up.x + dirY * up.y + dirZ * up.z;
   const dotFwd = dirX * fwd.x + dirY * fwd.y + dirZ * fwd.z;
+  // Alignment used to shoot: the steering one when chasing the enemy (lead point), otherwise the
+  // direct line to the nearest enemy (no firing at a ring, a zone or a pickup)
+  let shotDot = dotFwd;
+  if (!targetIsEnemy || obstacleAhead) {
+    shotDot = -1;
+    if (nearestEnemy) {
+      const ex = nearestEnemy.sim.x - sim.x;
+      const ey = nearestEnemy.sim.y - sim.y;
+      const ez = nearestEnemy.sim.z - sim.z;
+      const eLen = Math.hypot(ex, ey, ez) || 1;
+      shotDot = (ex * fwd.x + ey * fwd.y + ez * fwd.z) / eLen;
+    }
+  }
 
   const aimX = Math.max(-1, Math.min(1, dotRight * skill.steer));
   const aimY = Math.max(-1, Math.min(1, dotUp * skill.steer * 0.91));
@@ -313,7 +367,7 @@ export function computeBotInput(
     nearestEnemy &&
     !obstacleAhead &&
     enemyDist < skill.fireRange &&
-    dotFwd > skill.fireCone &&
+    shotDot > skill.fireCone &&
     !sim.overheated &&
     sim.heat < 82
   ) {
@@ -339,7 +393,7 @@ export function computeBotInput(
       nearestEnemy &&
       !obstacleAhead &&
       enemyDist < 185 &&
-      dotFwd > 0.86
+      shotDot > 0.86
     ) {
       wantsSecondary = true;
     }
@@ -356,7 +410,7 @@ export function computeBotInput(
     dt,
     aimX,
     aimY,
-    throttle: enemyDist < 45 ? -0.4 : 0.4,
+    throttle: throttleOverride ?? (enemyDist < 45 ? -0.4 : 0.4),
     roll: 0,
     boost: wantsBoost,
     fire: wantsFire,

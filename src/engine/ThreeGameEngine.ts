@@ -56,6 +56,7 @@ import {
   KING_TARGET,
   RACE_LAPS,
   getKingZone,
+  getZoneControl,
   getRaceCourse,
   isObjectiveMode,
   roundDuration,
@@ -568,16 +569,23 @@ export class ThreeGameEngine {
       };
     } else {
       const zone = getKingZone(this.currentMap, roundElapsed);
-      let insideMine = false;
-      let insideOthers = 0;
-      for (const pv of livingPlanes) {
-        if (pv.interpPos.distanceTo(this._v1.set(zone.x, zone.y, zone.z)) < zone.radius) {
-          if (pv.id === this.localPlayerId) insideMine = true;
-          else insideOthers++;
-        }
-      }
+      // Same rule as the server: alone = full rate, shared = the closest to the centre scores at half rate
+      const control = getZoneControl(
+        zone,
+        livingPlanes.map((pv) => ({ id: pv.id, x: pv.interpPos.x, y: pv.interpPos.y, z: pv.interpPos.z, alive: true }))
+      );
+      const localPv = livingPlanes.find((pv) => pv.id === this.localPlayerId);
+      const insideMine = !!localPv && localPv.interpPos.distanceTo(this._v1.set(zone.x, zone.y, zone.z)) < zone.radius;
       const state: ZoneState =
-        insideMine && insideOthers === 0 ? 'mine' : !insideMine && insideOthers === 1 ? 'theirs' : insideMine || insideOthers > 1 ? 'contested' : 'free';
+        control.inside === 0
+          ? 'free'
+          : control.scorerId === this.localPlayerId
+            ? control.rate >= 1
+              ? 'mine'
+              : 'mine_contested'
+            : insideMine
+              ? 'contested'
+              : 'theirs';
       const hb = this.currentMap.hardBounds;
       this.objectives3d.updateZone(zone, state, hb.minY, hb.maxY, this.elapsedTime);
       let leader = snap.planes[0];

@@ -8,6 +8,16 @@ import type { HudFrameData } from '../engine/ThreeGameEngine';
 import type { KillFeedEntry, RoomState } from '../../shared/types';
 import { FR } from '../i18n/fr';
 import { TouchControls, type TouchInputState } from './TouchControls';
+import type { ZoneState } from '../engine/objectives3d';
+
+/** Progress bar colour of the king-of-the-sky panel (same colours as the 3D zone) */
+const ZONE_BAR_COLORS: Record<ZoneState, string> = {
+  free: '#facc15',
+  mine: '#22c55e',
+  mine_contested: '#84cc16',
+  theirs: '#ef4444',
+  contested: '#f97316',
+};
 
 export interface HudHandle {
   updateFrame: (data: HudFrameData, aimX: number, aimY: number, boosting: boolean) => void;
@@ -142,8 +152,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
           objMainRef.current.textContent = `${FR.objectives.crown} ${obj.mine.toFixed(1)} / ${obj.target} s · ${FR.objectives.zone[obj.zoneState]}`;
           objSubRef.current.textContent = `${obj.leaderName ? `${FR.objectives.leader} : ${obj.leaderName} (${obj.leaderValue.toFixed(0)} s) · ` : ''}${FR.objectives.movesIn} ${Math.ceil(obj.movesIn)} s`;
           objBarRef.current.style.width = `${(obj.mine / obj.target) * 100}%`;
-          objBarRef.current.style.backgroundColor =
-            obj.zoneState === 'mine' ? '#22c55e' : obj.zoneState === 'theirs' ? '#ef4444' : obj.zoneState === 'contested' ? '#f97316' : '#facc15';
+          objBarRef.current.style.backgroundColor = ZONE_BAR_COLORS[obj.zoneState];
         }
       }
       if (roomEventRef.current) {

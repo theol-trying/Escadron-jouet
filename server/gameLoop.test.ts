@@ -4,7 +4,7 @@ import { quatFromYaw } from '../shared/flightPhysics';
 import { PLANE_ARCHETYPES } from '../shared/planes';
 import type { KillFeedEntry, PlayerInputState } from '../shared/types';
 import { MAPS } from '../shared/maps/index';
-import { getKingZone, getRaceCourse } from '../shared/objectives';
+import { KING_CONTESTED_RATE, getKingZone, getRaceCourse } from '../shared/objectives';
 import { initRoundEntities, stepRoomTick, type LoopCallbacks } from './gameLoop';
 import { DEFAULT_ROOM_SETTINGS, type ServerPlayer, type ServerRoom } from './types';
 
@@ -335,7 +335,7 @@ test('ring race: flying through the next ring counts it, shooting is disabled', 
   assert.equal(room.projectiles.length, 0, 'no pellets in the race');
 });
 
-test('king of the sky: only a lone pilot inside the zone scores', () => {
+test('king of the sky: alone = full rate, shared = only the closest to the centre, at half rate', () => {
   const a = makePlayer('a');
   const b = makePlayer('b');
   const room = makeRoom([a, b]);
@@ -350,10 +350,14 @@ test('king of the sky: only a lone pilot inside the zone scores', () => {
   assert.ok(a.objective > 0, 'alone in the zone: scores');
   assert.equal(b.objective, 0);
 
+  assert.ok(Math.abs(a.objective - 1 / 30) < 1e-9, 'alone: full rate');
+
+  // b enters the zone, further from the centre than a: a keeps scoring, at half rate
   const before = a.objective;
-  b.sim.x = zone.x + 2;
+  b.sim.x = zone.x + zone.radius * 0.8;
   b.sim.y = zone.y;
   b.sim.z = zone.z;
   stepRoomTick(room, 1 / 30, makeCallbacks());
-  assert.equal(a.objective, before, 'contested: nobody scores');
+  assert.ok(Math.abs(a.objective - before - (1 / 30) * KING_CONTESTED_RATE) < 1e-9, 'shared: half rate for the closest');
+  assert.equal(b.objective, 0, 'shared: the other one does not score');
 });

@@ -20,6 +20,7 @@ import {
   canShoot,
   checkObjectiveRound,
   getKingZone,
+  getZoneControl,
   getRaceCourse,
   isObjectiveMode,
   roundDuration,
@@ -1210,14 +1211,16 @@ export function stepRoomTick(
     }
   } else if (room.settings.mode === 'king_of_sky') {
     const zone = getKingZone(map, roundElapsed);
-    const inside = allPlayers.filter(
-      (p) => p.sim.alive && Math.hypot(p.sim.x - zone.x, p.sim.y - zone.y, p.sim.z - zone.z) < zone.radius
+    // Alone in the zone = full rate; shared = the plane closest to the centre scores at half rate
+    const control = getZoneControl(
+      zone,
+      allPlayers.map((p) => ({ id: p.id, x: p.sim.x, y: p.sim.y, z: p.sim.z, alive: p.sim.alive }))
     );
-    // Points only while holding the zone alone (contested = nobody scores)
-    if (inside.length === 1) {
-      const king = inside[0];
-      king.objective = Math.min(KING_TARGET, king.objective + dt);
-      king.score += dt * 10;
+    const king = control.scorerId ? room.players.get(control.scorerId) : undefined;
+    if (king) {
+      const gain = dt * control.rate;
+      king.objective = Math.min(KING_TARGET, king.objective + gain);
+      king.score += gain * 10;
     }
   }
 

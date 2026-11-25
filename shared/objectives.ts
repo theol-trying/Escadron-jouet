@@ -6,15 +6,22 @@ import type { GameModeId } from './types';
  * Objective modes (no "last plane standing"):
  * - ring_race   « Course d'anneaux » — fly through the rings in order, RACE_LAPS laps; no shooting,
  *               crashes only cost time (respawn at the last ring).
- * - king_of_sky « Roi du ciel » — score while alone inside the moving zone; combat on, unlimited
- *               respawns; first to KING_TARGET seconds wins the round.
+ * - king_of_sky « Roi du ciel » — score inside the moving zone (full rate alone, half rate for the
+ *               plane closest to the centre when it is shared); combat on, unlimited respawns;
+ *               first to KING_TARGET seconds wins the round.
  * Both are computed identically on the server (authority) and the client (visuals, HUD).
  */
 export const RACE_LAPS = 2;
 export const RING_RADIUS = 15;
-export const KING_TARGET = 40; // seconds of sole control to win a round
+/** Free air required around a ring centre (ring radius + tube + room to fly through it) */
+export const RING_CLEARANCE = 26;
+export const KING_TARGET = 30; // seconds of zone control to win a round
 export const KING_ZONE_RADIUS = 42;
 export const KING_ZONE_PERIOD = 30; // the zone moves to the next spot every N seconds
+/** Free air required around a zone centre, so the zone is open sky and not a tunnel */
+export const KING_ZONE_CLEARANCE = 40;
+/** Scoring rate when the zone is shared: only the plane closest to the centre scores, at this rate */
+export const KING_CONTESTED_RATE = 0.5;
 export const OBJECTIVE_LIVES = 99; // "unlimited" respawns
 export const RACE_RESPAWN_DELAY = 1.5;
 export const RACE_FINISH_GRACE = 20; // seconds left to the others after the first finisher
@@ -59,11 +66,33 @@ function segmentClear(map: MapDefinition, a: { x: number; y: number; z: number }
   return true;
 }
 
+/** True when a sphere of this radius around the point touches no obstacle (moving ones at two moments). */
+function hasClearance(map: MapDefinition, p: { x: number; y: number; z: number }, radius: number): boolean {
+  for (const col of map.colliders) {
+    if (resolveSphereVsCollider(p.x, p.y, p.z, radius, col, 0) || resolveSphereVsCollider(p.x, p.y, p.z, radius, col, 5)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * True when the point sits in an updraft column (stove, radiator): the lift there is stronger than
+ * a dive, so a ring or a zone placed in it cannot be reached from above.
+ */
+function inUpdraft(map: MapDefinition, p: { x: number; y: number; z: number }, margin: number): boolean {
+  return map.updraftZones.some(
+    (u) => Math.hypot(p.x - u.x, p.z - u.z) < u.radius + margin && p.y > u.y - margin && p.y < u.y + u.height + margin
+  );
+}
+
 const courseCache = new Map<string, RaceRing[]>();
 
 /**
  * Ring circuit for a map, built from points known to be in open air (spawn points and power-up
- * spots): ordered around the room, keeping only hops that are not blocked by furniture.
+ * spots with RING_CLEARANCE of free air and out of updraft columns, so no ring sits inside an arch,
+ * against a tap or above the stove): ordered
+ * around the room, keeping only hops that are not blocked by furniture.
  */
 export function getRaceCourse(map: MapDefinition): RaceRing[] {
   const key = `${map.id}:${map.arenaScale ?? 1}`;
@@ -71,6 +100,7 @@ export function getRaceCourse(map: MapDefinition): RaceRing[] {
   if (cached) return cached;
 
   const candidates = [...map.spawns, ...map.powerUpSpots]
+    .filter((p) => hasClearance(map, p, RING_CLEARANCE) && !inUpdraft(map, p, 15))
     .map((p) => ({ x: p.x, y: p.y, z: p.z, a: Math.atan2(p.z, p.x) }))
     .sort((p, q) => p.a - q.a);
 
@@ -108,9 +138,43 @@ export interface KingZone {
   movesIn: number;
 }
 
-/** The zone cycles through the power-up spots (open, central air) every KING_ZONE_PERIOD. */
+const zoneSpotCache = new Map<string, Array<{ x: number; y: number; z: number }>>();
+
+/**
+ * Spots the king zone cycles through: open sky only (KING_ZONE_CLEARANCE of free air, so never a
+ * drawer tunnel or the gap under the monitor). Candidates are the power-up spots and the spawn
+ * points pulled 40 % toward the middle of the room; kept well apart and ordered around the room.
+ */
+export function getKingZoneSpots(map: MapDefinition): Array<{ x: number; y: number; z: number }> {
+  const key = `${map.id}:${map.arenaScale ?? 1}`;
+  const cached = zoneSpotCache.get(key);
+  if (cached) return cached;
+
+  const sb = map.softBounds;
+  const cx = (sb.minX + sb.maxX) / 2;
+  const cz = (sb.minZ + sb.maxZ) / 2;
+  const candidates = [
+    ...map.powerUpSpots.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+    ...map.spawns.map((p) => ({ x: cx + (p.x - cx) * 0.6, y: p.y, z: cz + (p.z - cz) * 0.6 })),
+  ]
+    .filter((p) => hasClearance(map, p, KING_ZONE_CLEARANCE) && !inUpdraft(map, p, KING_ZONE_RADIUS))
+    .map((p) => ({ ...p, a: Math.atan2(p.z - cz, p.x - cx) }))
+    .sort((p, q) => p.a - q.a);
+
+  const minSpacing = 85 * (map.arenaScale ?? 1);
+  const spots: Array<{ x: number; y: number; z: number }> = [];
+  for (const c of candidates) {
+    if (spots.some((s) => Math.hypot(c.x - s.x, c.y - s.y, c.z - s.z) < minSpacing)) continue;
+    spots.push({ x: c.x, y: c.y, z: c.z });
+  }
+  const result = spots.length >= 3 ? spots : [{ x: cx, y: (sb.minY + sb.maxY) / 2, z: cz }, ...spots];
+  zoneSpotCache.set(key, result);
+  return result;
+}
+
+/** The zone cycles through the open-sky spots of the room every KING_ZONE_PERIOD. */
 export function getKingZone(map: MapDefinition, roundElapsed: number): KingZone {
-  const spots = map.powerUpSpots.length > 0 ? map.powerUpSpots : map.spawns;
+  const spots = getKingZoneSpots(map);
   const t = Math.max(0, roundElapsed);
   const index = Math.floor(t / KING_ZONE_PERIOD) % spots.length;
   const s = spots[index];
@@ -122,6 +186,40 @@ export function getKingZone(map: MapDefinition, roundElapsed: number): KingZone 
     index,
     movesIn: KING_ZONE_PERIOD - (t % KING_ZONE_PERIOD),
   };
+}
+
+export interface ZoneControl {
+  /** Plane scoring this instant (null when the zone is empty) */
+  scorerId: string | null;
+  /** Seconds earned per second: 1 alone in the zone, KING_CONTESTED_RATE when shared */
+  rate: number;
+  /** Number of planes inside the zone */
+  inside: number;
+}
+
+/**
+ * Who scores in the king zone: alone inside = full rate; shared = only the plane closest to the
+ * centre scores, at half rate (a crowded zone still pays the boldest pilot). Same rule on the
+ * server (authority) and the client (HUD, zone colour).
+ */
+export function getZoneControl(
+  zone: { x: number; y: number; z: number; radius: number },
+  planes: Iterable<{ id: string; x: number; y: number; z: number; alive: boolean }>
+): ZoneControl {
+  let inside = 0;
+  let scorerId: string | null = null;
+  let best = Infinity;
+  for (const p of planes) {
+    if (!p.alive) continue;
+    const d = Math.hypot(p.x - zone.x, p.y - zone.y, p.z - zone.z);
+    if (d >= zone.radius) continue;
+    inside++;
+    if (d < best) {
+      best = d;
+      scorerId = p.id;
+    }
+  }
+  return { scorerId, rate: inside === 0 ? 0 : inside === 1 ? 1 : KING_CONTESTED_RATE, inside };
 }
 
 export interface ObjectivePlayer {

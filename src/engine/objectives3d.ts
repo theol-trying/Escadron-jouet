@@ -3,11 +3,17 @@ import type { MapDefinition } from '../../shared/maps/types';
 import { KING_ZONE_RADIUS, RING_RADIUS, getRaceCourse, type KingZone } from '../../shared/objectives';
 import type { GameModeId } from '../../shared/types';
 
-export type ZoneState = 'free' | 'mine' | 'theirs' | 'contested';
+/**
+ * free: nobody inside · mine: I score alone (full rate) · mine_contested: shared zone, I am the closest
+ * to the centre (half rate) · theirs: someone else scores, I am outside · contested: I am inside but
+ * someone is closer to the centre.
+ */
+export type ZoneState = 'free' | 'mine' | 'mine_contested' | 'theirs' | 'contested';
 
 const ZONE_COLORS: Record<ZoneState, number> = {
   free: 0xfacc15,
   mine: 0x22c55e,
+  mine_contested: 0x84cc16,
   theirs: 0xef4444,
   contested: 0xf97316,
 };

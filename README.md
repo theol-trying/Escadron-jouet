@@ -26,7 +26,7 @@ dans des pièces de la maison à taille géante. Pensé d’abord pour PC (clavi
 | **Dernier avion en vol — Chacun pour soi** | Le dernier avion encore en vol gagne la manche. Au bout de 4 minutes, l’aspirateur géant (mort subite) rétrécit la zone. |
 | **Dernier avion en vol — Équipes** | Rouges contre Bleus ; la dernière équipe en vol gagne. Les équipes vides sont rééquilibrées automatiquement. |
 | **Course d’anneaux** | Passer dans les anneaux dans l’ordre (anneau doré), 2 tours, sans tir. Un crash ramène à l’anneau précédent. Jouable seul ; le meilleur temps de chaque pièce est gardé sur l’appareil. |
-| **Roi du ciel** | Rester **seul** dans la zone pour marquer ; le premier à 40 s gagne. La zone change de place toutes les 30 s, réapparitions illimitées. |
+| **Roi du ciel** | Marquer dans la zone : plein tarif seul, **moitié si elle est disputée** (seul l’avion le plus proche du centre marque alors). Le premier à 30 s gagne. La zone, toujours en plein ciel, change de place toutes les 30 s ; réapparitions illimitées. |
 
 Les matchs se jouent en 3 manches. Le salon permet aussi de choisir la pièce, le nombre de vies, le nombre de joueurs,
 les bots (et leur niveau : **Facile**, **Normal**, **Expert**) et le tir allié en équipes.
@@ -150,11 +150,13 @@ Les principaux réglages sont regroupés pour être modifiés sans chercher :
 | Vitesse des avions (`PLANE_SPEED_SCALE`) | [`shared/constants.ts`](shared/constants.ts) | 0,85 (15 % plus lents) |
 | Caractéristiques des 4 avions | [`shared/planes.ts`](shared/planes.ts) | vitesse, virage, points de vie, cadence, dégâts… |
 | Niveaux des bots (`BOT_SKILL`) | [`server/bots.ts`](server/bots.ts) | Facile / Normal / Expert |
-| Course et roi du ciel (`RACE_LAPS`, `KING_TARGET`, `KING_ZONE_PERIOD`…) | [`shared/objectives.ts`](shared/objectives.ts) | 2 tours, 40 s, zone qui bouge toutes les 30 s |
+| Course et roi du ciel (`RACE_LAPS`, `KING_TARGET`, `KING_ZONE_PERIOD`…) | [`shared/objectives.ts`](shared/objectives.ts) | 2 tours, 30 s, zone qui bouge toutes les 30 s |
 | Événements de pièce (fréquence, durées) | [`shared/roomEvents.ts`](shared/roomEvents.ts) | un événement toutes les ~70 s |
 | Pièces (obstacles, apparitions, bonus) | [`shared/maps/`](shared/maps) | un fichier par pièce, en « unités de conception » |
 
-Après un changement, `npm test` vérifie notamment que les apparitions et les circuits d’anneaux restent dégagés.
+Après un changement, `npm test` vérifie notamment que les apparitions, les anneaux et les zones restent dégagés
+(ni sous une arche, ni au-dessus d’un courant chaud), puis fait jouer des bots : ils doivent finir une course et
+une manche de Roi du ciel dans chaque pièce.
 
 ---
 
