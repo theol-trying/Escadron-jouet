@@ -123,7 +123,8 @@ async function bootstrap() {
     );
     // Other files (preview image, music…) are revalidated on each visit (ETag)
     app.use(express.static(distPath, { index: false }));
-    app.get('*', sendIndex);
+    // Any other address (client-side routes, ?salon=CODE…) gets the page (Express 5 wildcard syntax)
+    app.get('/{*splat}', sendIndex);
   }
 
   const port = Number(process.env.PORT) || 3000;
