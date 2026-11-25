@@ -16,6 +16,7 @@ import { useGameEngine } from './hooks/useGameEngine';
 import { useGameSocket, type QuickChatLine } from './hooks/useGameSocket';
 import { useMatchPhase } from './hooks/useMatchPhase';
 import { useTutorial } from './hooks/useTutorial';
+import { keysLabel } from './input/keyLabels';
 import { TutorialPanel } from './components/TutorialPanel';
 import { FR } from './i18n/fr';
 import { getSocket } from './net/socketClient';
@@ -353,6 +354,8 @@ export default function App() {
           onResume={() => setPaused(false)}
           onQuitToMenu={handleLeaveRoom}
           onSpectatorCycle={(dir) => engineRef.current?.cycleSpectator(dir)}
+          replayKeyLabel={keysLabel(gameplaySettings.keyBindings.replay.slice(0, 1))}
+          onToggleReplay={() => engineRef.current?.toggleReplay()}
         />
       )}
 

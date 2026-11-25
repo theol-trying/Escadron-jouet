@@ -54,6 +54,7 @@ import {
 } from './sceneSetup';
 import { TitleTour } from './titleTour';
 import { RaceGhostRunner } from './raceGhost';
+import { REPLAY_AFTER_MS, REPLAY_BEFORE_MS, ReplayBuffer } from './replayBuffer';
 import type { TutorialProbe } from '../tutorial/tutorial';
 import { WingTrails, type TrailInput } from './wingTrails';
 
@@ -132,6 +133,18 @@ export class ThreeGameEngine {
   /** When the latest snapshot arrived (performance.now), to run the race clock between updates */
   private latestSnapshotAt = 0;
   private raceGhost: RaceGhostRunner;
+  /** « Revoir l'action »: the last seconds of updates, our last crash (with its clip once complete), the replay playing */
+  private replayBuffer = new ReplayBuffer();
+  private lastAttacker: { id: string; at: number } | null = null;
+  private crash: { at: number; killerId: string | null; clip: ReplayBuffer | null } | null = null;
+  private replay: {
+    clip: ReplayBuffer;
+    start: number;
+    end: number;
+    clockStart: number;
+    focusId: string | null;
+    frameIndex: number;
+  } | null = null;
   private spectatorIndex = 0;
   private currentSpectatingName = '';
   private destroyedColliderIds = new Set<string>();
@@ -466,6 +479,40 @@ export class ThreeGameEngine {
       group.visible = true;
     }
     this.extrasRenderer.syncAndAnimate(this.elapsedTime, [], [], null, false);
+    this.replayBuffer.clear();
+    this.crash = null;
+    this.replay = null;
+    this.lastAttacker = null;
+  }
+
+  /** « Revoir l'action »: starts (or stops) the replay of the seconds before our last crash. */
+  public toggleReplay(): void {
+    if (this.replay) {
+      this.stopReplay();
+      return;
+    }
+    const crash = this.crash;
+    if (!crash?.clip || this.localSim?.alive || this.mode !== 'playing') return;
+    this.replay = {
+      clip: crash.clip,
+      start: crash.at - REPLAY_BEFORE_MS,
+      end: crash.at + REPLAY_AFTER_MS,
+      clockStart: performance.now(),
+      focusId: crash.killerId ?? this.localPlayerId,
+      frameIndex: -1,
+    };
+    this.cameraRig.snapNextFrame();
+  }
+
+  /** While a replay plays, our controls are not sent (the plane flies straight, spawn-protected). */
+  public isReplaying(): boolean {
+    return this.replay !== null;
+  }
+
+  private stopReplay(): void {
+    this.replay = null;
+    this.pool.syncProjectiles(this.latestSnapshot?.projectiles ?? []);
+    this.cameraRig.snapNextFrame();
   }
 
   public cycleSpectator(dir: -1 | 1): void {
@@ -478,6 +525,11 @@ export class ThreeGameEngine {
     this.latestSnapshot = snapshot;
     this.latestSnapshotAt = performance.now();
     const now = performance.now();
+    this.replayBuffer.push(now, snapshot);
+    // Our crash is complete once a little of what followed has arrived: keep that clip
+    if (this.crash && !this.crash.clip && now >= this.crash.at + REPLAY_AFTER_MS) {
+      this.crash.clip = this.replayBuffer.copyWindow(this.crash.at - REPLAY_BEFORE_MS, this.crash.at + REPLAY_AFTER_MS);
+    }
 
     const seenIds = new Set<string>();
     for (const pData of snapshot.planes) {
@@ -507,7 +559,11 @@ export class ThreeGameEngine {
       if (pv.wasAlive && !pData.alive) {
         this.pool.spawnBurst(pData.x, pData.y, pData.z, 24, [0xef4444, 0xfacc15, 0x38bdf8, 0xffffff], 72, 2.0, 45, 0.75);
         soundEngine.playPopExplosion(isLocal ? undefined : { x: pData.x, y: pData.y, z: pData.z });
-        if (isLocal) this.cameraRig.shake(0.75);
+        if (isLocal) {
+          this.cameraRig.shake(0.75);
+          const killer = this.lastAttacker && now - this.lastAttacker.at < 6000 ? this.lastAttacker.id : null;
+          this.crash = { at: now, killerId: killer, clip: null };
+        }
       }
       pv.wasAlive = pData.alive;
 
@@ -572,12 +628,16 @@ export class ThreeGameEngine {
     this.heardProjectileIds = currentIds;
 
     // Sync projectiles immediately
-    this.pool.syncProjectiles(snapshot.projectiles);
+    // (during a replay the pellets shown are the replayed ones)
+    if (!this.replay) this.pool.syncProjectiles(snapshot.projectiles);
   }
 
   public ingestHitEvent(ev: HitFeedbackEvent): void {
     const involvesMe = ev.targetId === this.localPlayerId || ev.attackerId === this.localPlayerId;
     const where = involvesMe ? undefined : { x: ev.x, y: ev.y, z: ev.z };
+    if (ev.targetId === this.localPlayerId && ev.attackerId !== ev.targetId) {
+      this.lastAttacker = { id: ev.attackerId, at: performance.now() };
+    }
     if (ev.damage <= 0 && !ev.fatal) {
       // Absorbed (spawn protection, bubble shield) or repair: light spark only — no hit flash or
       // camera shake, and a sound that says why nothing happened.
@@ -855,6 +915,24 @@ export class ThreeGameEngine {
   /** In a match: every plane, the camera, objectives, room events, 3D sound and the HUD frame. */
   private updateMatch(dt: number, now: number): void {
     const renderTime = now - REMOTE_INTERP_DELAY_MS;
+    // « Revoir l'action »: time inside the replayed clip, or null when showing the live match
+    let replayT: number | null = null;
+    // (if our plane comes back meanwhile, it waits under its spawn protection: see isReplaying)
+    if (this.replay) {
+      replayT = this.replay.start + (now - this.replay.clockStart);
+      if (replayT > this.replay.end) {
+        this.stopReplay();
+        replayT = null;
+      }
+    }
+    const replay = replayT !== null ? this.replay : null;
+    if (replay && replayT !== null) {
+      const idx = replay.clip.indexAt(replayT);
+      if (idx !== replay.frameIndex) {
+        replay.frameIndex = idx;
+        this.pool.syncProjectiles(replay.clip.frameAt(idx)?.snapshot.projectiles ?? []);
+      }
+    }
     const minimapBlips: MinimapBlip[] = [];
     const livingPlanes: ActivePlaneVisual[] = [];
     const localVisual = this.localPlayerId ? this.planeVisuals.get(this.localPlayerId) : undefined;
@@ -863,7 +941,16 @@ export class ThreeGameEngine {
       const latest = pv.buffer[pv.buffer.length - 1]?.data;
       if (!latest) continue;
 
-      if (pv.id === this.localPlayerId && this.localSim) {
+      const rp = replay && replayT !== null ? replay.clip.planePose(pv.id, replayT) : null;
+      const shown = rp?.data ?? latest;
+      if (replay) {
+        // Replay: every plane where it was at that moment
+        if (rp) {
+          pv.interpPos.set(rp.x, rp.y, rp.z);
+          pv.interpQuat.set(rp.qx, rp.qy, rp.qz, rp.qw);
+        }
+        pv.rig.root.visible = !!rp && rp.alive;
+      } else if (pv.id === this.localPlayerId && this.localSim) {
         // Our own plane: the predicted simulation
         pv.interpPos.set(this.localSim.x, this.localSim.y, this.localSim.z);
         pv.interpQuat.set(this.localSim.qx, this.localSim.qy, this.localSim.qz, this.localSim.qw);
@@ -877,7 +964,7 @@ export class ThreeGameEngine {
       pv.rig.root.quaternion.copy(pv.interpQuat);
 
       // Fly-by whoosh when another plane brushes past ours
-      if (pv.id !== this.localPlayerId) {
+      if (pv.id !== this.localPlayerId && !replay) {
         const localPos = localVisual && this.localSim?.alive ? localVisual.interpPos : null;
         if (detectFlyby(pv, latest, localPos, dt)) {
           const meta = this.roomPlayersMeta.get(pv.id);
@@ -889,7 +976,7 @@ export class ThreeGameEngine {
         }
       }
 
-      animatePlaneVisual(pv, latest, this.roomPlayersMeta.get(pv.id)?.maxHp ?? 100, dt, this.elapsedTime, this.pool);
+      animatePlaneVisual(pv, shown, this.roomPlayersMeta.get(pv.id)?.maxHp ?? 100, dt, this.elapsedTime, this.pool);
 
       if (pv.rig.root.visible) {
         livingPlanes.push(pv);
@@ -920,6 +1007,16 @@ export class ThreeGameEngine {
       focusPos = spec.interpPos;
       focusQuat = spec.interpQuat;
       this.currentSpectatingName = this.roomPlayersMeta.get(spec.id)?.nickname ?? '';
+    }
+
+    if (replay) {
+      // Replay: follow whoever shot us down (or our own plane)
+      const target = (replay.focusId ? this.planeVisuals.get(replay.focusId) : undefined) ?? localVisual;
+      if (target) {
+        focusPos = target.interpPos;
+        focusQuat = target.interpQuat;
+        isBoosting = false;
+      }
     }
 
     const width = this.container.clientWidth || 1;
@@ -1046,6 +1143,12 @@ export class ThreeGameEngine {
       glued: (sim?.glueTimer ?? 0) > 0,
       magnetActive: (sim?.magnetTimer ?? 0) > 0,
       suddenDeath: this.latestSnapshot?.suddenDeath ?? false,
+      replay: {
+        available: !this.replay && !!this.crash?.clip && !this.localSim?.alive,
+        active: !!replay,
+        progress: replay && replayT !== null ? (replayT - replay.start) / (replay.end - replay.start) : 0,
+        killerName: this.crash?.killerId ? (this.roomPlayersMeta.get(this.crash.killerId)?.nickname ?? '') : '',
+      },
       labels: projectPlaneLabels(livingPlanes, this.localPlayerId, focusPos, this.camera, width, height, (id) =>
         this.roomPlayersMeta.get(id)
       ),

@@ -75,6 +75,8 @@ export interface HudFrameData {
   roomEvent: 'cat' | 'blackout' | 'fridge' | null;
   /** Screen marker toward the next ring / the zone (null when none) */
   objectiveMarker: ScreenMarker | null;
+  /** « Revoir l'action »: replay of the seconds before our last crash */
+  replay: { available: boolean; active: boolean; progress: number; killerName: string };
 }
 
 export interface ScreenMarker {

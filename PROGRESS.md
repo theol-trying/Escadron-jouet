@@ -53,6 +53,20 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
         src/hooks/), HudOverlay 969 → 648 (src/components/hud/) ; chrono de course corrigé (« 0:010.0 ») ;
         Express 5.3 et lucide-react 1.70.
 
+15. [ ] Nouvelles fonctionnalités (25/11, site en ligne : https://escadron.onrender.com/, chaque push déploie) :
+        - [x] touches personnalisables (fenêtre Commandes) + messages rapides 1 à 4 ; touche M corrigée en AZERTY
+        - [x] nouveaux avions : hélicoptère jouet (surplace) et avion en papier
+        - [x] « Premier vol » guidé dans le bureau (src/tutorial/, mode serveur « tutorial »)
+        - [x] fantôme du record en course d’anneaux (src/engine/raceGhost*.ts)
+        - [x] « Revoir l’action » : touche R une fois abattu, 5 s avant + 0,9 s après, caméra sur le tireur
+              (src/engine/replayBuffer.ts, côté client)
+        - [ ] mode « Survie » en équipe contre des vagues de mouches et de drones jouets
+        - [ ] chambre d’enfant (mobile qui tourne, petit train en marche)
+        - [ ] salle de bain (canard, miroir, vapeur)
+        - [ ] garage
+        - [ ] README à compléter (nouveautés), vérification en ligne
+        ➜ REPRENDRE ICI : mode Survie (l’utilisateur a demandé d’arrêter après « Revoir l’action »).
+
 ➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
   réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
 

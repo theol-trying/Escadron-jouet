@@ -33,6 +33,9 @@ interface HudOverlayProps {
   onResume: () => void;
   onQuitToMenu: () => void;
   onSpectatorCycle: (dir: -1 | 1) => void;
+  /** « Revoir l'action »: key name (as set by the player) and the toggle */
+  replayKeyLabel: string;
+  onToggleReplay: () => void;
 }
 
 export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOverlay(
@@ -53,6 +56,8 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
     onResume,
     onQuitToMenu,
     onSpectatorCycle,
+    replayKeyLabel,
+    onToggleReplay,
   },
   ref
 ) {
@@ -95,6 +100,10 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   const topLeftPanelRef = useRef<HTMLDivElement>(null);
   const bottomRightPanelRef = useRef<HTMLDivElement>(null);
   const cockpitRef = useRef<CockpitHandle>(null);
+  const replayPromptRef = useRef<HTMLButtonElement>(null);
+  const replayBannerRef = useRef<HTMLDivElement>(null);
+  const replayBarRef = useRef<HTMLDivElement>(null);
+  const replayKillerRef = useRef<HTMLSpanElement>(null);
   // Plane whose instrument panel is shown (null = chase view); changes rarely, so React state is fine
   const [cockpitPlane, setCockpitPlane] = useState<PlaneId | null>(null);
   const cockpitPlaneRef = useRef<PlaneId | null>(null);
@@ -108,6 +117,17 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         setCockpitPlane(cockpitNow);
       }
       if (cockpitNow) cockpitRef.current?.update(data);
+
+      // « Revoir l'action »: offer once shot down, banner and progress while replaying
+      if (replayPromptRef.current) replayPromptRef.current.style.display = data.replay.available ? 'flex' : 'none';
+      if (replayBannerRef.current) replayBannerRef.current.style.display = data.replay.active ? 'flex' : 'none';
+      if (data.replay.active) {
+        if (replayBarRef.current) replayBarRef.current.style.width = `${Math.min(100, data.replay.progress * 100)}%`;
+        if (replayKillerRef.current) {
+          const who = data.replay.killerName ? `${FR.hud.replayBy} ${data.replay.killerName}` : '';
+          if (replayKillerRef.current.textContent !== who) replayKillerRef.current.textContent = who;
+        }
+      }
 
       // Objective modes panel
       const obj = data.objective;
@@ -520,6 +540,38 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         />
 
         <KillFeedList entries={killFeed} />
+      </div>
+
+      {/* « Revoir l'action »: offered once shot down */}
+      <button
+        ref={replayPromptRef}
+        type="button"
+        tabIndex={-1}
+        onClick={(e) => {
+          e.currentTarget.blur();
+          onToggleReplay();
+        }}
+        className="toy-btn pointer-events-auto fixed bottom-28 left-1/2 hidden -translate-x-1/2 items-center gap-2 rounded-xl bg-amber-300 px-3.5 py-1.5 text-xs font-extrabold text-slate-950"
+      >
+        <span className="font-mono-num rounded border-2 border-slate-900 bg-white px-1.5">{replayKeyLabel}</span>
+        {FR.hud.replayPrompt}
+      </button>
+
+      {/* Replay banner, with its progress */}
+      <div
+        ref={replayBannerRef}
+        className="pointer-events-none fixed inset-x-0 top-0 hidden h-full flex-col items-center justify-between border-[6px] border-amber-300/70 py-3"
+      >
+        <div className="toy-panel-dark mt-14 flex flex-col items-center rounded-2xl px-4 py-2 text-white">
+          <div className="text-sm font-extrabold uppercase tracking-wider text-amber-300">⏪ {FR.hud.replayTitle}</div>
+          <span ref={replayKillerRef} className="text-xs font-bold" />
+          <div className="mt-1 h-1.5 w-40 overflow-hidden rounded bg-slate-700">
+            <div ref={replayBarRef} className="h-full w-0 rounded bg-amber-300" />
+          </div>
+        </div>
+        <div className="rounded-lg bg-slate-900/80 px-3 py-1 text-xs font-bold text-white">
+          {replayKeyLabel} {FR.hud.replayLive}
+        </div>
       </div>
 
       {/* Quick messages of the pilots (keys 1 to 4), above the minimap */}

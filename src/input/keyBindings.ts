@@ -21,7 +21,8 @@ export type BindableAction =
   | 'quick1'
   | 'quick2'
   | 'quick3'
-  | 'quick4';
+  | 'quick4'
+  | 'replay';
 
 export type KeyBindings = Record<BindableAction, string[]>;
 
@@ -45,6 +46,7 @@ export const BINDING_ORDER: BindableAction[] = [
   'quick2',
   'quick3',
   'quick4',
+  'replay',
 ];
 
 export const DEFAULT_BINDINGS: KeyBindings = {
@@ -68,6 +70,7 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   quick2: ['Digit2', 'Numpad2'],
   quick3: ['Digit3', 'Numpad3'],
   quick4: ['Digit4', 'Numpad4'],
+  replay: ['KeyR'],
 };
 
 /** Actions whose keys must not trigger the browser (scrolling, focused button, Ctrl shortcuts) in flight. */

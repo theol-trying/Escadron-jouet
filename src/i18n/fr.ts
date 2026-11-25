@@ -142,6 +142,7 @@ export const FR = {
       quick2: 'Message « Oups ! »',
       quick3: 'Message « À l’aide ! »',
       quick4: 'Message « On y va ! »',
+      replay: 'Revoir l’action (une fois abattu)',
     },
   },
 
@@ -323,6 +324,10 @@ export const FR = {
   },
 
   hud: {
+    replayPrompt: 'revoir l’action',
+    replayTitle: 'Rediffusion',
+    replayBy: 'Abattu par',
+    replayLive: 'pour revenir au direct',
     round: 'Manche',
     alive: 'En vol',
     lives: 'Vies',

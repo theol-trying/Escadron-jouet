@@ -115,6 +115,12 @@ export function useFlightInput(deps: FlightInputDeps): void {
       }
 
       const activePhase = roomRef.current?.phase;
+      // « Revoir l'action » once shot down (also between two rounds)
+      if (keys.replay.includes(e.code) && (activePhase === 'playing' || activePhase === 'round_end')) {
+        e.preventDefault();
+        if (!e.repeat) engineRef.current?.toggleReplay();
+        return;
+      }
       const inMatch = activePhase === 'playing' || activePhase === 'countdown';
       if (!inMatch) return;
 
@@ -296,7 +302,7 @@ export function useFlightInput(deps: FlightInputDeps): void {
       engine.inputState.boost = boost || touch.boost;
       engine.inputState.fire = fire || touch.fire;
 
-      const canControl = currentRoom.phase === 'playing' && !pausedRef.current;
+      const canControl = currentRoom.phase === 'playing' && !pausedRef.current && !engine.isReplaying();
       const socket = getSocket();
       engine.stepAndSendInput(
         dt,
