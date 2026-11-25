@@ -46,6 +46,13 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
         Reste noté : en fenêtre étroite (< 600 px), le panneau du Roi du ciel passe sous celui des vies
         (pas prioritaire, jeu PC d’abord).
 
+14. [x] Améliorations techniques (25/11) : tests côté navigateur (visée, touches, souris, manette,
+        réglages, instruments, prédiction, textes du HUD — 90 tests) ; son 3D HRTF réservé aux sons proches
+        (8 à la fois) ; découpage : server/gameLoop.ts 1 459 → 121 lignes (étapes dans server/loop/, empreinte
+        de 6 matchs simulés identique avant/après), moteur 3D 1 771 → 1 004, App.tsx 994 → 406 (hooks dans
+        src/hooks/), HudOverlay 969 → 648 (src/components/hud/) ; chrono de course corrigé (« 0:010.0 ») ;
+        Express 5.3 et lucide-react 1.70.
+
 ➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
   réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
 
