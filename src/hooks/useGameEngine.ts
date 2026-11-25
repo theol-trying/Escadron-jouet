@@ -35,6 +35,8 @@ export function useGameEngine(deps: GameEngineDeps): void {
         );
       });
       engineRef.current = engine;
+      // Development only: the engine is reachable from the browser console for checks
+      if (import.meta.env.DEV) (window as unknown as { __engine?: ThreeGameEngine }).__engine = engine;
       engine.setCameraView(gameplayRef.current.cameraView);
       // Catch up with anything that happened while loading (invite link, quick auto-start…)
       const currentRoom = roomRef.current;

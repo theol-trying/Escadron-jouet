@@ -54,7 +54,7 @@ export function objectivePanelText(obj: ObjectiveHud): {
           : obj.best !== null
             ? `${FR.objectives.best} : ${formatRaceTime(obj.best)}`
             : ''
-        : formatRaceTime(obj.time),
+        : `${formatRaceTime(obj.time)}${obj.best !== null ? ` · ${FR.objectives.best} ${formatRaceTime(obj.best)}` : ''}`,
       barPct: (obj.ringsPassed / Math.max(1, obj.ringsTotal)) * 100,
       barColor: '#facc15',
     };

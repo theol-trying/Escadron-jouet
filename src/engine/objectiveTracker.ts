@@ -37,6 +37,8 @@ export interface ObjectiveFrameInput {
  */
 export class ObjectiveTracker {
   private raceResult: { time: number; best: number | null; newRecord: boolean } | null = null;
+  /** Record of the room before this race (shown while racing) */
+  private storedBest: { mapId: MapId; best: number | null } | null = null;
   private prevLocalObjective = 0;
   private readonly _target = new THREE.Vector3();
   private readonly _zone = new THREE.Vector3();
@@ -59,7 +61,11 @@ export class ObjectiveTracker {
       const course = getRaceCourse(f.map);
       const total = course.length * RACE_LAPS;
       const finished = localObjective >= total;
-      if (localObjective < this.prevLocalObjective) this.raceResult = null; // new round
+      const newRound = localObjective < this.prevLocalObjective;
+      if (newRound) this.raceResult = null;
+      if (newRound || this.storedBest?.mapId !== f.mapId) {
+        this.storedBest = { mapId: f.mapId, best: readBest(f.mapId) };
+      }
       if (finished && this.prevLocalObjective < total && !this.raceResult) {
         this.raceResult = recordRaceTime(f.mapId, roundElapsed);
       }
@@ -77,7 +83,7 @@ export class ObjectiveTracker {
         laps: RACE_LAPS,
         time: this.raceResult?.time ?? roundElapsed,
         finished,
-        best: this.raceResult?.best ?? null,
+        best: this.raceResult?.best ?? this.storedBest?.best ?? null,
         newRecord: this.raceResult?.newRecord ?? false,
       };
     } else {
@@ -120,15 +126,18 @@ export class ObjectiveTracker {
 }
 
 /** Personal best per room, kept on this device. */
+function readBest(mapId: MapId): number | null {
+  try {
+    const v = Number(localStorage.getItem(`ej_race_best_${mapId}`));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 function recordRaceTime(mapId: MapId, time: number): { time: number; best: number | null; newRecord: boolean } {
   const key = `ej_race_best_${mapId}`;
-  let best: number | null = null;
-  try {
-    const v = Number(localStorage.getItem(key));
-    best = Number.isFinite(v) && v > 0 ? v : null;
-  } catch {
-    best = null;
-  }
+  const best = readBest(mapId);
   const newRecord = best === null || time < best;
   if (newRecord) {
     try {

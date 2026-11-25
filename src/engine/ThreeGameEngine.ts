@@ -3,7 +3,7 @@ import { ARENA_SCALE, REMOTE_INTERP_DELAY_MS } from '../../shared/constants';
 import { getHingeDoorAngleAtTime, getPlaneForward, stepPlanePhysics } from '../../shared/flightPhysics';
 import { MAPS } from '../../shared/maps/index';
 import type { MapDefinition } from '../../shared/maps/types';
-import { isObjectiveMode } from '../../shared/objectives';
+import { isObjectiveMode, roundDuration } from '../../shared/objectives';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
 import { getCatPose, getRoomEvent } from '../../shared/roomEvents';
 import type {
@@ -53,6 +53,7 @@ import {
   type SceneBuilder,
 } from './sceneSetup';
 import { TitleTour } from './titleTour';
+import { RaceGhostRunner } from './raceGhost';
 import type { TutorialProbe } from '../tutorial/tutorial';
 import { WingTrails, type TrailInput } from './wingTrails';
 
@@ -128,6 +129,9 @@ export class ThreeGameEngine {
   private planeVisuals = new Map<string, ActivePlaneVisual>();
   private roomPlayersMeta = new Map<string, RoomPlayerMeta>();
   private latestSnapshot: SnapshotPayload | null = null;
+  /** When the latest snapshot arrived (performance.now), to run the race clock between updates */
+  private latestSnapshotAt = 0;
+  private raceGhost: RaceGhostRunner;
   private spectatorIndex = 0;
   private currentSpectatingName = '';
   private destroyedColliderIds = new Set<string>();
@@ -243,6 +247,7 @@ export class ThreeGameEngine {
     this.objectiveTracker = new ObjectiveTracker(this.objectives3d);
     this.extrasRenderer = new MatchExtrasRenderer(this.scene);
     this.titleTour = new TitleTour(this.scene);
+    this.raceGhost = new RaceGhostRunner(this.scene);
 
     if (!this.isSoftwareGl) {
       this.renderer.compile(this.scene, this.camera);
@@ -471,6 +476,7 @@ export class ThreeGameEngine {
 
   public ingestSnapshot(snapshot: SnapshotPayload): void {
     this.latestSnapshot = snapshot;
+    this.latestSnapshotAt = performance.now();
     const now = performance.now();
 
     const seenIds = new Set<string>();
@@ -957,6 +963,24 @@ export class ThreeGameEngine {
     }
     this.trails.update(trailInputs, dt);
 
+    // Ring race: the ghost of our best race in this room, and the recording of this one
+    const snap = this.latestSnapshot;
+    const racing = this.gameMode === 'ring_race' && this.mode === 'playing' && !!snap;
+    const raceHud = objectiveFrame.hud?.kind === 'race' ? objectiveFrame.hud : null;
+    this.raceGhost.update({
+      active: racing,
+      map: this.currentMap,
+      mapId: this.currentMapId,
+      raceTime: snap
+        ? roundDuration(this.gameMode) - snap.roundTimer + Math.min(0.2, (now - this.latestSnapshotAt) / 1000)
+        : null,
+      local: this.localSim,
+      planeId: this.localCosmetics.planeId,
+      paintId: this.localCosmetics.paintId,
+      finishedTime: raceHud?.finished ? raceHud.time : null,
+      dt,
+    });
+
     // Cockpit view only while flying our own plane (spectating always uses the chase view)
     const cockpitActive =
       this.cameraView === 'cockpit' && !!localVisual && !!this.localSim?.alive && focusPos === localVisual.interpPos;
@@ -1046,6 +1070,7 @@ export class ThreeGameEngine {
     this.debris.dispose();
     this.podium?.dispose();
     this.objectives3d.dispose();
+    this.raceGhost.dispose();
     this.cat.dispose();
     this.extrasRenderer.dispose();
     this.renderer.dispose();
