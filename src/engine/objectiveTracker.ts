@@ -11,6 +11,7 @@ import {
 } from '../../shared/objectives';
 import type { GameModeId, MapId, SnapshotPayload } from '../../shared/types';
 import type { ObjectiveHud, ScreenMarker } from './engineTypes';
+import { screenEdgeMarker } from './hudProjection';
 import type { ObjectiveRenderer, ZoneState } from './objectives3d';
 
 export interface ObjectiveFrameInput {
@@ -39,7 +40,6 @@ export class ObjectiveTracker {
   private prevLocalObjective = 0;
   private readonly _target = new THREE.Vector3();
   private readonly _zone = new THREE.Vector3();
-  private readonly _proj = new THREE.Vector3();
 
   constructor(private readonly markers: ObjectiveRenderer) {}
 
@@ -115,30 +115,7 @@ export class ObjectiveTracker {
       };
     }
 
-    return { hud, marker: target ? this.edgeMarker(target, f.camera, f.width, f.height) : null };
-  }
-
-  /** Screen position of the target, pinned to the screen edge (with its direction) when off-screen. */
-  private edgeMarker(target: THREE.Vector3, camera: THREE.Camera, width: number, height: number): ScreenMarker {
-    const distance = camera.position.distanceTo(target);
-    const p = this._proj.copy(target).project(camera);
-    const behind = p.z > 1;
-    let nx = behind ? -p.x : p.x;
-    let ny = behind ? -p.y : p.y;
-    const onScreen = !behind && Math.abs(nx) < 0.92 && Math.abs(ny) < 0.88;
-    if (!onScreen) {
-      // Clamp to the screen edge along the direction of the target
-      const k = 1 / Math.max(Math.abs(nx) / 0.92, Math.abs(ny) / 0.88, 1e-6);
-      nx *= k;
-      ny *= k;
-    }
-    return {
-      x: (nx * 0.5 + 0.5) * width,
-      y: (-ny * 0.5 + 0.5) * height,
-      onScreen,
-      angle: Math.atan2(-ny, nx),
-      distance,
-    };
+    return { hud, marker: target ? screenEdgeMarker(target, f.camera, f.width, f.height) : null };
   }
 }
 

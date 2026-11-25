@@ -1,5 +1,5 @@
 import { MAPS } from '../shared/maps/index';
-import { canShoot, isObjectiveMode, roundDuration } from '../shared/objectives';
+import { canShoot, respawnsFreely, roundDuration } from '../shared/objectives';
 import { PLANE_ARCHETYPES } from '../shared/planes';
 import type { LoopCallbacks } from './loop/callbacks';
 import { handlePlaneCrashDamage } from './loop/damage';
@@ -54,7 +54,7 @@ export function stepRoomTick(
   }
 
   // Round timer & Sudden Death ("L'aspirateur arrive !")
-  const objectiveMode = isObjectiveMode(room.settings.mode);
+  const objectiveMode = respawnsFreely(room.settings.mode);
   const isRace = room.settings.mode === 'ring_race';
   if (room.roundTimer > 0 || objectiveMode) {
     // Objective modes have no vacuum sudden death: the round simply ends on the timer

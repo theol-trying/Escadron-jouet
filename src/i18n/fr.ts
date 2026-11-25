@@ -46,6 +46,7 @@ export const FR = {
       last_plane_ffa: 'Le dernier avion encore en vol gagne la manche.',
       last_plane_teams: 'La dernière équipe encore en vol gagne la manche.',
       ring_race: 'Passe dans les anneaux dans l’ordre (anneau doré), 2 tours. Pas de tir ; un crash te ramène à l’anneau précédent.',
+      tutorial: 'Premier vol guidé : on apprend les commandes en douceur, seul dans le bureau.',
       king_of_sky:
         'Marque dans la zone : plein tarif seul, moitié si elle est disputée (seul le plus proche du centre marque). Premier à 30 s ; la zone change de place toutes les 30 s. Réapparitions illimitées.',
     },
@@ -141,6 +142,44 @@ export const FR = {
       quick2: 'Message « Oups ! »',
       quick3: 'Message « À l’aide ! »',
       quick4: 'Message « On y va ! »',
+    },
+  },
+
+  tutorial: {
+    menuButton: 'Premier vol',
+    menuHint: 'Nouveau pilote ? Apprends les commandes en 2 minutes.',
+    title: 'Premier vol',
+    stepOf: 'Étape',
+    skip: 'Passer',
+    quit: 'Quitter',
+    nice: 'Bien joué !',
+    quickPlay: 'Partie rapide',
+    backToMenu: 'Retour au menu',
+    // {keys} placeholders are filled with the player's own keys
+    steps: {
+      steer: {
+        title: 'Diriger l’avion',
+        mouse: 'Bouge la souris : vire à gauche, à droite, monte et descends.',
+        keyboard: 'Vire avec {left} / {right}, monte avec {up}, descends avec {down}.',
+      },
+      throttle: {
+        title: 'Les gaz',
+        mouse: 'Accélère avec {up} puis freine avec {down} (sans décrocher).',
+        keyboard: 'Accélère avec {throttleUp} puis freine avec {throttleDown} (sans décrocher).',
+      },
+      boost: { title: 'Le turbo', text: 'Maintiens {boost} une seconde. La jauge bleue se recharge toute seule.' },
+      roll: { title: 'Le tonneau', text: 'Esquive d’un tonneau : {rollLeft} vers la gauche ou {rollRight} vers la droite.' },
+      shoot: {
+        title: 'Tirer',
+        text: 'Tire ({fire} ou clic gauche) sur la tirelire cochon posée sur l’étagère : suis le losange doré.',
+      },
+      pickup: { title: 'Ramasser un objet', text: 'Un objet flotte dans la pièce : vole dedans pour le ramasser.' },
+      use: { title: 'Utiliser l’objet', text: 'Déclenche-le avec {special} (ou clic droit).' },
+      camera: { title: 'La vue cockpit', text: 'Passe en vue cockpit avec {camera}, puis reviens en vue poursuite.' },
+      done: {
+        title: 'Prêt à décoller !',
+        text: 'Tu connais l’essentiel. Les messages rapides sont sur {quick1} à {quick4}, toutes les touches se changent dans « Commandes ».',
+      },
     },
   },
 

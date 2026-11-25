@@ -1,7 +1,37 @@
 import * as THREE from 'three';
-import type { ActivePlaneVisual, ProjectedLabel, RoomPlayerMeta } from './engineTypes';
+import type { ActivePlaneVisual, ProjectedLabel, RoomPlayerMeta, ScreenMarker } from './engineTypes';
 
 const _p = new THREE.Vector3();
+const _m = new THREE.Vector3();
+
+/** Screen position of a target, pinned to the screen edge (with its direction) when off-screen. */
+export function screenEdgeMarker(
+  target: { x: number; y: number; z: number },
+  camera: THREE.Camera,
+  width: number,
+  height: number
+): ScreenMarker {
+  _m.set(target.x, target.y, target.z);
+  const distance = camera.position.distanceTo(_m);
+  const p = _m.project(camera);
+  const behind = p.z > 1;
+  let nx = behind ? -p.x : p.x;
+  let ny = behind ? -p.y : p.y;
+  const onScreen = !behind && Math.abs(nx) < 0.92 && Math.abs(ny) < 0.88;
+  if (!onScreen) {
+    // Clamp to the screen edge along the direction of the target
+    const k = 1 / Math.max(Math.abs(nx) / 0.92, Math.abs(ny) / 0.88, 1e-6);
+    nx *= k;
+    ny *= k;
+  }
+  return {
+    x: (nx * 0.5 + 0.5) * width,
+    y: (-ny * 0.5 + 0.5) * height,
+    onScreen,
+    angle: Math.atan2(-ny, nx),
+    distance,
+  };
+}
 
 /**
  * Name tags of the other planes for the HUD: screen position just above each plane, or the

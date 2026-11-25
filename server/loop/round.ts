@@ -8,6 +8,8 @@ import {
   checkObjectiveRound,
   getRaceCourse,
   isObjectiveMode,
+  isTutorial,
+  respawnsFreely,
   roundDuration,
 } from '../../shared/objectives';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
@@ -20,7 +22,7 @@ import type { LoopCallbacks } from './callbacks';
 
 /** Lives at round start: objective modes respawn without limit. */
 export function roundLives(settings: ServerRoom['settings']): number {
-  return isObjectiveMode(settings.mode) ? OBJECTIVE_LIVES : settings.livesPerRound;
+  return respawnsFreely(settings.mode) ? OBJECTIVE_LIVES : settings.livesPerRound;
 }
 
 export function initRoundEntities(room: ServerRoom): void {
@@ -196,6 +198,8 @@ export function settleRound(
   roundElapsed: number,
   callbacks: LoopCallbacks
 ): void {
+  // The guided first flight never ends on its own (the pilot leaves when done)
+  if (isTutorial(room.settings.mode)) return;
   const objectiveMode = isObjectiveMode(room.settings.mode);
   const outcome = objectiveMode
     ? {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { PROTOCOL_VERSION } from '../../shared/constants';
 import { decodeSnapshot, type WireSnapshot } from '../../shared/snapshotCodec';
-import type { KillFeedEntry, MapId, PlayerCosmetics, QuickMessage, RoomState } from '../../shared/types';
+import type { KillFeedEntry, MapId, PlayerCosmetics, QuickMessage, RoomSettings, RoomState } from '../../shared/types';
 import { soundEngine } from '../audio/soundEngine';
 import type { ThreeGameEngine } from '../engine/ThreeGameEngine';
 import { FR } from '../i18n/fr';
@@ -63,7 +63,9 @@ export function useGameSocket(deps: GameSocketDeps) {
       mode: JoinMode,
       roomCode?: string,
       autoStartIfHost = false,
-      preferredMap?: MapId
+      preferredMap?: MapId,
+      /** Room settings applied before the automatic start (e.g. the « Premier vol » mode) */
+      extraSettings?: Partial<RoomSettings>
     ) => {
       soundEngine.playUiClick();
       setErrorMessage(null);
@@ -98,9 +100,9 @@ export function useGameSocket(deps: GameSocketDeps) {
 
           if (autoStartIfHost) {
             if (authoritativeMe?.isHost) {
-              if (preferredMap && preferredMap !== res.room.settings.mapId) {
-                socket.emit('room:updateSettings', { mapId: preferredMap });
-              }
+              const settings: Partial<RoomSettings> = { ...extraSettings };
+              if (preferredMap && preferredMap !== res.room.settings.mapId) settings.mapId = preferredMap;
+              if (Object.keys(settings).length > 0) socket.emit('room:updateSettings', settings);
               socket.emit('room:startMatch');
             }
           }

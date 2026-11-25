@@ -61,3 +61,28 @@ test('king of the sky: a duel is won on the target before the time runs out in e
     assert.ok(seconds < roundDuration('king_of_sky'), `${mapId}: won after ${seconds.toFixed(0)} s`);
   }
 });
+
+test('first flight (tutorial): private rooms only, solo without bots, never ends on its own', () => {
+  const io = { to: () => ({ emit() {} }), emit() {}, sockets: { sockets: new Map() } };
+  const rm = new RoomManager(io as unknown as Server<ClientToServerEvents, ServerToClientEvents>);
+  rm.dispose();
+  const internals = rm as unknown as RoomManagerInternals & {
+    applySettings(room: ServerRoom, partial: Partial<ServerRoom['settings']>): void;
+  };
+  // The shared quick-play room refuses it
+  const publicRoom = internals.createRoom(false);
+  internals.applySettings(publicRoom, { mode: 'tutorial' });
+  assert.equal(publicRoom.settings.mode, 'last_plane_ffa');
+
+  const room = internals.createRoom(true);
+  internals.syncBots(room);
+  assert.ok(Array.from(room.players.values()).some((p) => p.isBot), 'bots by default');
+  internals.applySettings(room, { mode: 'tutorial' });
+  internals.syncBots(room);
+  assert.equal(Array.from(room.players.values()).filter((p) => p.isBot).length, 0, 'tutorial: no bots');
+  internals.startMatch(room);
+  const dt = 1 / 30;
+  for (let t = 0; t < 400; t += dt) stepRoomTick(room, dt, noop);
+  assert.equal(room.phase, 'playing', 'still flying after 400 s (no winner, no sudden death)');
+  assert.equal(room.suddenDeath, false);
+});

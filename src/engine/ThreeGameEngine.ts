@@ -32,7 +32,7 @@ import type {
   RoomPlayerMeta,
 } from './engineTypes';
 import { flightAttitude } from './flightAttitude';
-import { projectPlaneLabels } from './hudProjection';
+import { projectPlaneLabels, screenEdgeMarker } from './hudProjection';
 import { reconcileLocalSim, simFromSnapshot } from './localPrediction';
 import { MatchExtrasRenderer } from './m3Visuals';
 import { buildDeskScene } from './maps/buildDeskScene';
@@ -53,6 +53,7 @@ import {
   type SceneBuilder,
 } from './sceneSetup';
 import { TitleTour } from './titleTour';
+import type { TutorialProbe } from '../tutorial/tutorial';
 import { WingTrails, type TrailInput } from './wingTrails';
 
 export type {
@@ -146,6 +147,51 @@ export class ThreeGameEngine {
     barrelRollQueued: 0 as -1 | 0 | 1,
     paused: false,
   };
+
+  /** « Premier vol »: what the screen pointer guides to (a prop to shoot, the nearest item), if anything */
+  private guide: { prop: string } | { nearestPowerUp: true } | null = null;
+
+  public setGuide(guide: { prop: string } | { nearestPowerUp: true } | null): void {
+    this.guide = guide;
+  }
+
+  /** « Premier vol »: what our plane is doing right now (read ~10 times a second by the tutorial). */
+  public getTutorialProbe(): TutorialProbe | null {
+    const sim = this.localSim;
+    if (this.mode !== 'playing' || !sim) return null;
+    return {
+      alive: sim.alive,
+      aimX: this.inputState.aimX,
+      aimY: this.inputState.aimY,
+      throttle: this.inputState.throttle,
+      boosting: sim.turboTimer > 0 || (this.inputState.boost && sim.boost > 1),
+      rolling: sim.barrelRollTimer > 0,
+      secondaryPowerUp: sim.secondaryPowerUp,
+      secondaryUses: sim.secondaryUses,
+      cockpit: this.cockpitActive,
+      destroyedProps: this.knownDestroyedProps,
+    };
+  }
+
+  private guideTarget(): { x: number; y: number; z: number } | null {
+    const g = this.guide;
+    if (!g) return null;
+    if ('prop' in g) {
+      if (this.knownDestroyedProps.has(g.prop)) return null;
+      return this.currentMap.destructibles.find((d) => d.id === g.prop) ?? null;
+    }
+    const sim = this.localSim;
+    let best: { x: number; y: number; z: number } | null = null;
+    let bestD = Infinity;
+    for (const pu of this.latestSnapshot?.powerUps ?? []) {
+      const d = sim ? Math.hypot(pu.x - sim.x, pu.y - sim.y, pu.z - sim.z) : 0;
+      if (d < bestD) {
+        bestD = d;
+        best = pu;
+      }
+    }
+    return best;
+  }
 
   /** Light aim assist: 0 = off, otherwise the share of the aiming correction applied (≤ 1). */
   public aimAssistStrength = 0;
@@ -952,7 +998,12 @@ export class ThreeGameEngine {
       climbRate,
       objective: objectiveFrame.hud,
       roomEvent,
-      objectiveMarker: objectiveFrame.marker,
+      objectiveMarker:
+        objectiveFrame.marker ??
+        ((): HudFrameData['objectiveMarker'] => {
+          const t = this.guideTarget();
+          return t ? screenEdgeMarker(t, this.camera, width, height) : null;
+        })(),
       hp: Math.round(sim?.hp ?? 0),
       maxHp: sim?.maxHp ?? 100,
       lives: sim?.lives ?? 0,

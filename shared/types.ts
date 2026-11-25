@@ -37,7 +37,8 @@ export type SecondaryProjectileKind =
   | 'firecracker'
   | 'glue_mine';
 
-export type GameModeId = 'last_plane_ffa' | 'last_plane_teams' | 'ring_race' | 'king_of_sky';
+/** tutorial = « Premier vol » (guided first flight, solo, never ends on its own) */
+export type GameModeId = 'last_plane_ffa' | 'last_plane_teams' | 'ring_race' | 'king_of_sky' | 'tutorial';
 
 export type MapId = 'desk' | 'kitchen' | 'garden' | 'attic';
 

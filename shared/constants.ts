@@ -16,8 +16,9 @@ export const PLANE_SPEED_SCALE = 0.85;
  * 3 = rings and king zones moved to open air, new king scoring (shared/objectives.ts is computed on
  *     both sides: an old page would draw them in the wrong place).
  * 4 = quick messages (chat:quick).
+ * 5 = helicopter / paper plane, « Premier vol » mode.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export const REMOTE_INTERP_DELAY_MS = 95;
 export const MAX_LAG_COMPENSATION_MS = 250;

@@ -23,7 +23,7 @@ import type {
   TeamId,
 } from '../shared/types';
 import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
-import { isObjectiveMode, roundDuration } from '../shared/objectives';
+import { respawnsFreely, roundDuration } from '../shared/objectives';
 import { encodeSnapshot } from '../shared/snapshotCodec';
 import { PROTOCOL_VERSION } from '../shared/constants';
 import { QUICK_MESSAGE_COOLDOWN_MS, QUICK_MESSAGE_COUNT } from '../shared/types';
@@ -507,7 +507,7 @@ export class RoomManager {
     // Joining mid-match: objective modes respawn freely, so fly right away; in elimination modes the
     // newcomer watches as a spectator and gets a plane at the next round (fair for those still alive)
     if (room.phase === 'playing' || room.phase === 'countdown' || room.phase === 'round_end') {
-      if (isObjectiveMode(room.settings.mode)) {
+      if (respawnsFreely(room.settings.mode)) {
         spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, roundLives(room.settings));
       } else {
         spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, 0);
@@ -611,7 +611,9 @@ export class RoomManager {
       partial.mode === 'last_plane_ffa' ||
       partial.mode === 'last_plane_teams' ||
       partial.mode === 'ring_race' ||
-      partial.mode === 'king_of_sky'
+      partial.mode === 'king_of_sky' ||
+      // The guided first flight only in a private room (never the shared quick-play room)
+      (partial.mode === 'tutorial' && room.settings.isPrivate)
     ) {
       room.settings.mode = partial.mode;
     }
@@ -653,8 +655,8 @@ export class RoomManager {
 
   private syncBots(room: ServerRoom): void {
     if (room.phase !== 'lobby') return;
-    // Remove excess or all bots if disabled
-    if (!room.settings.botsEnabled) {
+    // Remove excess or all bots if disabled (the guided first flight is always solo)
+    if (!room.settings.botsEnabled || room.settings.mode === 'tutorial') {
       for (const [id, p] of room.players.entries()) {
         if (p.isBot) room.players.delete(id);
       }

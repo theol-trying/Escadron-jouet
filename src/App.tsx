@@ -15,6 +15,8 @@ import { useFlightInput } from './hooks/useFlightInput';
 import { useGameEngine } from './hooks/useGameEngine';
 import { useGameSocket, type QuickChatLine } from './hooks/useGameSocket';
 import { useMatchPhase } from './hooks/useMatchPhase';
+import { useTutorial } from './hooks/useTutorial';
+import { TutorialPanel } from './components/TutorialPanel';
 import { FR } from './i18n/fr';
 import { getSocket } from './net/socketClient';
 import { loadProgress, type PlayerProgress, type UnlockedItem } from './progression';
@@ -208,6 +210,10 @@ export default function App() {
     setTouchEnabled,
   });
 
+  // « Premier vol »: guided steps while the room is in tutorial mode
+  const tutorial = useTutorial(engineRef, room);
+  const startTutorial = () => joinRoom('create', undefined, true, 'desk', { mode: 'tutorial', botsEnabled: false });
+
   const handleLeaveRoom = () => {
     soundEngine.playUiClick();
     getSocket().emit('room:leave');
@@ -298,6 +304,8 @@ export default function App() {
             soundEngine.playUiClick();
             setShowSettings(true);
           }}
+          tutorialDone={tutorial.completed}
+          onStartTutorial={startTutorial}
         />
       )}
 
@@ -345,6 +353,24 @@ export default function App() {
           onResume={() => setPaused(false)}
           onQuitToMenu={handleLeaveRoom}
           onSpectatorCycle={(dir) => engineRef.current?.cycleSpectator(dir)}
+        />
+      )}
+
+      {/* « Premier vol » instructions */}
+      {tutorial.active && room && !paused && (
+        <TutorialPanel
+          step={tutorial.step}
+          stepIndex={tutorial.stepIndex}
+          total={tutorial.total}
+          justDone={tutorial.justDone}
+          scheme={gameplaySettings.controlScheme}
+          bindings={gameplaySettings.keyBindings}
+          onSkip={tutorial.skip}
+          onQuit={handleLeaveRoom}
+          onQuickPlay={() => {
+            handleLeaveRoom();
+            joinRoom('quick');
+          }}
         />
       )}
 

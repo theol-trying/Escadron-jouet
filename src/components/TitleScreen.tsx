@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Gamepad2, Plane, Play, Settings, Users } from 'lucide-react';
+import { Gamepad2, GraduationCap, Plane, Play, Settings, Users } from 'lucide-react';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
 import type { PlayerCosmetics } from '../../shared/types';
 import { FR } from '../i18n/fr';
@@ -18,6 +18,9 @@ interface TitleScreenProps {
   onOpenHangar: () => void;
   onOpenControls: () => void;
   onOpenSettings: () => void;
+  /** « Premier vol » already completed on this device (the button is then more discreet) */
+  tutorialDone: boolean;
+  onStartTutorial: () => void;
 }
 
 export function TitleScreen({
@@ -33,6 +36,8 @@ export function TitleScreen({
   onOpenHangar,
   onOpenControls,
   onOpenSettings,
+  tutorialDone,
+  onStartTutorial,
 }: TitleScreenProps) {
   const [showPrivatePanel, setShowPrivatePanel] = useState(false);
   const [joinCode, setJoinCode] = useState('');
@@ -169,6 +174,20 @@ export function TitleScreen({
               <Users className="h-4 w-4" />
               <span>{FR.menu.privateRoom}</span>
             </button>
+
+            <button
+              type="button"
+              data-tutorial="true"
+              disabled={!connected}
+              onClick={onStartTutorial}
+              className={`toy-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-950 ${
+                tutorialDone ? 'bg-white' : 'bg-emerald-300'
+              }`}
+            >
+              <GraduationCap className="h-4 w-4" />
+              <span>{FR.tutorial.menuButton}</span>
+            </button>
+            {!tutorialDone && <p className="-mt-1 text-center text-[11px] font-semibold text-emerald-800">{FR.tutorial.menuHint}</p>}
           </div>
 
           {showPrivatePanel && (

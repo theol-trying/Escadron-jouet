@@ -30,9 +30,21 @@ export function isObjectiveMode(mode: GameModeId): boolean {
   return mode === 'ring_race' || mode === 'king_of_sky';
 }
 
+/** « Premier vol »: the guided first flight (solo, no bots, unlimited respawns, no end of round). */
+export function isTutorial(mode: GameModeId): boolean {
+  return mode === 'tutorial';
+}
+
+/** Modes where a plane always comes back (unlimited respawns, no sudden death, newcomers fly at once). */
+export function respawnsFreely(mode: GameModeId): boolean {
+  return isObjectiveMode(mode) || isTutorial(mode);
+}
+
+export const TUTORIAL_DURATION = 900;
+
 /** Round length: elimination modes keep 4 minutes (+ sudden death), objective modes 3 minutes. */
 export function roundDuration(mode: GameModeId): number {
-  return isObjectiveMode(mode) ? 180 : 240;
+  return isTutorial(mode) ? TUTORIAL_DURATION : isObjectiveMode(mode) ? 180 : 240;
 }
 
 export function canShoot(mode: GameModeId): boolean {
