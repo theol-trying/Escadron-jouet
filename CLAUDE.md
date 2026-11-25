@@ -1,7 +1,7 @@
 # CLAUDE.md — Escadrille Jouet
 
 ## Architecture Overview
-- **Full-stack single-service app**: Express + Socket.io (`server.ts`) serves the React/Vite frontend and runs the authoritative 30 Hz game simulation (`server/roomManager.ts`, `server/gameLoop.ts`, `server/bots.ts`).
+- **Full-stack single-service app**: Express + Socket.io (`server.ts`) serves the React/Vite frontend and runs the authoritative 30 Hz game simulation (`server/roomManager.ts`, `server/bots.ts`, and `server/gameLoop.ts`, whose tick calls the steps of `server/loop/`: flight, power-ups, projectiles, special items, sudden death, objectives, rounds, snapshot — keep their order).
 - **Shared deterministic core (`shared/`)**: Physics (`shared/flightPhysics.ts`), round/team rules (`shared/rules.ts`), plane archetypes (`shared/planes.ts`), power-ups (`shared/powerups.ts`), and 3D map colliders (`shared/maps/`). Used on both server (authority) and client (prediction).
 - **3D Client (`src/engine/ThreeGameEngine.ts`)**: Procedural Three.js engine with zero external asset files; React handles menus, lobby, and HUD overlays (`src/components/`).
 - **French UI**: All player-facing strings live in `src/i18n/fr.ts`.
