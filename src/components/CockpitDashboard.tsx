@@ -78,6 +78,32 @@ const THEMES: Record<PlaneId, Theme> = {
     rivets: true,
     digital: false,
   },
+  toy_helicopter: {
+    panel: 'linear-gradient(180deg, #14532d 0%, #166534 100%)',
+    border: '#facc15',
+    text: '#ecfccb',
+    dim: '#bef264',
+    face: '#0c0a09',
+    rim: '#facc15',
+    needle: '#a3e635',
+    accent: '#fb923c',
+    font: "'Arial Rounded MT Bold', 'Segoe UI', sans-serif",
+    rivets: true,
+    digital: true,
+  },
+  paper_plane: {
+    panel: 'repeating-linear-gradient(0deg, #fffdf5 0px, #fffdf5 17px, #bfdbfe 18px)',
+    border: '#64748b',
+    text: '#1e3a8a',
+    dim: '#334155',
+    face: '#fffdf5',
+    rim: '#1d4ed8',
+    needle: '#dc2626',
+    accent: '#dc2626',
+    font: "'Comic Sans MS', 'Segoe Print', cursive",
+    rivets: false,
+    digital: false,
+  },
 };
 
 const DIAL_SWEEP = 270; // degrees covered by a dial, centred on the top

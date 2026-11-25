@@ -372,7 +372,14 @@ export function stepPlanePhysics(
   const effectiveTurnRate = glued ? archetype.turnRate * 0.65 : archetype.turnRate;
 
   const yawDelta = -aimX * effectiveTurnRate * dt;
-  const pitchDelta = aimY * effectiveTurnRate * 0.9 * dt;
+  let pitchDelta = aimY * effectiveTurnRate * 0.9 * dt;
+  if (archetype.hover) {
+    // Helicopter: the body only leans a little with the input and comes back level; the pitch
+    // input makes it climb or descend instead (below)
+    const fwdNow = rotateVecByQuat(0, 0, -1, state.qx, state.qy, state.qz, state.qw);
+    const pitchNow = Math.asin(clamp(fwdNow.y, -1, 1));
+    pitchDelta = (aimY * 0.22 - pitchNow) * Math.min(1, 5 * dt);
+  }
 
   // Rotate quaternion in local space for pitch (local X) and world-up-assisted yaw
   let [qx, qy, qz, qw] = [state.qx, state.qy, state.qz, state.qw];
@@ -426,6 +433,11 @@ export function stepPlanePhysics(
   let nx = state.x + fwd.x * state.speed * dt;
   let ny = state.y + fwd.y * state.speed * dt;
   let nz = state.z + fwd.z * state.speed * dt;
+
+  // Helicopter: vertical motion from the pitch input, even when hovering in place
+  if (archetype.hover) {
+    ny += aimY * archetype.hover.climbRate * (glued ? 0.6 : 1) * dt;
+  }
 
   // Barrel roll lateral dodge burst
   if (state.barrelRollTimer > 0) {

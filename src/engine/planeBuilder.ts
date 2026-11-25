@@ -119,6 +119,8 @@ export function buildToyPlane(
   // Parts hidden in cockpit view (they would block the pilot's eye: canopy bubble, visor)
   const cockpitHidden: THREE.Object3D[] = [];
   let windupKey: THREE.Object3D | null = null;
+  // Materials of model-specific parts that also flash white when hit
+  const extraFlashMaterials: THREE.Material[] = [];
   const disposables: Array<{ dispose: () => void }> = [
     hullMat,
     secondaryMat,
@@ -270,6 +272,99 @@ export function buildToyPlane(
 
     stickerY = 0.85;
     stickerZ = -0.3;
+  } else if (planeId === 'toy_helicopter') {
+    // 1. Round cabin and its bubble canopy (front, -Z)
+    const cabinGeo = new THREE.SphereGeometry(1.55, 14, 12);
+    cabinGeo.scale(1, 0.95, 1.35);
+    addPart(cabinGeo, hullMat, [0, 0, -0.6], [0, 0, 0], 1.07);
+    const bubbleGeo = new THREE.SphereGeometry(1.2, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.6);
+    bubbleGeo.scale(1, 0.9, 1.2);
+    cockpitHidden.push(addPart(bubbleGeo, canopyMat, [0, 0.35, -1.55], [-0.5, 0, 0], 1.06));
+
+    // 2. Tail boom, fin and stabiliser
+    const boomGeo = new THREE.CylinderGeometry(0.32, 0.55, 4.6, 10);
+    boomGeo.rotateX(Math.PI / 2);
+    addPart(boomGeo, secondaryMat, [0, 0.25, 2.9]);
+    const finGeo = new THREE.BoxGeometry(0.22, 1.5, 1.0);
+    addPart(finGeo, accentMat, [0, 0.85, 4.9], [-0.25, 0, 0]);
+    const stabGeo = new THREE.BoxGeometry(2.0, 0.16, 0.7);
+    addPart(stabGeo, accentMat, [0, 0.25, 4.3]);
+
+    // 3. Landing skids
+    const skidGeo = new THREE.CylinderGeometry(0.14, 0.14, 3.6, 6);
+    skidGeo.rotateX(Math.PI / 2);
+    addPart(skidGeo, darkTrimMat, [-1.0, -1.55, -0.4]);
+    addPart(skidGeo.clone(), darkTrimMat, [1.0, -1.55, -0.4]);
+    const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 6);
+    for (const [lx, lz] of [[-1.0, -1.4], [1.0, -1.4], [-1.0, 0.6], [1.0, 0.6]]) {
+      addPart(legGeo.clone(), darkTrimMat, [lx * 0.85, -1.15, lz], [0, 0, lx * 0.25]);
+    }
+
+    // 4. Twin toy guns under the cabin
+    const gunGeo = new THREE.CylinderGeometry(0.17, 0.2, 1.4, 8);
+    gunGeo.rotateX(Math.PI / 2);
+    addPart(gunGeo, darkTrimMat, [-0.75, -0.75, -2.0]);
+    addPart(gunGeo.clone(), darkTrimMat, [0.75, -0.75, -2.0]);
+
+    // 5. Main rotor: mast + two long soft blades, spinning around the vertical axis
+    const mastGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.9, 8);
+    addPart(mastGeo, darkTrimMat, [0, 1.65, -0.5]);
+    const rotorPivot = new THREE.Group();
+    rotorPivot.position.set(0, 2.15, -0.5);
+    rotorPivot.rotation.x = -Math.PI / 2; // its local Z points up: spinning it on Z turns the blades flat
+    const rotor = new THREE.Group();
+    const bladeGeo = new THREE.BoxGeometry(11, 0.5, 0.1);
+    const hubGeo = new THREE.SphereGeometry(0.32, 8, 8);
+    disposables.push(bladeGeo, hubGeo);
+    rotor.add(new THREE.Mesh(bladeGeo, darkTrimMat), new THREE.Mesh(hubGeo, accentMat));
+    rotorPivot.add(rotor);
+    bodyGroup.add(rotorPivot);
+    propellers.push(rotor);
+
+    // 6. Tail rotor, spinning on the side of the fin
+    const tailPivot = new THREE.Group();
+    tailPivot.position.set(0.3, 0.9, 5.0);
+    tailPivot.rotation.y = Math.PI / 2;
+    const tailRotor = new THREE.Group();
+    const tailBladeGeo = new THREE.BoxGeometry(1.8, 0.24, 0.08);
+    disposables.push(tailBladeGeo);
+    tailRotor.add(new THREE.Mesh(tailBladeGeo, darkTrimMat));
+    tailPivot.add(tailRotor);
+    bodyGroup.add(tailPivot);
+    propellers.push(tailRotor);
+
+    stickerY = 1.45;
+    stickerZ = 0.2;
+  } else if (planeId === 'paper_plane') {
+    // Folded sheet: two flat triangular wings meeting at the fold, a keel underneath
+    const paperMat = createCelMaterial(primaryColor);
+    paperMat.side = THREE.DoubleSide;
+    const foldMat = createCelMaterial(secondaryColor);
+    foldMat.side = THREE.DoubleSide;
+    disposables.push(paperMat, foldMat);
+    extraFlashMaterials.push(paperMat, foldMat);
+    const tri = (pts: number[], mat: THREE.Material): THREE.Mesh => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      geo.computeVertexNormals();
+      disposables.push(geo);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      bodyGroup.add(mesh);
+      return mesh;
+    };
+    // Wings: nose (0, 0.3, -5.2), fold at the tail (±0.25, 0.3, 4.2), wingtips (±5, 0.75, 4.2) — a slight dihedral
+    tri([0, 0.3, -5.2, -0.25, 0.3, 4.2, -5.0, 0.75, 4.2], paperMat);
+    tri([0, 0.3, -5.2, 5.0, 0.75, 4.2, 0.25, 0.3, 4.2], paperMat);
+    // Inner fold strip (the darker crease) and the keel under the fuselage
+    tri([0, 0.32, -5.0, -0.6, 0.32, 4.1, 0.6, 0.32, 4.1], foldMat);
+    tri([0, 0.3, -5.2, 0, 0.3, 4.2, 0, -1.25, 4.0], foldMat);
+    // Small winglets folded up at the tips
+    tri([-5.0, 0.75, 4.2, -4.6, 0.75, 1.8, -4.85, 1.7, 4.2], foldMat);
+    tri([5.0, 0.75, 4.2, 4.85, 1.7, 4.2, 4.6, 0.75, 1.8], foldMat);
+
+    stickerY = 0.52;
+    stickerZ = 1.6;
   } else {
     // diecast_bomber
     // 1. Heavy broad die-cast metal fuselage
@@ -393,7 +488,7 @@ export function buildToyPlane(
     propellers,
     cockpitHidden,
     windupKey,
-    hitFlashMaterials: [hullMat, secondaryMat, accentMat],
+    hitFlashMaterials: [hullMat, secondaryMat, accentMat, ...extraFlashMaterials],
     stickerMesh,
     shieldMesh,
     spawnShieldMesh,

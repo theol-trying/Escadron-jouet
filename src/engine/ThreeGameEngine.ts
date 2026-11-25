@@ -904,7 +904,8 @@ export class ThreeGameEngine {
         position: pv.interpPos,
         quaternion: pv.interpQuat,
         halfSpan: arch.wingspan * 0.5 - 0.3,
-        visible: pv.rig.root.visible,
+        // A helicopter leaves no wingtip ribbons
+        visible: pv.rig.root.visible && !arch.hover,
         intense: Boolean(latest?.turboActive) || speed > arch.maxSpeed * 1.02,
       });
     }

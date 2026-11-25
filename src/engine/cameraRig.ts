@@ -11,6 +11,8 @@ export const COCKPIT_VIEWS: Record<PlaneId, { x: number; y: number; z: number; f
   windup_biplane: { x: 0, y: 2.6, z: 0.9, fov: 74 }, // above the upper wing (it would fill the view)
   foam_glider: { x: 0, y: 1.5, z: -0.3, fov: 80 },
   diecast_bomber: { x: 0, y: 1.55, z: 1.3, fov: 72 },
+  toy_helicopter: { x: 0, y: 0.95, z: -1.3, fov: 80 }, // inside the bubble (hidden), low and forward
+  paper_plane: { x: 0, y: 0.9, z: 0.6, fov: 82 }, // just above the fold
 };
 
 // Chase view: camera offset behind/above the plane and look-ahead point (plane local frame)

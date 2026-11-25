@@ -176,3 +176,44 @@ test('destroyedColliderIds allows plane to fly cleanly through shattered prop', 
   );
   assert.equal(hitBroken.collided, false);
 });
+
+test('helicopter: stops in mid-air and climbs or descends with the pitch input', () => {
+  const heli = PLANE_ARCHETYPES.toy_helicopter;
+  const sim = makeSim({ x: 0, y: 150 * S, z: 0, speed: heli.cruiseSpeed });
+  const step = (o: Partial<PlayerInputState>) =>
+    stepPlanePhysics(
+      sim,
+      { seq: 0, dt: 1 / 30, aimX: 0, aimY: 0, throttle: 0, roll: 0, boost: false, fire: false, useSecondary: false, barrelRollDir: 0, ...o },
+      heli,
+      DESK_MAP,
+      0
+    );
+  // Full brake: hover
+  for (let i = 0; i < 90; i++) step({ throttle: -1 });
+  assert.ok(sim.speed < 1, `stopped (${sim.speed})`);
+  const x0 = sim.x;
+  const z0 = sim.z;
+  const y0 = sim.y;
+  for (let i = 0; i < 30; i++) step({ throttle: -1 });
+  assert.ok(Math.hypot(sim.x - x0, sim.z - z0) < 1.5, 'stays in place');
+  assert.ok(Math.abs(sim.y - y0) < 1, 'no drift up or down');
+  // Pitch input: straight up at about climbRate, body nearly level
+  for (let i = 0; i < 30; i++) step({ throttle: -1, aimY: 1 });
+  assert.ok(sim.y - y0 > heli.hover!.climbRate * 0.8, `climbed ${sim.y - y0}`);
+  assert.ok(getPlaneForward(sim).y < 0.5, 'nose stays fairly level');
+  // A plane cannot do that: it keeps its minimum speed
+  const jet = makeSim({ y: 150 * S, speed: 60 });
+  for (let i = 0; i < 90; i++) {
+    stepPlanePhysics(jet, { seq: 0, dt: 1 / 30, aimX: 0, aimY: 0, throttle: -1, roll: 0, boost: false, fire: false, useSecondary: false, barrelRollDir: 0 }, PLANE_ARCHETYPES.plastic_jet, DESK_MAP, 0);
+  }
+  assert.ok(jet.speed > PLANE_ARCHETYPES.plastic_jet.minSpeed * 0.95);
+});
+
+test('paper plane: fastest of all, most fragile', () => {
+  const paper = PLANE_ARCHETYPES.paper_plane;
+  for (const a of Object.values(PLANE_ARCHETYPES)) {
+    if (a.id === 'paper_plane') continue;
+    assert.ok(paper.cruiseSpeed > a.cruiseSpeed && paper.boostSpeed >= a.boostSpeed, `faster than ${a.id}`);
+    assert.ok(paper.maxHp < a.maxHp, `more fragile than ${a.id}`);
+  }
+});

@@ -21,6 +21,11 @@ export interface PlaneArchetype {
   hitboxRadius: number; // cm
   wingspan: number; // cm
   heavyGun: boolean;
+  /**
+   * Helicopter flight: can stop in mid-air (minSpeed 0) and climbs or descends with the pitch input
+   * (climbRate cm/s) while the body stays nearly level.
+   */
+  hover?: { climbRate: number };
   // Normalized 1..5 stat bars for Hangar UI
   statsDisplay: {
     speed: number;
@@ -120,6 +125,51 @@ const PLANE_ARCHETYPES_DESIGN: Record<PlaneId, PlaneArchetype> = {
     heavyGun: true,
     statsDisplay: { speed: 2, agility: 1, armor: 5, firepower: 4 },
   },
+  toy_helicopter: {
+    id: 'toy_helicopter',
+    nameFr: 'Hélicoptère jouet',
+    taglineFr: 'Fait du surplace et monte à la verticale : parfait pour tenir une zone.',
+    materialFeelFr: 'Plastique moulé et pales souples',
+    maxHp: 105,
+    minSpeed: 0,
+    cruiseSpeed: 46,
+    maxSpeed: 72,
+    boostSpeed: 104,
+    turnRate: 3.0,
+    rollRate: 3.4,
+    fireRate: 7.0,
+    damage: 13,
+    projectileSpeed: 330,
+    overheatPerShot: 7.0,
+    coolRate: 28,
+    hitboxRadius: 5.8,
+    wingspan: 11.0,
+    heavyGun: false,
+    hover: { climbRate: 42 },
+    statsDisplay: { speed: 2, agility: 5, armor: 3, firepower: 3 },
+  },
+  paper_plane: {
+    id: 'paper_plane',
+    nameFr: 'Avion en papier',
+    taglineFr: 'Le plus rapide de tous, mais un pli de travers et il est froissé.',
+    materialFeelFr: 'Papier plié 80 g',
+    maxHp: 62,
+    minSpeed: 52,
+    cruiseSpeed: 90,
+    maxSpeed: 118,
+    boostSpeed: 160,
+    turnRate: 2.7,
+    rollRate: 4.6,
+    fireRate: 6.5,
+    damage: 10,
+    projectileSpeed: 390,
+    overheatPerShot: 6.5,
+    coolRate: 30,
+    hitboxRadius: 4.9,
+    wingspan: 10.0,
+    heavyGun: false,
+    statsDisplay: { speed: 5, agility: 4, armor: 1, firepower: 2 },
+  },
 };
 
 
@@ -143,6 +193,8 @@ export const PLANE_ORDER: PlaneId[] = [
   'windup_biplane',
   'foam_glider',
   'diecast_bomber',
+  'toy_helicopter',
+  'paper_plane',
 ];
 
 export interface PaintPalette {

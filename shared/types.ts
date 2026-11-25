@@ -4,7 +4,9 @@ export type PlaneId =
   | 'plastic_jet'
   | 'windup_biplane'
   | 'foam_glider'
-  | 'diecast_bomber';
+  | 'diecast_bomber'
+  | 'toy_helicopter'
+  | 'paper_plane';
 
 export type PaintId =
   | 'red'

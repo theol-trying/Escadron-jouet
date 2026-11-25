@@ -411,6 +411,51 @@ class SoundEngine {
       };
     }
 
+    if (planeId === 'toy_helicopter') {
+      // Rotor « whup-whup » (low chopped noise) over a small electric motor whine
+      const wash = noise();
+      const washF = filter('lowpass', 260);
+      const { g: chop, lfo } = chopper(11, 0.75);
+      const motor = osc('square', 140);
+      const motorF = filter('bandpass', 900, 2);
+      const motorG = ctx.createGain();
+      motorG.gain.value = 0.12;
+      wash.connect(washF);
+      washF.connect(chop);
+      chop.connect(out);
+      motor.connect(motorF);
+      motorF.connect(motorG);
+      motorG.connect(out);
+      return {
+        update: (r, boost, t) => {
+          lfo.frequency.setTargetAtTime(10 + r * 7 + (boost ? 5 : 0), t, 0.1);
+          motor.frequency.setTargetAtTime(130 + r * 90 + (boost ? 60 : 0), t, 0.1);
+          out.gain.setTargetAtTime(boost ? 0.1 : 0.075, t, 0.1);
+        },
+        silence,
+        stop: stopAll,
+      };
+    }
+
+    if (planeId === 'paper_plane') {
+      // No engine: rustling paper in the wind, brighter with speed
+      const air = noise();
+      const airF = filter('highpass', 1200, 0.5);
+      const flutter = chopper(23, 0.35);
+      air.connect(airF);
+      airF.connect(flutter.g);
+      flutter.g.connect(out);
+      return {
+        update: (r, boost, t) => {
+          airF.frequency.setTargetAtTime(900 + r * 1500 + (boost ? 700 : 0), t, 0.1);
+          flutter.lfo.frequency.setTargetAtTime(18 + r * 16, t, 0.1);
+          out.gain.setTargetAtTime(boost ? 0.06 : 0.035, t, 0.1);
+        },
+        silence,
+        stop: stopAll,
+      };
+    }
+
     // diecast_bomber: twin deep propellers slightly out of tune → slow beating
     const left = osc('sawtooth', 48);
     const right = osc('sawtooth', 50.5);
@@ -536,9 +581,18 @@ class SoundEngine {
    * engine type so a jet hisses and a propeller plane buzzes.
    */
   public playFlyby(planeId: PlaneId, pos: SoundPos): void {
-    const buzzy = planeId === 'windup_biplane' || planeId === 'diecast_bomber';
+    const buzzy = planeId === 'windup_biplane' || planeId === 'diecast_bomber' || planeId === 'toy_helicopter';
     this.noiseBurst('bandpass', buzzy ? 900 : 2600, buzzy ? 300 : 700, buzzy ? 0.2 : 0.24, 0.55, pos, 1.6);
-    const f0 = planeId === 'diecast_bomber' ? 120 : planeId === 'windup_biplane' ? 180 : planeId === 'foam_glider' ? 320 : 520;
+    const f0 =
+      planeId === 'diecast_bomber'
+        ? 120
+        : planeId === 'toy_helicopter'
+          ? 90
+          : planeId === 'windup_biplane'
+            ? 180
+            : planeId === 'foam_glider' || planeId === 'paper_plane'
+              ? 320
+              : 520;
     this.blip(buzzy ? 'sawtooth' : 'triangle', f0 * 1.25, f0 * 0.7, 0.07, 0.5, pos);
   }
 
