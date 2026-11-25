@@ -3,7 +3,7 @@ import { Gamepad2, Plane, Play, Settings, Users } from 'lucide-react';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
 import type { PlayerCosmetics } from '../../shared/types';
 import { FR } from '../i18n/fr';
-import type { ControlScheme } from './SettingsModal';
+import type { ControlScheme } from '../settings/gameplaySettings';
 
 interface TitleScreenProps {
   controlScheme: ControlScheme;

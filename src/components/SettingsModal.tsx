@@ -1,54 +1,7 @@
 import { X } from 'lucide-react';
 import type { AudioSettings } from '../audio/soundEngine';
 import { FR } from '../i18n/fr';
-
-export type ControlScheme = 'mouse' | 'keyboard';
-export type CameraViewSetting = 'chase' | 'cockpit';
-
-export interface GameplaySettings {
-  controlScheme: ControlScheme; // 'keyboard' = 100 % clavier (ZQSD), 'mouse' = viser à la souris
-  mouseSensitivity: number; // 0.5..2.0
-  keyboardSensitivity: number; // 0.5..1.5 (max turn input reached with ZQSD)
-  invertY: boolean;
-  aimAssist: boolean;
-  cameraView: CameraViewSetting; // vue au lancement (touche V pour changer en vol)
-}
-
-export const DEFAULT_GAMEPLAY: GameplaySettings = {
-  controlScheme: 'mouse',
-  mouseSensitivity: 1.0,
-  keyboardSensitivity: 1.0,
-  invertY: false,
-  aimAssist: true,
-  cameraView: 'chase',
-};
-
-/** Reads saved gameplay settings, ignoring unknown or invalid values. */
-export function loadGameplaySettings(): GameplaySettings {
-  try {
-    const raw = JSON.parse(localStorage.getItem('ej_gameplay') || '{}') as Partial<GameplaySettings>;
-    const num = (v: unknown, min: number, max: number, fallback: number) =>
-      typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
-    return {
-      controlScheme: raw.controlScheme === 'keyboard' ? 'keyboard' : 'mouse',
-      mouseSensitivity: num(raw.mouseSensitivity, 0.5, 2, DEFAULT_GAMEPLAY.mouseSensitivity),
-      keyboardSensitivity: num(raw.keyboardSensitivity, 0.5, 1.5, DEFAULT_GAMEPLAY.keyboardSensitivity),
-      invertY: raw.invertY === true,
-      aimAssist: raw.aimAssist !== false,
-      cameraView: raw.cameraView === 'cockpit' ? 'cockpit' : 'chase',
-    };
-  } catch {
-    return { ...DEFAULT_GAMEPLAY };
-  }
-}
-
-export function saveGameplaySettings(settings: GameplaySettings): void {
-  try {
-    localStorage.setItem('ej_gameplay', JSON.stringify(settings));
-  } catch {
-    // storage unavailable (private mode): settings simply won't persist
-  }
-}
+import type { GameplaySettings } from '../settings/gameplaySettings';
 
 interface SettingsModalProps {
   audio: AudioSettings;

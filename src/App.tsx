@@ -14,13 +14,13 @@ import { HangarModal } from './components/HangarModal';
 import { HudOverlay, type HudHandle } from './components/HudOverlay';
 import { LobbyView } from './components/LobbyView';
 import { MatchEndModal } from './components/MatchEndModal';
+import { SettingsModal } from './components/SettingsModal';
 import {
   DEFAULT_GAMEPLAY,
-  SettingsModal,
   loadGameplaySettings,
   saveGameplaySettings,
   type GameplaySettings,
-} from './components/SettingsModal';
+} from './settings/gameplaySettings';
 import { ServerWakeBanner } from './components/ServerWakeBanner';
 import { decodeSnapshot, type WireSnapshot } from '../shared/snapshotCodec';
 import { PROTOCOL_VERSION } from '../shared/constants';
@@ -30,33 +30,21 @@ import type { TouchInputState } from './components/TouchControls';
 import type { HudFrameData, ThreeGameEngine } from './engine/ThreeGameEngine';
 import { FR } from './i18n/fr';
 import { getSessionToken, getSocket } from './net/socketClient';
+import {
+  FLIGHT_KEYS,
+  PAD_RELEASED,
+  aimAssistStrength,
+  flightKeyAction,
+  gamepadStep,
+  keyboardFlightStep,
+  mouseAim,
+} from './input/flightControls';
 
 const DEFAULT_COSMETICS: PlayerCosmetics = {
   planeId: 'plastic_jet',
   paintId: 'red',
   stickerId: 'star',
 };
-
-// Keys used in flight whose default browser action must be prevented during a match
-const FLIGHT_KEYS = new Set([
-  'Space',
-  'Enter',
-  'NumpadEnter',
-  'ArrowUp',
-  'ArrowDown',
-  'ArrowLeft',
-  'ArrowRight',
-  'KeyW',
-  'KeyA',
-  'KeyS',
-  'KeyD',
-  'KeyQ',
-  'KeyE',
-  'ShiftLeft',
-  'ShiftRight',
-  'ControlLeft',
-  'ControlRight',
-]);
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement>(null);
@@ -127,8 +115,7 @@ export default function App() {
 
   const keysHeldRef = useRef<Set<string>>(new Set());
   const mouseDownRef = useRef(false);
-  const gamepadSecondaryHeldRef = useRef(false);
-  const gamepadBumpersRef = useRef({ lb: false, rb: false });
+  const gamepadLatchRef = useRef(PAD_RELEASED);
   const autostartDoneRef = useRef(false);
   const lastPhaseRef = useRef<string>('title');
   const inviteDoneRef = useRef(false);
@@ -577,16 +564,10 @@ export default function App() {
 
       const engine = engineRef.current;
       if (!e.repeat && engine) {
-        // Ctrl : missile / special item
-        if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
-          engine.inputState.useSecondaryQueued = true;
-        }
-        // A / E (physical keys Q / E on AZERTY) : barrel roll to the left / right
-        if (e.code === 'KeyQ') engine.inputState.barrelRollQueued = -1;
-        if (e.code === 'KeyE') engine.inputState.barrelRollQueued = 1;
-        // Q / D or ← / → : previous / next pilot when spectating (ignored while flying)
-        if (e.code === 'KeyA' || e.code === 'ArrowLeft') engine.cycleSpectator(-1);
-        if (e.code === 'KeyD' || e.code === 'ArrowRight') engine.cycleSpectator(1);
+        const action = flightKeyAction(e.code);
+        if (action.useSecondary) engine.inputState.useSecondaryQueued = true;
+        if (action.barrelRoll) engine.inputState.barrelRollQueued = action.barrelRoll;
+        if (action.spectate) engine.cycleSpectator(action.spectate);
       }
 
       keysHeldRef.current.add(e.code);
@@ -614,17 +595,9 @@ export default function App() {
       const rect = mount.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
 
-      const cx = rect.left + rect.width * 0.5;
-      const cy = rect.top + rect.height * 0.5;
-      const sens = gameplayRef.current.mouseSensitivity;
-      const rawX = ((e.clientX - cx) / (rect.width * 0.32)) * sens;
-      const rawY = -((e.clientY - cy) / (rect.height * 0.32)) * sens;
-      const deadzone = 0.04;
-
-      engine.inputState.aimX =
-        Math.abs(rawX) < deadzone ? 0 : Math.max(-1, Math.min(1, rawX));
-      const pitchVal = Math.abs(rawY) < deadzone ? 0 : Math.max(-1, Math.min(1, rawY));
-      engine.inputState.aimY = gameplayRef.current.invertY ? -pitchVal : pitchVal;
+      const aim = mouseAim(e.clientX, e.clientY, rect, gameplayRef.current.mouseSensitivity, gameplayRef.current.invertY);
+      engine.inputState.aimX = aim.aimX;
+      engine.inputState.aimY = aim.aimY;
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -686,70 +659,34 @@ export default function App() {
       const dt = Math.min(0.05, Math.max(0.005, (now - lastInputTime) / 1000));
       lastInputTime = now;
 
-      const keys = keysHeldRef.current;
       const settings = gameplayRef.current;
-      const keyboardOnly = settings.controlScheme === 'keyboard';
-      const held = (...codes: string[]) => codes.some((c) => keys.has(c));
+      const kb = keyboardFlightStep(
+        keysHeldRef.current,
+        { scheme: settings.controlScheme, keyboardSensitivity: settings.keyboardSensitivity, invertY: settings.invertY, dt },
+        engine.inputState
+      );
+      engine.inputState.aimX = kb.aimX;
+      engine.inputState.aimY = kb.aimY;
+      const { throttle, roll } = kb;
+      let boost = kb.boost;
+      let fire = mouseDownRef.current || kb.fire;
 
-      let throttle = 0;
-      let roll = 0;
-      if (keyboardOnly) {
-        // 100 % clavier : ZQSD (touches physiques W/A/S/D) dirigent, ↑/↓ règlent les gaz
-        if (held('ArrowUp')) throttle += 1;
-        if (held('ArrowDown')) throttle -= 1;
-        const sens = settings.keyboardSensitivity;
-        let steerX = 0;
-        let steerY = 0;
-        if (held('KeyA', 'ArrowLeft')) steerX -= 1;
-        if (held('KeyD', 'ArrowRight')) steerX += 1;
-        if (held('KeyW')) steerY += 1;
-        if (held('KeyS')) steerY -= 1;
-        if (settings.invertY) steerY = -steerY;
-        // Smooth ramp (~0.12 s) so short taps give fine corrections and holds give full turns
-        const k = 1 - Math.exp(-dt / 0.12);
-        engine.inputState.aimX += (steerX * sens - engine.inputState.aimX) * k;
-        engine.inputState.aimY += (steerY * sens - engine.inputState.aimY) * k;
-        engine.inputState.aimX = Math.max(-1, Math.min(1, engine.inputState.aimX));
-        engine.inputState.aimY = Math.max(-1, Math.min(1, engine.inputState.aimY));
-      } else {
-        // Clavier + souris : la souris vise, Z/S règlent les gaz, Q/D le roulis
-        if (held('KeyW', 'ArrowUp')) throttle += 1;
-        if (held('KeyS', 'ArrowDown')) throttle -= 1;
-        if (held('KeyA', 'ArrowLeft')) roll -= 1;
-        if (held('KeyD', 'ArrowRight')) roll += 1;
-      }
-
-      let boost = held('ShiftLeft', 'ShiftRight');
-      let fire = mouseDownRef.current || held('Space', 'Enter', 'NumpadEnter');
-
-      // Optional Gamepad support
-      const pads = navigator.getGamepads?.();
-      const gp = pads?.[0];
+      // Optional gamepad
+      const gp = navigator.getGamepads?.()?.[0];
       if (gp) {
-        if (Math.abs(gp.axes[0]) > 0.14) engine.inputState.aimX = gp.axes[0];
-        if (Math.abs(gp.axes[1]) > 0.14) {
-          engine.inputState.aimY = settings.invertY ? gp.axes[1] : -gp.axes[1];
-        }
-        if (gp.buttons[0]?.pressed) boost = true;
-        if (gp.buttons[7]?.pressed) fire = true;
-        const bPressed = Boolean(gp.buttons[1]?.pressed);
-        if (bPressed && !gamepadSecondaryHeldRef.current) {
-          engine.inputState.useSecondaryQueued = true;
-        }
-        gamepadSecondaryHeldRef.current = bPressed;
-        // LB / RB: barrel rolls
-        const lb = Boolean(gp.buttons[4]?.pressed);
-        const rb = Boolean(gp.buttons[5]?.pressed);
-        if (lb && !gamepadBumpersRef.current.lb) engine.inputState.barrelRollQueued = -1;
-        if (rb && !gamepadBumpersRef.current.rb) engine.inputState.barrelRollQueued = 1;
-        gamepadBumpersRef.current = { lb, rb };
+        const pad = gamepadStep(gp, settings.invertY, gamepadLatchRef.current);
+        if (pad.aimX !== null) engine.inputState.aimX = pad.aimX;
+        if (pad.aimY !== null) engine.inputState.aimY = pad.aimY;
+        boost ||= pad.boost;
+        fire ||= pad.fire;
+        if (pad.useSecondary) engine.inputState.useSecondaryQueued = true;
+        if (pad.barrelRoll) engine.inputState.barrelRollQueued = pad.barrelRoll;
+        gamepadLatchRef.current = pad.latch;
       } else {
-        gamepadSecondaryHeldRef.current = false;
-        gamepadBumpersRef.current = { lb: false, rb: false };
+        gamepadLatchRef.current = PAD_RELEASED;
       }
 
-      // Light aim assist: stronger for keyboard-only steering, which is less precise than a mouse
-      engine.aimAssistStrength = settings.aimAssist ? (keyboardOnly ? 0.6 : 0.4) : 0;
+      engine.aimAssistStrength = aimAssistStrength(settings.aimAssist, settings.controlScheme);
 
       const touch = touchInputRef.current;
       if (touch.aimActive) {

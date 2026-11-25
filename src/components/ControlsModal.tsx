@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { FR } from '../i18n/fr';
-import type { ControlScheme } from './SettingsModal';
+import type { ControlScheme } from '../settings/gameplaySettings';
 
 interface ControlsModalProps {
   scheme: ControlScheme;
