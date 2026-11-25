@@ -10,6 +10,7 @@ import { formatTimer, objectivePanelText, planeLabelsHtml, statusBadgesHtml } fr
 import { KillFeedList } from './hud/KillFeedList';
 import { CountdownOverlay, PauseModal, RoundEndBanner, ScoreboardModal, SpeedLinesSvg } from './hud/MatchOverlays';
 import { TouchControls, type TouchInputState } from './TouchControls';
+import type { QuickChatLine } from '../hooks/useGameSocket';
 
 export interface HudHandle {
   updateFrame: (data: HudFrameData, aimX: number, aimY: number, boosting: boolean) => void;
@@ -23,6 +24,7 @@ interface HudOverlayProps {
   paused: boolean;
   showScoreboard: boolean;
   killFeed: KillFeedEntry[];
+  quickChat: QuickChatLine[];
   touchEnabled: boolean;
   touchInputRef: MutableRefObject<TouchInputState>;
   onUseSecondary: () => void;
@@ -42,6 +44,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
     paused,
     showScoreboard,
     killFeed,
+    quickChat,
     touchEnabled,
     touchInputRef,
     onUseSecondary,
@@ -518,6 +521,23 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
 
         <KillFeedList entries={killFeed} />
       </div>
+
+      {/* Quick messages of the pilots (keys 1 to 4), above the minimap */}
+      {quickChat.length > 0 && (
+        <div className="fixed bottom-36 left-2 flex flex-col items-start gap-1 sm:left-4" aria-live="polite">
+          {quickChat.map((m) => (
+            <div
+              key={m.id}
+              className="rounded-lg border border-black bg-slate-900/90 px-2.5 py-1 text-xs font-bold text-white shadow-[0_2px_0_#09090b]"
+            >
+              <span className={m.team === 'red' ? 'text-red-300' : m.team === 'blue' ? 'text-sky-300' : 'text-amber-300'}>
+                {m.nickname}
+              </span>{' '}
+              : {FR.quickMessages[m.index] ?? ''}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Bottom-Left: Minimap (hidden on touch/narrow mobile to keep joystick clear) */}
       <div

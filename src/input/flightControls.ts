@@ -1,4 +1,5 @@
 import type { ControlScheme } from '../settings/gameplaySettings';
+import { DEFAULT_BINDINGS, flightKeyCodes, type BindableAction, type KeyBindings } from './keyBindings';
 
 /**
  * Flight controls as pure functions (no DOM): physical keys (KeyboardEvent.code, so AZERTY and
@@ -6,26 +7,8 @@ import type { ControlScheme } from '../settings/gameplaySettings';
  * useFlightInput (src/hooks) feeds them from the browser events at 30 Hz.
  */
 
-/** Keys used in flight whose default browser action must be prevented during a match */
-export const FLIGHT_KEYS: ReadonlySet<string> = new Set([
-  'Space',
-  'Enter',
-  'NumpadEnter',
-  'ArrowUp',
-  'ArrowDown',
-  'ArrowLeft',
-  'ArrowRight',
-  'KeyW',
-  'KeyA',
-  'KeyS',
-  'KeyD',
-  'KeyQ',
-  'KeyE',
-  'ShiftLeft',
-  'ShiftRight',
-  'ControlLeft',
-  'ControlRight',
-]);
+/** Default keys used in flight whose browser action is prevented during a match */
+export const FLIGHT_KEYS: ReadonlySet<string> = flightKeyCodes(DEFAULT_BINDINGS);
 
 export interface KeyboardFlight {
   aimX: number;
@@ -41,7 +24,7 @@ export interface KeyboardFlight {
 export const KEY_STEER_RAMP = 0.12;
 
 /**
- * Keyboard part of one input step.
+ * Keyboard part of one input step (default keys shown, all customisable: src/input/keyBindings.ts).
  * - « Clavier seul » (keyboard): ZQSD steer (ramped toward ±sensitivity), ↑/↓ throttle.
  * - « Clavier + souris » (mouse): the aim is left to the mouse, Z/S (or ↑/↓) throttle, Q/D roll.
  * In both: Shift boost, Space / Enter fire.
@@ -49,22 +32,23 @@ export const KEY_STEER_RAMP = 0.12;
 export function keyboardFlightStep(
   keys: ReadonlySet<string>,
   opts: { scheme: ControlScheme; keyboardSensitivity: number; invertY: boolean; dt: number },
-  prevAim: { aimX: number; aimY: number }
+  prevAim: { aimX: number; aimY: number },
+  bindings: KeyBindings = DEFAULT_BINDINGS
 ): KeyboardFlight {
-  const held = (...codes: string[]) => codes.some((c) => keys.has(c));
+  const held = (...actions: BindableAction[]) => actions.some((a) => bindings[a].some((c) => keys.has(c)));
   let throttle = 0;
   let roll = 0;
   let aimX = prevAim.aimX;
   let aimY = prevAim.aimY;
   if (opts.scheme === 'keyboard') {
-    if (held('ArrowUp')) throttle += 1;
-    if (held('ArrowDown')) throttle -= 1;
+    if (held('throttleUp')) throttle += 1;
+    if (held('throttleDown')) throttle -= 1;
     let steerX = 0;
     let steerY = 0;
-    if (held('KeyA', 'ArrowLeft')) steerX -= 1;
-    if (held('KeyD', 'ArrowRight')) steerX += 1;
-    if (held('KeyW')) steerY += 1;
-    if (held('KeyS')) steerY -= 1;
+    if (held('left')) steerX -= 1;
+    if (held('right')) steerX += 1;
+    if (held('up')) steerY += 1;
+    if (held('down')) steerY -= 1;
     if (opts.invertY) steerY = -steerY;
     const k = 1 - Math.exp(-opts.dt / KEY_STEER_RAMP);
     aimX += (steerX * opts.keyboardSensitivity - aimX) * k;
@@ -72,31 +56,34 @@ export function keyboardFlightStep(
     aimX = Math.max(-1, Math.min(1, aimX));
     aimY = Math.max(-1, Math.min(1, aimY));
   } else {
-    if (held('KeyW', 'ArrowUp')) throttle += 1;
-    if (held('KeyS', 'ArrowDown')) throttle -= 1;
-    if (held('KeyA', 'ArrowLeft')) roll -= 1;
-    if (held('KeyD', 'ArrowRight')) roll += 1;
+    if (held('up', 'throttleUp')) throttle += 1;
+    if (held('down', 'throttleDown')) throttle -= 1;
+    if (held('left')) roll -= 1;
+    if (held('right')) roll += 1;
   }
   return {
     aimX,
     aimY,
     throttle,
     roll,
-    boost: held('ShiftLeft', 'ShiftRight'),
-    fire: held('Space', 'Enter', 'NumpadEnter'),
+    boost: held('boost'),
+    fire: held('fire'),
   };
 }
 
 /** One-shot actions of a key press in flight (the caller ignores auto-repeat). */
-export function flightKeyAction(code: string): { useSecondary?: true; barrelRoll?: -1 | 1; spectate?: -1 | 1 } {
+export function flightKeyAction(
+  code: string,
+  bindings: KeyBindings = DEFAULT_BINDINGS
+): { useSecondary?: true; barrelRoll?: -1 | 1; spectate?: -1 | 1 } {
   // Ctrl: missile / special item
-  if (code === 'ControlLeft' || code === 'ControlRight') return { useSecondary: true };
+  if (bindings.special.includes(code)) return { useSecondary: true };
   // A / E (physical keys Q / E on AZERTY): barrel roll to the left / right
-  if (code === 'KeyQ') return { barrelRoll: -1 };
-  if (code === 'KeyE') return { barrelRoll: 1 };
+  if (bindings.rollLeft.includes(code)) return { barrelRoll: -1 };
+  if (bindings.rollRight.includes(code)) return { barrelRoll: 1 };
   // Q / D or ← / →: previous / next pilot when spectating (ignored by the engine while flying)
-  if (code === 'KeyA' || code === 'ArrowLeft') return { spectate: -1 };
-  if (code === 'KeyD' || code === 'ArrowRight') return { spectate: 1 };
+  if (bindings.left.includes(code)) return { spectate: -1 };
+  if (bindings.right.includes(code)) return { spectate: 1 };
   return {};
 }
 

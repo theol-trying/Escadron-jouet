@@ -3,8 +3,8 @@ import type { RoomState } from '../../shared/types';
 import { soundEngine, type AudioSettings } from '../audio/soundEngine';
 import type { TouchInputState } from '../components/TouchControls';
 import type { ThreeGameEngine } from '../engine/ThreeGameEngine';
+import { flightKeyCodes, quickMessageIndex } from '../input/keyBindings';
 import {
-  FLIGHT_KEYS,
   PAD_RELEASED,
   aimAssistStrength,
   flightKeyAction,
@@ -104,7 +104,8 @@ export function useFlightInput(deps: FlightInputDeps): void {
         }
       }
 
-      if (e.code === 'KeyM') {
+      const keys = gameplayRef.current.keyBindings;
+      if (keys.mute.includes(e.code)) {
         setAudioSettings((prev) => {
           const next = { ...prev, muted: !prev.muted };
           soundEngine.updateSettings(next);
@@ -117,19 +118,27 @@ export function useFlightInput(deps: FlightInputDeps): void {
       const inMatch = activePhase === 'playing' || activePhase === 'countdown';
       if (!inMatch) return;
 
-      if (e.code === 'Tab') {
+      if (keys.scoreboard.includes(e.code)) {
         e.preventDefault();
         setShowScoreboard(true);
         return;
       }
 
-      if (e.code === 'KeyP' || e.code === 'Escape') {
+      if (keys.pause.includes(e.code) || e.code === 'Escape') {
         e.preventDefault();
         setPaused((p) => !p);
         return;
       }
 
-      if (e.code === 'KeyV' && !e.repeat) {
+      // Quick messages (1 to 4): « Bien joué ! », « Oups ! »…
+      const quick = quickMessageIndex(keys, e.code);
+      if (quick >= 0) {
+        e.preventDefault();
+        if (!e.repeat) getSocket().emit('chat:quick', quick);
+        return;
+      }
+
+      if (keys.camera.includes(e.code) && !e.repeat) {
         e.preventDefault();
         setGameplaySettings((prev) => ({
           ...prev,
@@ -140,13 +149,13 @@ export function useFlightInput(deps: FlightInputDeps): void {
 
       // Flight keys must not scroll the page, press a focused button (Space/Enter) or trigger a
       // Ctrl shortcut of the browser (Ctrl+S, Ctrl+D…). Ctrl+W cannot be blocked: see the leave guard.
-      if (FLIGHT_KEYS.has(e.code) || e.ctrlKey) {
+      if (flightKeyCodes(keys).has(e.code) || e.ctrlKey) {
         e.preventDefault();
       }
 
       const engine = engineRef.current;
       if (!e.repeat && engine) {
-        const action = flightKeyAction(e.code);
+        const action = flightKeyAction(e.code, keys);
         if (action.useSecondary) engine.inputState.useSecondaryQueued = true;
         if (action.barrelRoll) engine.inputState.barrelRollQueued = action.barrelRoll;
         if (action.spectate) engine.cycleSpectator(action.spectate);
@@ -156,7 +165,7 @@ export function useFlightInput(deps: FlightInputDeps): void {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Tab') {
+      if (gameplayRef.current.keyBindings.scoreboard.includes(e.code)) {
         setShowScoreboard(false);
       }
       keysHeldRef.current.delete(e.code);
@@ -245,7 +254,8 @@ export function useFlightInput(deps: FlightInputDeps): void {
       const kb = keyboardFlightStep(
         keysHeldRef.current,
         { scheme: settings.controlScheme, keyboardSensitivity: settings.keyboardSensitivity, invertY: settings.invertY, dt },
-        engine.inputState
+        engine.inputState,
+        settings.keyBindings
       );
       engine.inputState.aimX = kb.aimX;
       engine.inputState.aimY = kb.aimY;

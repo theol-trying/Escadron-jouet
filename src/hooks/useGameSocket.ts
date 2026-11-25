@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { PROTOCOL_VERSION } from '../../shared/constants';
 import { decodeSnapshot, type WireSnapshot } from '../../shared/snapshotCodec';
-import type { KillFeedEntry, MapId, PlayerCosmetics, RoomState } from '../../shared/types';
+import type { KillFeedEntry, MapId, PlayerCosmetics, QuickMessage, RoomState } from '../../shared/types';
 import { soundEngine } from '../audio/soundEngine';
 import type { ThreeGameEngine } from '../engine/ThreeGameEngine';
 import { FR } from '../i18n/fr';
 import { getSessionToken, getSocket } from '../net/socketClient';
 
 export type JoinMode = 'quick' | 'create' | 'join';
+
+/** A quick message on screen (it fades after QUICK_CHAT_SHOW_MS). */
+export interface QuickChatLine extends QuickMessage {
+  id: number;
+}
+const QUICK_CHAT_SHOW_MS = 5000;
+let quickChatSeq = 0;
 
 export interface GameSocketDeps {
   engineRef: MutableRefObject<ThreeGameEngine | null>;
@@ -20,6 +27,7 @@ export interface GameSocketDeps {
   setLocalPlayerId: Dispatch<SetStateAction<string>>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setKillFeed: Dispatch<SetStateAction<KillFeedEntry[]>>;
+  setQuickChat: Dispatch<SetStateAction<QuickChatLine[]>>;
   setPaused: Dispatch<SetStateAction<boolean>>;
   setShowHangar: Dispatch<SetStateAction<boolean>>;
 }
@@ -42,6 +50,7 @@ export function useGameSocket(deps: GameSocketDeps) {
     setLocalPlayerId,
     setErrorMessage,
     setKillFeed,
+    setQuickChat,
     setPaused,
     setShowHangar,
   } = deps;
@@ -195,6 +204,13 @@ export function useGameSocket(deps: GameSocketDeps) {
       setKillFeed((prev) => [entry, ...prev].slice(0, 6));
     };
 
+    const onQuickMessage = (msg: QuickMessage) => {
+      const line: QuickChatLine = { ...msg, id: ++quickChatSeq };
+      setQuickChat((prev) => [...prev, line].slice(-4));
+      soundEngine.playUiClick();
+      window.setTimeout(() => setQuickChat((prev) => prev.filter((l) => l.id !== line.id)), QUICK_CHAT_SHOW_MS);
+    };
+
     const onRoomError = (msg: string) => {
       setErrorMessage(msg);
     };
@@ -222,6 +238,7 @@ export function useGameSocket(deps: GameSocketDeps) {
     socket.on('game:hit', onHit);
     socket.on('game:killfeed', onKillFeed);
     socket.on('room:error', onRoomError);
+    socket.on('chat:quick', onQuickMessage);
     socket.on('net:probe', onNetProbe);
     socket.on('server:hello', onServerHello);
 
@@ -246,6 +263,7 @@ export function useGameSocket(deps: GameSocketDeps) {
       socket.off('game:hit', onHit);
       socket.off('game:killfeed', onKillFeed);
       socket.off('room:error', onRoomError);
+      socket.off('chat:quick', onQuickMessage);
       socket.off('net:probe', onNetProbe);
       socket.off('server:hello', onServerHello);
     };

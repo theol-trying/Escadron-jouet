@@ -94,34 +94,58 @@ export const FR = {
     title: 'Commandes de vol',
     subtitle: 'Touches physiques : la disposition AZERTY est indiquée (QWERTY pris en charge).',
     schemeLabel: 'Mode de contrôle',
-    // Keys shown for the "Clavier seul" scheme (no mouse needed)
-    itemsKeyboard: [
-      { key: 'Z / S', desc: 'Monter / descendre (tangage)' },
-      { key: 'Q / D', desc: 'Virer à gauche / à droite' },
-      { key: '↑ / ↓', desc: 'Accélérer / freiner (sans décrocher)' },
-    ],
-    // Keys shown for the "Clavier + souris" scheme
-    itemsMouse: [
-      { key: 'Souris', desc: 'Orienter le nez de l’avion vers le viseur' },
-      { key: 'Clic gauche', desc: 'Tirer' },
-      { key: 'Clic droit', desc: 'Utiliser l’objet ou l’arme spéciale' },
-      { key: 'Z / S (ou ↑ / ↓)', desc: 'Accélérer / freiner (sans décrocher)' },
-      { key: 'Q / D (ou ← / →)', desc: 'Roulis gauche / droite' },
-    ],
-    // Keys common to both schemes
-    itemsCommon: [
-      { key: 'Espace / Entrée', desc: 'Tirer (attention à la surchauffe !)' },
-      { key: 'Maj', desc: 'Turbo (jauge rechargeable)' },
-      { key: 'Ctrl', desc: 'Missile, bombe ou objet spécial ramassé' },
-      { key: 'A / E', desc: 'Tonneau d’esquive vers la gauche / la droite' },
-      { key: 'V', desc: 'Vue poursuite ou vue cockpit' },
-      { key: 'Tab', desc: 'Afficher le tableau des scores' },
-      { key: 'P / Échap', desc: 'Pause' },
-      { key: 'M', desc: 'Couper / rétablir le son' },
+    // Customisable keys
+    bindingsTitle: 'Touches (cliquer pour changer)',
+    bindingsHint: 'Clique sur une touche puis appuie sur la nouvelle ; Échap annule. Une touche déjà prise est échangée.',
+    bindingsWaiting: 'Appuie sur une touche…',
+    bindingsReset: 'Touches par défaut',
+    fixedTitle: 'Toujours disponibles',
+    fixedItems: [
+      { key: 'Échap', desc: 'Pause' },
       { key: 'Manette', desc: 'Stick gauche : virage · Gâchette : tirer · A : turbo · B : objet · LB/RB : tonneaux' },
       { key: 'Tactile', desc: 'Joystick gauche : viser · Gaz + / Frein · Boutons droits : Tirer, Turbo, Objet' },
     ],
+    mouseItems: [
+      { key: 'Souris', desc: 'Orienter le nez de l’avion vers le viseur' },
+      { key: 'Clic gauche', desc: 'Tirer' },
+      { key: 'Clic droit', desc: 'Utiliser l’objet ou l’arme spéciale' },
+    ],
+    // What each action does, per control scheme (the 6 movement keys change meaning with the mouse)
+    actionsKeyboard: {
+      up: 'Monter (tangage)',
+      down: 'Descendre (tangage)',
+      left: 'Virer à gauche',
+      right: 'Virer à droite',
+      throttleUp: 'Accélérer',
+      throttleDown: 'Freiner (sans décrocher)',
+    },
+    actionsMouse: {
+      up: 'Accélérer',
+      down: 'Freiner (sans décrocher)',
+      left: 'Roulis à gauche',
+      right: 'Roulis à droite',
+      throttleUp: 'Accélérer (autre touche)',
+      throttleDown: 'Freiner (autre touche)',
+    },
+    actionsCommon: {
+      fire: 'Tirer (attention à la surchauffe !)',
+      boost: 'Turbo (jauge rechargeable)',
+      special: 'Missile, bombe ou objet ramassé',
+      rollLeft: 'Tonneau d’esquive à gauche',
+      rollRight: 'Tonneau d’esquive à droite',
+      camera: 'Vue poursuite ou cockpit',
+      scoreboard: 'Tableau des scores (maintenir)',
+      pause: 'Pause',
+      mute: 'Couper / rétablir le son',
+      quick1: 'Message « Bien joué ! »',
+      quick2: 'Message « Oups ! »',
+      quick3: 'Message « À l’aide ! »',
+      quick4: 'Message « On y va ! »',
+    },
   },
+
+  /** Quick messages (keys 1 to 4 by default), same order as the server index */
+  quickMessages: ['Bien joué !', 'Oups !', 'À l’aide !', 'On y va !'],
 
   settings: {
     title: 'Paramètres',

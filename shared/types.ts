@@ -319,6 +319,8 @@ export interface ClientToServerEvents {
   'room:playAgain': () => void;
   'game:input': (input: PlayerInputState) => void;
   'net:ping': (clientSentAt: number, ack: (clientSentAt: number) => void) => void;
+  /** Quick message 0..3 (« Bien joué ! », « Oups ! »…; texts in src/i18n/fr.ts) */
+  'chat:quick': (index: number) => void;
 }
 
 export interface ServerToClientEvents {
@@ -329,4 +331,17 @@ export interface ServerToClientEvents {
   'room:error': (message: string) => void;
   'net:probe': (ack: () => void) => void;
   'server:hello': (info: { protocol: number }) => void;
+  'chat:quick': (msg: QuickMessage) => void;
 }
+
+/** A quick message sent by a pilot to the whole room. */
+export interface QuickMessage {
+  playerId: string;
+  nickname: string;
+  team: TeamId;
+  index: number;
+}
+
+export const QUICK_MESSAGE_COUNT = 4;
+/** Minimum time between two quick messages of a pilot (ms) */
+export const QUICK_MESSAGE_COOLDOWN_MS = 1200;

@@ -1,3 +1,5 @@
+import { DEFAULT_BINDINGS, parseBindings, type KeyBindings } from '../input/keyBindings';
+
 /** Player gameplay settings (saved in the browser under « ej_gameplay »). */
 export type ControlScheme = 'mouse' | 'keyboard';
 export type CameraViewSetting = 'chase' | 'cockpit';
@@ -9,6 +11,8 @@ export interface GameplaySettings {
   invertY: boolean;
   aimAssist: boolean;
   cameraView: CameraViewSetting; // vue au lancement (touche V pour changer en vol)
+  /** Customised keys (physical codes), see src/input/keyBindings.ts */
+  keyBindings: KeyBindings;
 }
 
 export const DEFAULT_GAMEPLAY: GameplaySettings = {
@@ -18,6 +22,7 @@ export const DEFAULT_GAMEPLAY: GameplaySettings = {
   invertY: false,
   aimAssist: true,
   cameraView: 'chase',
+  keyBindings: DEFAULT_BINDINGS,
 };
 
 const STORAGE_KEY = 'ej_gameplay';
@@ -34,6 +39,7 @@ export function parseGameplaySettings(value: unknown): GameplaySettings {
     invertY: raw.invertY === true,
     aimAssist: raw.aimAssist !== false,
     cameraView: raw.cameraView === 'cockpit' ? 'cockpit' : 'chase',
+    keyBindings: parseBindings(raw.keyBindings),
   };
 }
 

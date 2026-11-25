@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_BINDINGS } from '../input/keyBindings';
 import { DEFAULT_GAMEPLAY, parseGameplaySettings } from './gameplaySettings';
 
 test('gameplay settings: saved values are kept', () => {
@@ -10,6 +11,7 @@ test('gameplay settings: saved values are kept', () => {
     invertY: true,
     aimAssist: false,
     cameraView: 'cockpit',
+    keyBindings: { ...DEFAULT_BINDINGS, fire: ['KeyF'] },
   };
   assert.deepEqual(parseGameplaySettings(saved), saved);
 });

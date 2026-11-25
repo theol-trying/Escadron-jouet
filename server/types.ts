@@ -91,6 +91,8 @@ export interface ServerPlayer {
   isHost: boolean;
   isBot: boolean;
   botPersonality?: BotPersonality;
+  /** Time of the last quick message (anti-spam) */
+  lastQuickAt?: number;
   botThinkTimer?: number;
   botTargetId?: string | null;
   ready: boolean;

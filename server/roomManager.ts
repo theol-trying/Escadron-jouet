@@ -26,6 +26,7 @@ import { pickBotCosmetics, pickBotName, pickBotPersonality } from './bots';
 import { isObjectiveMode, roundDuration } from '../shared/objectives';
 import { encodeSnapshot } from '../shared/snapshotCodec';
 import { PROTOCOL_VERSION } from '../shared/constants';
+import { QUICK_MESSAGE_COOLDOWN_MS, QUICK_MESSAGE_COUNT } from '../shared/types';
 import {
   buildCompactSnapshot,
   initRoundEntities,
@@ -261,6 +262,25 @@ export class RoomManager {
       const player = room.players.get(binding.playerId);
       if (!player || !player.isHost) return;
       this.startMatch(room);
+    });
+
+    socket.on('chat:quick', (index) => {
+      if (!this.checkRateLimit(socket.id, 'control')) return;
+      if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= QUICK_MESSAGE_COUNT) return;
+      const binding = this.socketToRoom.get(socket.id);
+      if (!binding) return;
+      const room = this.rooms.get(binding.roomCode);
+      const player = room?.players.get(binding.playerId);
+      if (!room || !player) return;
+      const now = Date.now();
+      if (player.lastQuickAt && now - player.lastQuickAt < QUICK_MESSAGE_COOLDOWN_MS) return;
+      player.lastQuickAt = now;
+      this.io.to(room.code).emit('chat:quick', {
+        playerId: player.id,
+        nickname: player.nickname,
+        team: player.team,
+        index,
+      });
     });
 
     socket.on('game:input', (input) => {

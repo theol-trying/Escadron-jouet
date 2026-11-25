@@ -13,7 +13,7 @@ import type { TouchInputState } from './components/TouchControls';
 import type { ThreeGameEngine } from './engine/ThreeGameEngine';
 import { useFlightInput } from './hooks/useFlightInput';
 import { useGameEngine } from './hooks/useGameEngine';
-import { useGameSocket } from './hooks/useGameSocket';
+import { useGameSocket, type QuickChatLine } from './hooks/useGameSocket';
 import { useMatchPhase } from './hooks/useMatchPhase';
 import { FR } from './i18n/fr';
 import { getSocket } from './net/socketClient';
@@ -70,6 +70,7 @@ export default function App() {
   localPlayerIdRef.current = localPlayerId;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
+  const [quickChat, setQuickChat] = useState<QuickChatLine[]>([]);
 
   const [showHangar, setShowHangar] = useState(false);
   const [showControls, setShowControls] = useState(false);
@@ -182,6 +183,7 @@ export default function App() {
     setLocalPlayerId,
     setErrorMessage,
     setKillFeed,
+    setQuickChat,
     setPaused,
     setShowHangar,
   });
@@ -329,6 +331,7 @@ export default function App() {
           paused={paused}
           showScoreboard={showScoreboard}
           killFeed={killFeed}
+          quickChat={quickChat}
           touchEnabled={touchEnabled}
           touchInputRef={touchInputRef}
           onUseSecondary={() => {
@@ -377,9 +380,11 @@ export default function App() {
       {showControls && (
         <ControlsModal
           scheme={gameplaySettings.controlScheme}
+          bindings={gameplaySettings.keyBindings}
           onChangeScheme={(controlScheme) =>
             setGameplaySettings((prev) => ({ ...prev, controlScheme }))
           }
+          onChangeBindings={(keyBindings) => setGameplaySettings((prev) => ({ ...prev, keyBindings }))}
           onClose={() => setShowControls(false)}
         />
       )}

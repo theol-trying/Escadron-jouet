@@ -15,8 +15,9 @@ export const PLANE_SPEED_SCALE = 0.85;
  * 2 = binary snapshots (shared/snapshotCodec.ts).
  * 3 = rings and king zones moved to open air, new king scoring (shared/objectives.ts is computed on
  *     both sides: an old page would draw them in the wrong place).
+ * 4 = quick messages (chat:quick).
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const REMOTE_INTERP_DELAY_MS = 95;
 export const MAX_LAG_COMPENSATION_MS = 250;

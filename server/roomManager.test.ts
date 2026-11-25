@@ -362,3 +362,42 @@ test('quick play: a single shared public room, newcomers mid-match wait for the 
   assert.equal(bruno.sim.lives, 0);
   rm.dispose();
 });
+
+test('quick messages: relayed to the room with the sender, invalid or too frequent ones dropped', () => {
+  const { io, rm, connect } = createHarness();
+  try {
+    const sock = connect('q1');
+    let code = '';
+    sock.trigger(
+      'room:join',
+      {
+        mode: 'create',
+        nickname: 'Zoé',
+        cosmetics: { planeId: 'plastic_jet', paintId: 'red', stickerId: 'star' },
+        sessionToken: 'tq1',
+      },
+      (res: { ok: boolean; room?: RoomState }) => {
+        code = res.room?.code ?? '';
+      }
+    );
+    const sent = () => io.broadcasts.filter((b) => b.event === 'chat:quick');
+    sock.trigger('chat:quick', 1);
+    assert.equal(sent().length, 1);
+    assert.equal(sent()[0].room, code);
+    assert.deepEqual(sent()[0].payload, { playerId: (sent()[0].payload as { playerId: string }).playerId, nickname: 'Zoé', team: 'none', index: 1 });
+    sock.trigger('chat:quick', 2);
+    assert.equal(sent().length, 1, 'cooldown: a second message right away is dropped');
+    for (const bad of [4, -1, 1.5, '1', null]) {
+      (rm as unknown as { rooms: Map<string, { players: Map<string, { lastQuickAt?: number }> }> }).rooms
+        .get(code)!
+        .players.forEach((p) => (p.lastQuickAt = 0));
+      sock.trigger('chat:quick', bad);
+    }
+    assert.equal(sent().length, 1, 'out-of-range or non-integer indexes are ignored');
+    const outsider = connect('q2');
+    outsider.trigger('chat:quick', 0);
+    assert.equal(sent().length, 1, 'not in a room: nothing sent');
+  } finally {
+    rm.dispose();
+  }
+});
