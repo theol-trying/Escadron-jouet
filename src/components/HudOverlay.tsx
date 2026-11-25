@@ -1,23 +1,15 @@
 import { useImperativeHandle, useRef, useState, forwardRef, type MutableRefObject } from 'react';
-import type { PlaneId } from '../../shared/types';
-import { CockpitDashboard, type CockpitHandle } from './CockpitDashboard';
 import { ChevronLeft, ChevronRight, Pause, Volume2, VolumeX } from 'lucide-react';
-import { MAPS } from '../../shared/maps/index';
 import { POWERUPS } from '../../shared/powerups';
-import type { HudFrameData } from '../engine/ThreeGameEngine';
-import type { KillFeedEntry, RoomState } from '../../shared/types';
+import type { KillFeedEntry, PlaneId, RoomState } from '../../shared/types';
+import type { HudFrameData } from '../engine/engineTypes';
 import { FR } from '../i18n/fr';
+import { CockpitDashboard, type CockpitHandle } from './CockpitDashboard';
+import { drawMinimap } from './hud/drawMinimap';
+import { formatTimer, objectivePanelText, planeLabelsHtml, statusBadgesHtml } from './hud/hudText';
+import { KillFeedList } from './hud/KillFeedList';
+import { CountdownOverlay, PauseModal, RoundEndBanner, ScoreboardModal, SpeedLinesSvg } from './hud/MatchOverlays';
 import { TouchControls, type TouchInputState } from './TouchControls';
-import type { ZoneState } from '../engine/objectives3d';
-
-/** Progress bar colour of the king-of-the-sky panel (same colours as the 3D zone) */
-const ZONE_BAR_COLORS: Record<ZoneState, string> = {
-  free: '#facc15',
-  mine: '#22c55e',
-  mine_contested: '#84cc16',
-  theirs: '#ef4444',
-  contested: '#f97316',
-};
 
 export interface HudHandle {
   updateFrame: (data: HudFrameData, aimX: number, aimY: number, boosting: boolean) => void;
@@ -39,21 +31,6 @@ interface HudOverlayProps {
   onResume: () => void;
   onQuitToMenu: () => void;
   onSpectatorCycle: (dir: -1 | 1) => void;
-}
-
-function formatTimer(sec: number): string {
-  const s = Math.max(0, Math.ceil(sec));
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
-}
-
-/** Race chrono, e.g. 1:07.4 */
-function formatRaceTime(seconds: number): string {
-  const s = Math.max(0, seconds);
-  const m = Math.floor(s / 60);
-  const rest = s - m * 60;
-  return `${m}:${rest < 10 ? '0' : ''}${rest.toFixed(1)}`;
 }
 
 export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOverlay(
@@ -133,27 +110,12 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
       const obj = data.objective;
       if (objectivePanelRef.current) objectivePanelRef.current.style.display = obj ? 'block' : 'none';
       if (obj && objTitleRef.current && objMainRef.current && objSubRef.current && objBarRef.current) {
-        if (obj.kind === 'race') {
-          objTitleRef.current.textContent = FR.objectives.raceTitle;
-          objMainRef.current.textContent = obj.finished
-            ? `${FR.objectives.finished} ${formatRaceTime(obj.time)}`
-            : `${FR.objectives.ring} ${obj.ringsPassed + 1} / ${obj.ringsTotal} · ${FR.objectives.lap} ${obj.lap} / ${obj.laps}`;
-          objSubRef.current.textContent = obj.finished
-            ? obj.newRecord
-              ? FR.objectives.newRecord
-              : obj.best !== null
-                ? `${FR.objectives.best} : ${formatRaceTime(obj.best)}`
-                : ''
-            : formatRaceTime(obj.time);
-          objBarRef.current.style.width = `${(obj.ringsPassed / Math.max(1, obj.ringsTotal)) * 100}%`;
-          objBarRef.current.style.backgroundColor = '#facc15';
-        } else {
-          objTitleRef.current.textContent = FR.objectives.kingTitle;
-          objMainRef.current.textContent = `${FR.objectives.crown} ${obj.mine.toFixed(1)} / ${obj.target} s · ${FR.objectives.zone[obj.zoneState]}`;
-          objSubRef.current.textContent = `${obj.leaderName ? `${FR.objectives.leader} : ${obj.leaderName} (${obj.leaderValue.toFixed(0)} s) · ` : ''}${FR.objectives.movesIn} ${Math.ceil(obj.movesIn)} s`;
-          objBarRef.current.style.width = `${(obj.mine / obj.target) * 100}%`;
-          objBarRef.current.style.backgroundColor = ZONE_BAR_COLORS[obj.zoneState];
-        }
+        const t = objectivePanelText(obj);
+        objTitleRef.current.textContent = t.title;
+        objMainRef.current.textContent = t.main;
+        objSubRef.current.textContent = t.sub;
+        objBarRef.current.style.width = `${t.barPct}%`;
+        objBarRef.current.style.backgroundColor = t.barColor;
       }
       if (roomEventRef.current) {
         const label = data.roomEvent && data.alive ? FR.roomEvents[data.roomEvent] : '';
@@ -294,28 +256,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         }
       }
 
-      const badgeParts: string[] = [];
-      if (data.shielded) {
-        badgeParts.push(
-          `<span class="rounded-lg border border-black bg-purple-600 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.shieldActive}</span>`
-        );
-      }
-      if (data.turboActive) {
-        badgeParts.push(
-          `<span class="rounded-lg border border-black bg-emerald-500 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.turboActive}</span>`
-        );
-      }
-      if (data.magnetActive) {
-        badgeParts.push(
-          `<span class="rounded-lg border border-black bg-pink-500 px-2 py-0.5 text-[11px] font-extrabold text-white">${FR.hud.magnetActive}</span>`
-        );
-      }
-      if (data.glued) {
-        badgeParts.push(
-          `<span class="rounded-lg border border-black bg-yellow-400 px-2 py-0.5 text-[11px] font-extrabold text-slate-950">${FR.hud.gluedWarning}</span>`
-        );
-      }
-      const badgesHtml = badgeParts.join('');
+      const badgesHtml = statusBadgesHtml(data);
       if (statusBadgesRef.current) {
         statusBadgesRef.current.innerHTML = badgesHtml;
       }
@@ -327,118 +268,13 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
         vacuumBannerRef.current.style.display = data.suddenDeath ? 'flex' : 'none';
       }
 
-      // Draw Minimap
-      const mc = minimapCanvasRef.current;
-      if (mc) {
-        const ctx = mc.getContext('2d');
-        if (ctx) {
-          const w = mc.width;
-          const h = mc.height;
-          const activeMap = MAPS[room.settings.mapId] ?? MAPS.desk;
-          ctx.clearRect(0, 0, w, h);
-
-          // Floor backdrop per map
-          ctx.fillStyle = room.settings.mapId === 'garden' ? '#14532D' : '#0F172A';
-          ctx.fillRect(0, 0, w, h);
-
-          const toMx = (wx: number) =>
-            ((wx - activeMap.hardBounds.minX) /
-              (activeMap.hardBounds.maxX - activeMap.hardBounds.minX)) *
-            w;
-          const toMy = (wz: number) =>
-            ((wz - activeMap.hardBounds.minZ) /
-              (activeMap.hardBounds.maxZ - activeMap.hardBounds.minZ)) *
-            h;
-
-          if (room.settings.mapId === 'kitchen') {
-            ctx.fillStyle = '#334155';
-            ctx.fillRect(toMx(-225), toMy(-182), toMx(110) - toMx(-225), toMy(-102) - toMy(-182));
-            ctx.fillRect(toMx(-94), toMy(10), toMx(94) - toMx(-94), toMy(78) - toMy(10));
-            ctx.fillStyle = '#E0F2FE';
-            ctx.fillRect(toMx(158), toMy(-178), toMx(244) - toMx(158), toMy(-92) - toMy(-178));
-            // Stove heat & Blender hazard markers
-            ctx.fillStyle = '#FB923C';
-            ctx.beginPath();
-            ctx.arc(toMx(8), toMy(-142), 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#EF4444';
-            ctx.beginPath();
-            ctx.arc(toMx(44), toMy(44), 4.5, 0, Math.PI * 2);
-            ctx.fill();
-          } else if (room.settings.mapId === 'garden') {
-            ctx.fillStyle = '#D97706';
-            ctx.fillRect(toMx(-164), toMy(-138), toMx(-96) - toMx(-164), toMy(-68) - toMy(-138));
-            ctx.fillStyle = '#FDE68A';
-            ctx.fillRect(toMx(-185), toMy(55), toMx(-85) - toMx(-185), toMy(145) - toMy(55));
-            ctx.fillStyle = '#38BDF8';
-            ctx.beginPath();
-            ctx.arc(toMx(18), toMy(18), 4.5, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            ctx.fillStyle = '#92400E';
-            ctx.fillRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
-            ctx.strokeStyle = '#FDE68A';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));
-          }
-
-          // Blips
-          for (const b of data.minimapBlips) {
-            const bx = toMx(b.x);
-            const by = toMy(b.z);
-            ctx.save();
-            ctx.translate(bx, by);
-            ctx.rotate(-b.yaw);
-            ctx.beginPath();
-            if (b.isLocal) {
-              ctx.fillStyle = '#FACC15';
-              ctx.moveTo(0, -6);
-              ctx.lineTo(4.5, 5);
-              ctx.lineTo(-4.5, 5);
-            } else {
-              ctx.fillStyle =
-                b.team === 'red' ? '#EF4444' : b.team === 'blue' ? '#38BDF8' : '#FB7185';
-              ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-          }
-        }
+      if (minimapCanvasRef.current) {
+        drawMinimap(minimapCanvasRef.current, room.settings.mapId, data.minimapBlips);
       }
 
-      // Render projected enemy name tags & off-screen directional arrows
-      const container = labelsContainerRef.current;
-      if (container) {
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        let html = '';
-        for (const lbl of data.labels) {
-          const badgeColor =
-            lbl.team === 'blue' ? '#2563EB' : lbl.team === 'red' ? '#DC2626' : '#E11D48';
-          if (lbl.onScreen && lbl.distance < 360) {
-            const lx = Math.round(lbl.screenX);
-            const ly = Math.round(lbl.screenY - 14);
-            html += `<div style="position:absolute;left:${lx}px;top:${ly}px;transform:translate(-50%,-100%);pointer-events:none;text-align:center;">
-              <div style="font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 0 #09090b,1px 0 0 #09090b,-1px 0 0 #09090b,0 -1px 0 #09090b;white-space:nowrap;">${escapeHtml(lbl.nickname)}</div>
-              <div style="width:42px;height:4px;margin:2px auto 0;background:#18181b;border:1px solid #09090b;border-radius:2px;overflow:hidden;">
-                <div style="width:${Math.round(lbl.hpRatio * 100)}%;height:100%;background:${badgeColor};"></div>
-              </div>
-            </div>`;
-          } else {
-            // Off-screen edge indicator
-            const cx = vw * 0.5;
-            const cy = vh * 0.5;
-            const rad = Math.min(cx - 38, cy - 38);
-            const ex = Math.round(cx + Math.cos(lbl.angle) * rad);
-            const ey = Math.round(cy + Math.sin(lbl.angle) * rad);
-            const deg = Math.round((lbl.angle * 180) / Math.PI + 90);
-            html += `<div style="position:absolute;left:${ex}px;top:${ey}px;transform:translate(-50%,-50%) rotate(${deg}deg);pointer-events:none;">
-              <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:13px solid ${badgeColor};filter:drop-shadow(0 1px 0 #09090b);"></div>
-            </div>`;
-          }
-        }
-        container.innerHTML = html;
+      // Projected name tags & off-screen arrows of the other pilots
+      if (labelsContainerRef.current) {
+        labelsContainerRef.current.innerHTML = planeLabelsHtml(data.labels, window.innerWidth, window.innerHeight);
       }
     },
   }));
@@ -449,33 +285,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
   return (
     <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
       {/* Boost Speed Lines SVG */}
-      <svg
-        ref={speedLinesRef}
-        viewBox="0 0 1000 1000"
-        preserveAspectRatio="none"
-        className="pointer-events-none fixed inset-0 h-full w-full opacity-0 transition-opacity duration-150"
-        aria-hidden="true"
-      >
-        {Array.from({ length: 24 }).map((_, i) => {
-          const a = (i / 24) * Math.PI * 2;
-          const x1 = 500 + Math.cos(a) * 340;
-          const y1 = 500 + Math.sin(a) * 340;
-          const x2 = 500 + Math.cos(a) * 560;
-          const y2 = 500 + Math.sin(a) * 560;
-          return (
-            <line
-              key={i}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              stroke="#FFFFFF"
-              strokeWidth={i % 2 === 0 ? '4' : '2'}
-              strokeLinecap="round"
-            />
-          );
-        })}
-      </svg>
+      <SpeedLinesSvg svgRef={speedLinesRef} />
 
       {/* Enemy floating labels & off-screen arrows */}
       <div ref={labelsContainerRef} className="pointer-events-none fixed inset-0" />
@@ -706,48 +516,7 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
           className={`${touchEnabled ? 'flex' : 'flex sm:hidden'} flex-wrap justify-end gap-1`}
         />
 
-        <div className="flex flex-col items-end gap-1">
-          {killFeed.slice(0, 4).map((kf) => (
-            <div
-              key={kf.id}
-              className="rounded-lg border border-black bg-slate-900/90 px-2 py-0.5 text-[10px] font-bold text-white sm:px-2.5 sm:py-1 sm:text-xs"
-            >
-              {kf.reason === 'gun' ? (
-                <>
-                  <span className="text-amber-300">{kf.killerName}</span>{' '}
-                  <span className="text-slate-300">{FR.hud.killGun}</span>{' '}
-                  <span className="text-rose-300">{kf.victimName}</span>
-                </>
-              ) : kf.reason === 'secondary' ? (
-                <>
-                  <span className="text-amber-300">{kf.killerName}</span>{' '}
-                  <span className="text-slate-300">{FR.hud.killSecondary}</span>{' '}
-                  <span className="text-sky-300">
-                    {kf.powerUpId ? POWERUPS[kf.powerUpId].nameFr : ''}
-                  </span>{' '}
-                  <span className="text-rose-300">{kf.victimName}</span>
-                </>
-              ) : kf.reason === 'hazard' ? (
-                <>
-                  <span className="text-rose-300">{kf.victimName}</span>{' '}
-                  <span className="text-slate-300">{FR.hud.killHazard}</span>{' '}
-                  <span className="text-orange-300">{kf.hazardNameFr ?? ''}</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-rose-300">{kf.victimName}</span>{' '}
-                  <span className="text-slate-300">
-                    {kf.reason === 'oob'
-                      ? FR.hud.killOob
-                      : kf.reason === 'vacuum'
-                        ? FR.hud.killVacuum
-                        : FR.hud.killCrash}
-                  </span>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
+        <KillFeedList entries={killFeed} />
       </div>
 
       {/* Bottom-Left: Minimap (hidden on touch/narrow mobile to keep joystick clear) */}
@@ -861,118 +630,19 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
       </div>
 
       {/* Countdown Overlay */}
-      {room.phase === 'countdown' && (
-        <div className="fixed inset-0 flex items-center justify-center">
-          <div className="toy-panel rounded-3xl bg-amber-300 px-10 py-6 text-center text-slate-950">
-            <div className="font-display text-4xl font-extrabold">
-              {FR.hud.round} {room.roundNumber}
-            </div>
-            <div className="mt-1 text-lg font-extrabold text-sky-800">{FR.hud.countdownGo}</div>
-          </div>
-        </div>
-      )}
+      {room.phase === 'countdown' && <CountdownOverlay roundNumber={room.roundNumber} />}
 
       {/* Round End Banner */}
       {room.phase === 'round_end' && room.lastRoundWinner && (
-        <div className="fixed inset-0 flex items-center justify-center bg-slate-950/45">
-          <div className="toy-panel rounded-3xl px-8 py-6 text-center text-slate-900">
-            <div className="text-xs font-bold uppercase text-slate-500">{FR.hud.roundEndTitle}</div>
-            <h2 className="font-display mt-1 text-3xl font-extrabold text-amber-600">
-              {FR.hud.roundWinnerPrefix} {room.lastRoundWinner.winnerName}
-            </h2>
-            <p className="mt-2 text-sm font-semibold text-slate-600">{FR.hud.nextRoundSoon}</p>
-          </div>
-        </div>
+        <RoundEndBanner winnerName={room.lastRoundWinner.winnerName} />
       )}
 
       {/* Tab Scoreboard */}
-      {showScoreboard && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="toy-panel w-full max-w-2xl rounded-2xl p-5 text-slate-900">
-            <h2 className="font-display text-xl font-extrabold">{FR.hud.scoreboardTitle}</h2>
-            <table className="mt-3 w-full text-left text-sm">
-              <thead>
-                <tr className="border-b-2 border-slate-900 text-xs uppercase text-slate-500">
-                  <th className="py-2">{FR.hud.colPilot}</th>
-                  {room.settings.mode === 'last_plane_teams' && (
-                    <th className="py-2">{FR.hud.colTeam}</th>
-                  )}
-                  <th className="py-2 text-right">{FR.hud.colKills}</th>
-                  <th className="py-2 text-right">{FR.hud.colDeaths}</th>
-                  <th className="py-2 text-right">{FR.hud.colLives}</th>
-                  <th className="py-2 text-right">{FR.hud.colRounds}</th>
-                  <th className="py-2 text-right">{FR.hud.colScore}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {room.scoreboard.map((row) => (
-                  <tr
-                    key={row.playerId}
-                    className={`border-b border-slate-200 font-semibold ${
-                      row.playerId === localPlayerId ? 'bg-amber-100' : ''
-                    }`}
-                  >
-                    <td className="py-2 font-extrabold">{row.nickname}</td>
-                    {room.settings.mode === 'last_plane_teams' && (
-                      <td className="py-2">
-                        <span
-                          className={`text-xs font-extrabold ${
-                            row.team === 'red' ? 'text-red-600' : 'text-blue-600'
-                          }`}
-                        >
-                          {row.team === 'red' ? FR.lobby.teamRed : FR.lobby.teamBlue}
-                        </span>
-                      </td>
-                    )}
-                    <td className="font-mono-num py-2 text-right">{row.kills}</td>
-                    <td className="font-mono-num py-2 text-right">{row.deaths}</td>
-                    <td className="font-mono-num py-2 text-right">{row.livesRemaining}</td>
-                    <td className="font-mono-num py-2 text-right">{row.roundWins}</td>
-                    <td className="font-mono-num py-2 text-right font-extrabold">{row.score}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {showScoreboard && <ScoreboardModal room={room} localPlayerId={localPlayerId} />}
 
       {/* Pause Modal */}
-      {paused && (
-        <div
-          className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-slate-950/65 p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="toy-panel w-full max-w-sm rounded-2xl p-6 text-center text-slate-900">
-            <h2 className="font-display text-2xl font-extrabold">{FR.hud.pauseTitle}</h2>
-            <p className="mt-1.5 text-xs font-semibold text-slate-600">{FR.hud.pauseSubtitle}</p>
-            <div className="mt-5 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={onResume}
-                className="toy-btn w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-extrabold text-slate-950"
-              >
-                {FR.hud.resume}
-              </button>
-              <button
-                type="button"
-                onClick={onQuitToMenu}
-                className="toy-btn w-full rounded-xl bg-rose-400 px-4 py-3 text-sm font-extrabold text-slate-950"
-              >
-                {FR.hud.quitToMenu}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {paused && <PauseModal onResume={onResume} onQuitToMenu={onQuitToMenu} />}
     </div>
   );
 });
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}

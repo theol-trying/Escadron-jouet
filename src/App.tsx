@@ -1,44 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  KillFeedEntry,
-  MapId,
-  PlayerCosmetics,
-  RoomSettings,
-  RoomState,
-  TeamId,
-} from '../shared/types';
-import { music } from './audio/music';
+import { useEffect, useRef, useState } from 'react';
+import type { KillFeedEntry, PlayerCosmetics, RoomSettings, RoomState, TeamId } from '../shared/types';
 import { DEFAULT_AUDIO_SETTINGS, soundEngine, type AudioSettings } from './audio/soundEngine';
 import { ControlsModal } from './components/ControlsModal';
 import { HangarModal } from './components/HangarModal';
 import { HudOverlay, type HudHandle } from './components/HudOverlay';
 import { LobbyView } from './components/LobbyView';
 import { MatchEndModal } from './components/MatchEndModal';
+import { ServerWakeBanner } from './components/ServerWakeBanner';
 import { SettingsModal } from './components/SettingsModal';
+import { TitleScreen } from './components/TitleScreen';
+import type { TouchInputState } from './components/TouchControls';
+import type { ThreeGameEngine } from './engine/ThreeGameEngine';
+import { useFlightInput } from './hooks/useFlightInput';
+import { useGameEngine } from './hooks/useGameEngine';
+import { useGameSocket } from './hooks/useGameSocket';
+import { useMatchPhase } from './hooks/useMatchPhase';
+import { FR } from './i18n/fr';
+import { getSocket } from './net/socketClient';
+import { loadProgress, type PlayerProgress, type UnlockedItem } from './progression';
 import {
   DEFAULT_GAMEPLAY,
   loadGameplaySettings,
   saveGameplaySettings,
   type GameplaySettings,
 } from './settings/gameplaySettings';
-import { ServerWakeBanner } from './components/ServerWakeBanner';
-import { decodeSnapshot, type WireSnapshot } from '../shared/snapshotCodec';
-import { PROTOCOL_VERSION } from '../shared/constants';
-import { loadProgress, recordMatch, saveProgress, type PlayerProgress, type UnlockedItem } from './progression';
-import { TitleScreen } from './components/TitleScreen';
-import type { TouchInputState } from './components/TouchControls';
-import type { HudFrameData, ThreeGameEngine } from './engine/ThreeGameEngine';
-import { FR } from './i18n/fr';
-import { getSessionToken, getSocket } from './net/socketClient';
-import {
-  FLIGHT_KEYS,
-  PAD_RELEASED,
-  aimAssistStrength,
-  flightKeyAction,
-  gamepadStep,
-  keyboardFlightStep,
-  mouseAim,
-} from './input/flightControls';
 
 const DEFAULT_COSMETICS: PlayerCosmetics = {
   planeId: 'plastic_jet',
@@ -113,12 +98,6 @@ export default function App() {
   const nicknameRef = useRef(nickname);
   nicknameRef.current = nickname;
 
-  const keysHeldRef = useRef<Set<string>>(new Set());
-  const mouseDownRef = useRef(false);
-  const gamepadLatchRef = useRef(PAD_RELEASED);
-  const autostartDoneRef = useRef(false);
-  const lastPhaseRef = useRef<string>('title');
-  const inviteDoneRef = useRef(false);
   const touchInputRef = useRef<TouchInputState>({
     aimActive: false,
     aimX: 0,
@@ -127,10 +106,6 @@ export default function App() {
     boost: false,
     fire: false,
   });
-  const wasTouchAimActiveRef = useRef(false);
-  // Browsers emit compatibility mouse events right after a tap: ignore them so a tap on the
-  // 3D view neither jerks the aim nor fires, while a real mouse keeps working everywhere.
-  const lastTouchAtRef = useRef(-Infinity);
 
   // Persist gameplay settings (control scheme, sensitivities, aim assist…)
   useEffect(() => {
@@ -178,558 +153,58 @@ export default function App() {
     }
   }, [cosmetics]);
 
-  // Sync document.body.dataset.state, active map, & ThreeGameEngine mode
-  useEffect(() => {
-    const engine = engineRef.current;
-    // Music: menus vs flight; the victory fanfare plays once when the match ends
-    const phase = room?.phase ?? 'title';
-    const inFlight = phase === 'countdown' || phase === 'playing' || phase === 'round_end';
-    music.setMoment(inFlight ? 'match' : 'menu');
-    const phaseChanged = lastPhaseRef.current !== phase;
-    lastPhaseRef.current = phase;
-    if (phaseChanged && phase !== 'match_end') setNewUnlocks([]);
+  // Page state, 3D view mode, music, podium and unlocks follow the room phase
+  useMatchPhase({
+    engineRef,
+    room,
+    showHangar,
+    paused,
+    engineReady,
+    cosmeticsRef,
+    localPlayerIdRef,
+    progressRef,
+    setProgress,
+    setNewUnlocks,
+  });
 
-    if (!room) {
-      document.body.dataset.state = 'title';
-      engine?.setMap('desk');
-      engine?.setMode(showHangar ? 'hangar_preview' : 'title_tour', cosmeticsRef.current);
-      soundEngine.stopFlightAudio();
-      return;
-    }
+  // The 3D engine, created once
+  useGameEngine({ canvasMountRef, engineRef, hudRef, gameplayRef, roomRef, localPlayerIdRef, setEngineReady });
 
-    engine?.setMap(room.settings.mapId);
-    engine?.setGameMode(room.settings.mode);
+  // Server connection (join, rejoin, invitations, updates)
+  const joinRoom = useGameSocket({
+    engineRef,
+    roomRef,
+    nicknameRef,
+    cosmeticsRef,
+    setConnected,
+    setPing,
+    setRoom,
+    setLocalPlayerId,
+    setErrorMessage,
+    setKillFeed,
+    setPaused,
+    setShowHangar,
+  });
 
-    if (room.phase === 'lobby') {
-      document.body.dataset.state = 'lobby';
-      engine?.setMode(showHangar ? 'hangar_preview' : 'title_tour', cosmeticsRef.current);
-      soundEngine.stopFlightAudio();
-    } else if (room.phase === 'match_end') {
-      document.body.dataset.state = 'gameover';
-      soundEngine.stopFlightAudio();
-      if (phaseChanged) {
-        soundEngine.playVictoryFanfare();
-        // Count the match for unlocks: kills, and a win when first (FFA) or on the winning team
-        const me = room.scoreboard.find((e) => e.playerId === localPlayerIdRef.current);
-        if (me) {
-          const wins = room.teamRoundWins;
-          const won =
-            room.settings.mode === 'last_plane_teams'
-              ? (me.team === 'red' && wins.red > wins.blue) || (me.team === 'blue' && wins.blue > wins.red)
-              : room.scoreboard[0]?.playerId === me.playerId;
-          const result = recordMatch(progressRef.current, { kills: me.kills, won });
-          saveProgress(result.progress);
-          setProgress(result.progress);
-          setNewUnlocks(result.unlocked);
-        }
-        // 3D podium with the top-3 planes in their own colours
-        const teams = room.settings.mode === 'last_plane_teams';
-        engine?.showPodium(
-          room.scoreboard.slice(0, 3).map((e) => ({
-            planeId: e.planeId,
-            paintId: e.paintId,
-            stickerId: room.players.find((p) => p.id === e.playerId)?.cosmetics.stickerId ?? 'star',
-            team: teams ? e.team : 'none',
-          }))
-        );
-      }
-    } else {
-      document.body.dataset.state = paused ? 'paused' : 'playing';
-      engine?.setMode('playing');
-      if (room.phase === 'playing' && !paused) {
-        const me = room.players.find((p) => p.id === localPlayerIdRef.current);
-        soundEngine.startFlightAudio(me?.cosmetics.planeId ?? cosmeticsRef.current.planeId);
-      } else {
-        soundEngine.stopFlightAudio();
-      }
-    }
-  }, [room, showHangar, paused, engineReady]);
-
-  // Mount the imperative Three.js engine ONCE. Its code (Three.js included) is a separate file
-  // loaded after the interface, so the menus show up right away and the 3D a moment later.
-  useEffect(() => {
-    const mount = canvasMountRef.current;
-    if (!mount) return;
-    let cancelled = false;
-
-    void import('./engine/ThreeGameEngine').then(({ ThreeGameEngine }) => {
-      if (cancelled) return;
-      const engine = new ThreeGameEngine(mount, (hudData: HudFrameData) => {
-        hudRef.current?.updateFrame(
-          hudData,
-          engine.inputState.aimX,
-          engine.inputState.aimY,
-          engine.inputState.boost
-        );
-      });
-      engineRef.current = engine;
-      engine.setCameraView(gameplayRef.current.cameraView);
-      // Catch up with anything that happened while loading (invite link, quick auto-start…)
-      const currentRoom = roomRef.current;
-      if (currentRoom) {
-        engine.syncRoomPlayers(currentRoom.players);
-        const me = currentRoom.players.find((p) => p.id === localPlayerIdRef.current);
-        if (me) engine.setLocalPlayer(me.id, me.cosmetics);
-      }
-      setEngineReady(true);
-    });
-
-    return () => {
-      cancelled = true;
-      engineRef.current?.dispose();
-      engineRef.current = null;
-    };
-  }, []);
-
-  // Join helper
-  const joinRoom = useCallback(
-    (
-      mode: 'quick' | 'create' | 'join',
-      roomCode?: string,
-      autoStartIfHost = false,
-      preferredMap?: MapId
-    ) => {
-      soundEngine.playUiClick();
-      setErrorMessage(null);
-      const socket = getSocket();
-      socket.emit(
-        'room:join',
-        {
-          mode,
-          roomCode,
-          nickname: nicknameRef.current,
-          cosmetics: cosmeticsRef.current,
-          sessionToken: getSessionToken(),
-        },
-        (res) => {
-          if (!res.ok || !res.room || !res.playerId) {
-            setErrorMessage(res.error || FR.errors.roomNotFound);
-            return;
-          }
-          setLocalPlayerId(res.playerId);
-          setRoom(res.room);
-          setKillFeed([]);
-          setPaused(false);
-          const targetMap = preferredMap ?? res.room.settings.mapId;
-          engineRef.current?.setMap(targetMap);
-          engineRef.current?.resetMatchVisuals();
-          engineRef.current?.syncRoomPlayers(res.room.players);
-          const authoritativeMe = res.room.players.find((p) => p.id === res.playerId);
-          engineRef.current?.setLocalPlayer(
-            res.playerId,
-            authoritativeMe?.cosmetics ?? cosmeticsRef.current
-          );
-
-          if (autoStartIfHost) {
-            if (authoritativeMe?.isHost) {
-              if (preferredMap && preferredMap !== res.room.settings.mapId) {
-                socket.emit('room:updateSettings', { mapId: preferredMap });
-              }
-              socket.emit('room:startMatch');
-            }
-          }
-        }
-      );
-    },
-    []
-  );
-
-  // Socket.io connection & event wiring
-  useEffect(() => {
-    const socket = getSocket();
-
-    const onConnect = () => {
-      setConnected(true);
-      setErrorMessage(null);
-
-      // Automatically rejoin active room after transient network/Wi-Fi drop
-      if (roomRef.current) {
-        socket.emit(
-          'room:join',
-          {
-            mode: 'join',
-            roomCode: roomRef.current.code,
-            nickname: nicknameRef.current,
-            cosmetics: cosmeticsRef.current,
-            sessionToken: getSessionToken(),
-          },
-          (res) => {
-            if (res.ok && res.room && res.playerId) {
-              setLocalPlayerId(res.playerId);
-              setRoom(res.room);
-              engineRef.current?.syncRoomPlayers(res.room.players);
-              const me = res.room.players.find((p) => p.id === res.playerId);
-              engineRef.current?.setLocalPlayer(
-                res.playerId,
-                me?.cosmetics ?? cosmeticsRef.current,
-                {
-                  preserveSim:
-                    res.room.phase === 'playing' || res.room.phase === 'countdown',
-                }
-              );
-            } else {
-              setRoom(null);
-              setLocalPlayerId('');
-              setPaused(false);
-              setErrorMessage(res.error || FR.errors.disconnected);
-            }
-          }
-        );
-        return;
-      }
-
-      // ?autostart=1 (&map=kitchen|garden) immediately launches solo/bot flight
-      const params = new URLSearchParams(window.location.search);
-
-      // Invitation link ?salon=ABCDE: join that room right away, then clean the address bar
-      const invitedCode = (params.get('salon') ?? '').trim().toUpperCase();
-      if (/^[A-Z]{5}$/.test(invitedCode) && !inviteDoneRef.current && !roomRef.current) {
-        inviteDoneRef.current = true;
-        params.delete('salon');
-        const query = params.toString();
-        window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
-        joinRoom('join', invitedCode);
-        return;
-      }
-      if (params.get('autostart') === '1' && !autostartDoneRef.current && !roomRef.current) {
-        autostartDoneRef.current = true;
-        const rawMap = params.get('map');
-        const mapParam: MapId | undefined =
-          rawMap === 'desk' || rawMap === 'kitchen' || rawMap === 'garden' || rawMap === 'attic' ? rawMap : undefined;
-        joinRoom('create', undefined, true, mapParam);
-      }
-    };
-
-    const onDisconnect = () => {
-      setConnected(false);
-    };
-
-    const onRoomState = (nextRoom: RoomState) => {
-      setRoom(nextRoom);
-      engineRef.current?.syncRoomPlayers(nextRoom.players);
-      if (nextRoom.phase === 'countdown') {
-        setPaused(false);
-        setShowHangar(false);
-        setKillFeed([]);
-        engineRef.current?.resetMatchVisuals();
-      }
-    };
-
-    const onSnapshot = (wire: WireSnapshot) => {
-      // Compact binary updates (shared/snapshotCodec.ts) back to the full snapshot
-      engineRef.current?.ingestSnapshot(decodeSnapshot(wire));
-    };
-
-    const onHit = (ev: Parameters<ThreeGameEngine['ingestHitEvent']>[0]) => {
-      engineRef.current?.ingestHitEvent(ev);
-    };
-
-    const onKillFeed = (entry: KillFeedEntry) => {
-      setKillFeed((prev) => [entry, ...prev].slice(0, 6));
-    };
-
-    const onRoomError = (msg: string) => {
-      setErrorMessage(msg);
-    };
-
-    // A server running a newer build: reload once to get the matching client (after a deploy)
-    const onServerHello = (info: { protocol: number }) => {
-      if (info?.protocol === PROTOCOL_VERSION) return;
-      try {
-        if (sessionStorage.getItem('ej_reloaded_for') === String(info?.protocol)) return;
-        sessionStorage.setItem('ej_reloaded_for', String(info?.protocol));
-      } catch {
-        // storage unavailable: reload anyway
-      }
-      window.location.reload();
-    };
-
-    const onNetProbe = (ack: () => void) => {
-      if (typeof ack === 'function') ack();
-    };
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('room:state', onRoomState);
-    socket.on('game:snapshot', onSnapshot);
-    socket.on('game:hit', onHit);
-    socket.on('game:killfeed', onKillFeed);
-    socket.on('room:error', onRoomError);
-    socket.on('net:probe', onNetProbe);
-    socket.on('server:hello', onServerHello);
-
-    if (socket.connected) {
-      onConnect();
-    }
-
-    const pingInterval = window.setInterval(() => {
-      if (socket.connected) {
-        socket.emit('net:ping', performance.now(), (sentAt) => {
-          setPing(Math.max(1, Math.round(performance.now() - sentAt)));
-        });
-      }
-    }, 2000);
-
-    return () => {
-      clearInterval(pingInterval);
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('room:state', onRoomState);
-      socket.off('game:snapshot', onSnapshot);
-      socket.off('game:hit', onHit);
-      socket.off('game:killfeed', onKillFeed);
-      socket.off('room:error', onRoomError);
-      socket.off('net:probe', onNetProbe);
-      socket.off('server:hello', onServerHello);
-    };
-  }, [joinRoom]);
-
-  // Unified Keyboard, Mouse & Gamepad Input + 30Hz Client Prediction/Send Loop
-  useEffect(() => {
-    const clearInputs = () => {
-      keysHeldRef.current.clear();
-      mouseDownRef.current = false;
-      touchInputRef.current = {
-        aimActive: false,
-        aimX: 0,
-        aimY: 0,
-        throttle: 0,
-        boost: false,
-        fire: false,
-      };
-      wasTouchAimActiveRef.current = false;
-      setShowScoreboard(false);
-    };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      // Allow normal typing in text inputs
-      const target = e.target as HTMLElement | null;
-      const inTextInput =
-        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
-
-      if (inTextInput) {
-        if (e.code === 'Enter' && !roomRef.current && target.id === 'nickname-input') {
-          joinRoom('quick');
-        }
-        return;
-      }
-
-      if (!roomRef.current && !showHangar && !showControls && !showSettings) {
-        if (e.code === 'Enter' || e.code === 'Space') {
-          e.preventDefault();
-          joinRoom('quick');
-          return;
-        }
-      }
-
-      if (e.code === 'KeyM') {
-        setAudioSettings((prev) => {
-          const next = { ...prev, muted: !prev.muted };
-          soundEngine.updateSettings(next);
-          return next;
-        });
-        return;
-      }
-
-      const activePhase = roomRef.current?.phase;
-      const inMatch = activePhase === 'playing' || activePhase === 'countdown';
-      if (!inMatch) return;
-
-      if (e.code === 'Tab') {
-        e.preventDefault();
-        setShowScoreboard(true);
-        return;
-      }
-
-      if (e.code === 'KeyP' || e.code === 'Escape') {
-        e.preventDefault();
-        setPaused((p) => !p);
-        return;
-      }
-
-      if (e.code === 'KeyV' && !e.repeat) {
-        e.preventDefault();
-        setGameplaySettings((prev) => ({
-          ...prev,
-          cameraView: prev.cameraView === 'cockpit' ? 'chase' : 'cockpit',
-        }));
-        return;
-      }
-
-      // Flight keys must not scroll the page, press a focused button (Space/Enter) or trigger a
-      // Ctrl shortcut of the browser (Ctrl+S, Ctrl+D…). Ctrl+W cannot be blocked: see the leave guard.
-      if (FLIGHT_KEYS.has(e.code) || e.ctrlKey) {
-        e.preventDefault();
-      }
-
-      const engine = engineRef.current;
-      if (!e.repeat && engine) {
-        const action = flightKeyAction(e.code);
-        if (action.useSecondary) engine.inputState.useSecondaryQueued = true;
-        if (action.barrelRoll) engine.inputState.barrelRollQueued = action.barrelRoll;
-        if (action.spectate) engine.cycleSpectator(action.spectate);
-      }
-
-      keysHeldRef.current.add(e.code);
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Tab') {
-        setShowScoreboard(false);
-      }
-      keysHeldRef.current.delete(e.code);
-    };
-
-    const isCompatMouseEvent = () => performance.now() - lastTouchAtRef.current < 800;
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (isCompatMouseEvent()) return;
-      // "Clavier seul": the mouse never steers (ZQSD does)
-      if (gameplayRef.current.controlScheme === 'keyboard') return;
-      if (touchEnabledRef.current && touchInputRef.current.aimActive) return;
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('[data-touch-control="true"]')) return;
-      const engine = engineRef.current;
-      const mount = canvasMountRef.current;
-      if (!engine || !mount) return;
-      const rect = mount.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-
-      const aim = mouseAim(e.clientX, e.clientY, rect, gameplayRef.current.mouseSensitivity, gameplayRef.current.invertY);
-      engine.inputState.aimX = aim.aimX;
-      engine.inputState.aimY = aim.aimY;
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (roomRef.current?.phase === 'playing' && !pausedRef.current) {
-        const target = e.target as HTMLElement | null;
-        if (target?.closest('button, input, select, [data-touch-control="true"]')) return;
-        if (isCompatMouseEvent()) return;
-        soundEngine.unlock();
-        if (e.button === 0) {
-          mouseDownRef.current = true;
-        } else if (e.button === 2 && engineRef.current) {
-          engineRef.current.inputState.useSecondaryQueued = true;
-        }
-      }
-    };
-
-    const onPointerDownGlobal = (e: PointerEvent) => {
-      if (e.pointerType === 'touch') {
-        lastTouchAtRef.current = performance.now();
-        soundEngine.unlock();
-        if (!touchEnabledRef.current) {
-          setTouchEnabled(true);
-        }
-      } else if (e.pointerType === 'mouse' && touchEnabledRef.current) {
-        // Touchscreen laptop: the player went back to the mouse, hide the on-screen controls
-        setTouchEnabled(false);
-      }
-    };
-
-    const onContextMenu = (e: MouseEvent) => {
-      if (roomRef.current?.phase === 'playing' && !pausedRef.current) {
-        e.preventDefault();
-      }
-    };
-
-    const onMouseUp = (e: MouseEvent) => {
-      if (e.button === 0) mouseDownRef.current = false;
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('pointerdown', onPointerDownGlobal, { passive: true });
-    window.addEventListener('contextmenu', onContextMenu);
-    window.addEventListener('blur', clearInputs);
-    document.addEventListener('visibilitychange', clearInputs);
-
-    // 30 Hz input step & send loop
-    let lastInputTime = performance.now();
-    const inputTimer = window.setInterval(() => {
-      const engine = engineRef.current;
-      const currentRoom = roomRef.current;
-      if (!engine || !currentRoom) return;
-      if (currentRoom.phase !== 'playing' && currentRoom.phase !== 'countdown') return;
-
-      const now = performance.now();
-      const dt = Math.min(0.05, Math.max(0.005, (now - lastInputTime) / 1000));
-      lastInputTime = now;
-
-      const settings = gameplayRef.current;
-      const kb = keyboardFlightStep(
-        keysHeldRef.current,
-        { scheme: settings.controlScheme, keyboardSensitivity: settings.keyboardSensitivity, invertY: settings.invertY, dt },
-        engine.inputState
-      );
-      engine.inputState.aimX = kb.aimX;
-      engine.inputState.aimY = kb.aimY;
-      const { throttle, roll } = kb;
-      let boost = kb.boost;
-      let fire = mouseDownRef.current || kb.fire;
-
-      // Optional gamepad
-      const gp = navigator.getGamepads?.()?.[0];
-      if (gp) {
-        const pad = gamepadStep(gp, settings.invertY, gamepadLatchRef.current);
-        if (pad.aimX !== null) engine.inputState.aimX = pad.aimX;
-        if (pad.aimY !== null) engine.inputState.aimY = pad.aimY;
-        boost ||= pad.boost;
-        fire ||= pad.fire;
-        if (pad.useSecondary) engine.inputState.useSecondaryQueued = true;
-        if (pad.barrelRoll) engine.inputState.barrelRollQueued = pad.barrelRoll;
-        gamepadLatchRef.current = pad.latch;
-      } else {
-        gamepadLatchRef.current = PAD_RELEASED;
-      }
-
-      engine.aimAssistStrength = aimAssistStrength(settings.aimAssist, settings.controlScheme);
-
-      const touch = touchInputRef.current;
-      if (touch.aimActive) {
-        engine.inputState.aimX = touch.aimX;
-        engine.inputState.aimY = settings.invertY ? -touch.aimY : touch.aimY;
-        wasTouchAimActiveRef.current = true;
-      } else if (wasTouchAimActiveRef.current) {
-        engine.inputState.aimX = 0;
-        engine.inputState.aimY = 0;
-        wasTouchAimActiveRef.current = false;
-      }
-
-      engine.inputState.throttle = Math.max(-1, Math.min(1, throttle + touch.throttle));
-      engine.inputState.roll = roll;
-      engine.inputState.boost = boost || touch.boost;
-      engine.inputState.fire = fire || touch.fire;
-
-      const canControl = currentRoom.phase === 'playing' && !pausedRef.current;
-      const socket = getSocket();
-      engine.stepAndSendInput(
-        dt,
-        (inp) => {
-          if (socket.connected) {
-            socket.emit('game:input', inp);
-          }
-        },
-        canControl
-      );
-    }, 1000 / 30);
-
-    return () => {
-      clearInterval(inputTimer);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('pointerdown', onPointerDownGlobal);
-      window.removeEventListener('contextmenu', onContextMenu);
-      window.removeEventListener('blur', clearInputs);
-      document.removeEventListener('visibilitychange', clearInputs);
-    };
-  }, [joinRoom, showHangar, showControls, showSettings]);
+  // Keyboard, mouse, gamepad and touch flight controls + 30 Hz send loop
+  useFlightInput({
+    engineRef,
+    canvasMountRef,
+    roomRef,
+    pausedRef,
+    gameplayRef,
+    touchEnabledRef,
+    touchInputRef,
+    showHangar,
+    showControls,
+    showSettings,
+    joinRoom,
+    setShowScoreboard,
+    setPaused,
+    setGameplaySettings,
+    setAudioSettings,
+    setTouchEnabled,
+  });
 
   const handleLeaveRoom = () => {
     soundEngine.playUiClick();

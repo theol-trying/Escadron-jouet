@@ -3,7 +3,7 @@
 ## Architecture Overview
 - **Full-stack single-service app**: Express + Socket.io (`server.ts`) serves the React/Vite frontend and runs the authoritative 30 Hz game simulation (`server/roomManager.ts`, `server/bots.ts`, and `server/gameLoop.ts`, whose tick calls the steps of `server/loop/`: flight, power-ups, projectiles, special items, sudden death, objectives, rounds, snapshot — keep their order).
 - **Shared deterministic core (`shared/`)**: Physics (`shared/flightPhysics.ts`), round/team rules (`shared/rules.ts`), plane archetypes (`shared/planes.ts`), power-ups (`shared/powerups.ts`), and 3D map colliders (`shared/maps/`). Used on both server (authority) and client (prediction).
-- **3D Client (`src/engine/ThreeGameEngine.ts`)**: Procedural Three.js engine with zero external asset files; React handles menus, lobby, and HUD overlays (`src/components/`).
+- **3D Client (`src/engine/ThreeGameEngine.ts`)**: Procedural Three.js engine with zero external asset files, helped by `cameraRig`, `objectiveTracker`, `localPrediction` (client prediction), `planeVisuals`, `hudProjection`, `sceneSetup`, `aimAssist`. React handles menus, lobby, and HUD overlays (`src/components/`, HUD pieces in `src/components/hud/`); `App.tsx` wires state to hooks in `src/hooks/` (engine, socket, match phase, flight input). Pure, tested logic: `src/input/flightControls.ts` (keys, mouse, gamepad), `src/settings/gameplaySettings.ts`, `src/audio/spatialMix.ts`.
 - **French UI**: All player-facing strings live in `src/i18n/fr.ts`.
 
 ## Key Commands
