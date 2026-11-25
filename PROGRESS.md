@@ -60,12 +60,15 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
         - [x] fantôme du record en course d’anneaux (src/engine/raceGhost*.ts)
         - [x] « Revoir l’action » : touche R une fois abattu, 5 s avant + 0,9 s après, caméra sur le tireur
               (src/engine/replayBuffer.ts, côté client)
-        - [ ] mode « Survie » en équipe contre des vagues de mouches et de drones jouets
+        - [x] mode « Survie » (server/survival.ts) : tous en équipe bleue contre 8 vagues de mouches (piquent au
+              contact) et de drones (tirent) ; une seule manche ; vague limitée à 75 s ; PROTOCOL_VERSION 6
         - [ ] chambre d’enfant (mobile qui tourne, petit train en marche)
         - [ ] salle de bain (canard, miroir, vapeur)
         - [ ] garage
         - [ ] README à compléter (nouveautés), vérification en ligne
-        ➜ REPRENDRE ICI : mode Survie (l’utilisateur a demandé d’arrêter après « Revoir l’action »).
+        ➜ REPRENDRE ICI : les trois pièces. Base déjà écrite sur la branche pieces-mobiles-wip (meubles mobiles :
+          shared/maps/movers.ts, pris en compte par la physique, les bots, les anneaux et les zones) : la
+          fusionner dans main au début de ce chantier. Ensuite le README. (Arrêt demandé après la Survie, 26/11.)
 
 ➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
   réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
