@@ -271,6 +271,7 @@ export function LobbyView({
                   <option value="last_plane_teams">{FR.lobby.modeTeams}</option>
                   <option value="ring_race">{FR.lobby.modeRace}</option>
                   <option value="king_of_sky">{FR.lobby.modeKing}</option>
+                  <option value="survival">{FR.lobby.modeSurvival}</option>
                 </select>
                 <p className="mt-1 text-[11px] font-semibold text-slate-500">{FR.lobby.modeHint[room.settings.mode]}</p>
               </div>

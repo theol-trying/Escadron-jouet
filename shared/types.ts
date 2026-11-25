@@ -6,7 +6,10 @@ export type PlaneId =
   | 'foam_glider'
   | 'diecast_bomber'
   | 'toy_helicopter'
-  | 'paper_plane';
+  | 'paper_plane'
+  // Enemies of the « Survie » mode (not selectable in the hangar)
+  | 'fly'
+  | 'drone';
 
 export type PaintId =
   | 'red'
@@ -38,7 +41,14 @@ export type SecondaryProjectileKind =
   | 'glue_mine';
 
 /** tutorial = « Premier vol » (guided first flight, solo, never ends on its own) */
-export type GameModeId = 'last_plane_ffa' | 'last_plane_teams' | 'ring_race' | 'king_of_sky' | 'tutorial';
+export type GameModeId =
+  | 'last_plane_ffa'
+  | 'last_plane_teams'
+  | 'ring_race'
+  | 'king_of_sky'
+  | 'tutorial'
+  /** « Survie »: every pilot together against waves of flies and toy drones */
+  | 'survival';
 
 export type MapId = 'desk' | 'kitchen' | 'garden' | 'attic';
 
@@ -80,6 +90,8 @@ export interface PlayerLobbyInfo {
   team: TeamId;
   cosmetics: PlayerCosmetics;
   ping: number;
+  /** « Survie »: a fly or a drone of the waves (not a pilot) */
+  isEnemy?: boolean;
 }
 
 export interface MatchScoreEntry {
@@ -120,6 +132,16 @@ export interface RoomState {
     winnerName: string;
   } | null;
   scoreboard: MatchScoreEntry[];
+  /** « Survie »: current wave (null in the other modes) */
+  survival?: SurvivalState | null;
+}
+
+export interface SurvivalState {
+  wave: number;
+  totalWaves: number;
+  enemiesLeft: number;
+  /** Round timer value when the next wave comes in (null while a wave is on) */
+  nextWaveAtTimer: number | null;
 }
 
 export interface PlayerInputState {

@@ -25,7 +25,7 @@ interface Theme {
 
 // One personality per plane: sleek digital jet, brass & wood wind-up toy, light foam glider,
 // riveted steel bomber.
-const THEMES: Record<PlaneId, Theme> = {
+const THEMES: Partial<Record<PlaneId, Theme>> & { plastic_jet: Theme } = {
   plastic_jet: {
     panel: 'linear-gradient(180deg, #0b1324 0%, #111c33 100%)',
     border: '#22d3ee',
@@ -194,7 +194,7 @@ export const CockpitDashboard = forwardRef<CockpitHandle, { planeId: PlaneId }>(
   ref
 ) {
   const theme = THEMES[planeId] ?? THEMES.plastic_jet;
-  const labels = FR.cockpit[planeId] ?? FR.cockpit.plastic_jet;
+  const labels = (FR.cockpit as unknown as Partial<Record<PlaneId, (typeof FR.cockpit)['plastic_jet']>>)[planeId] ?? FR.cockpit.plastic_jet;
   const arch = PLANE_ARCHETYPES[planeId] ?? PLANE_ARCHETYPES.plastic_jet;
 
   const speedNeedle = useRef<SVGGElement>(null);

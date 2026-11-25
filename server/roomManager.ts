@@ -1,6 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { MAPS } from '../shared/maps/index';
-import { PAINT_PALETTES, PLANE_ARCHETYPES, STICKERS } from '../shared/planes';
+import { PAINT_PALETTES, PLANE_ARCHETYPES, PLANE_ORDER, STICKERS } from '../shared/planes';
 import {
   assignBalancedTeam,
   autoBalanceTeams,
@@ -35,6 +35,7 @@ import {
   stepRoomTick,
 } from './gameLoop';
 import { DEFAULT_ROOM_SETTINGS, type ServerPlayer, type ServerRoom } from './types';
+import { removeEnemies, resetSurvival, survivalState } from './survival';
 
 type TypedIO = Server<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -434,7 +435,9 @@ export class RoomManager {
     const team: TeamId =
       room.settings.mode === 'last_plane_teams'
         ? assignBalancedTeam(Array.from(room.players.values()))
-        : 'none';
+        : room.settings.mode === 'survival'
+          ? 'blue'
+          : 'none';
 
     const newPlayer: ServerPlayer = {
       id: playerId,
@@ -507,7 +510,8 @@ export class RoomManager {
     // Joining mid-match: objective modes respawn freely, so fly right away; in elimination modes the
     // newcomer watches as a spectator and gets a plane at the next round (fair for those still alive)
     if (room.phase === 'playing' || room.phase === 'countdown' || room.phase === 'round_end') {
-      if (respawnsFreely(room.settings.mode)) {
+      // (in « Survie » too: one team against the waves, a newcomer helps right away)
+      if (respawnsFreely(room.settings.mode) || room.settings.mode === 'survival') {
         spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, roundLives(room.settings));
       } else {
         spawnPlayerAtIndex(newPlayer, room.players.size, room.settings.mapId, 0);
@@ -612,6 +616,7 @@ export class RoomManager {
       partial.mode === 'last_plane_teams' ||
       partial.mode === 'ring_race' ||
       partial.mode === 'king_of_sky' ||
+      partial.mode === 'survival' ||
       // The guided first flight only in a private room (never the shared quick-play room)
       (partial.mode === 'tutorial' && room.settings.isPrivate)
     ) {
@@ -648,13 +653,16 @@ export class RoomManager {
       if (room.settings.mode === 'last_plane_teams') {
         autoBalanceTeams(Array.from(room.players.values()));
       } else {
-        for (const p of room.players.values()) p.team = 'none';
+        // Survival: every pilot in the same (blue) team
+        const team: TeamId = room.settings.mode === 'survival' ? 'blue' : 'none';
+        for (const p of room.players.values()) p.team = team;
       }
     }
   }
 
   private syncBots(room: ServerRoom): void {
     if (room.phase !== 'lobby') return;
+    removeEnemies(room);
     // Remove excess or all bots if disabled (the guided first flight is always solo)
     if (!room.settings.botsEnabled || room.settings.mode === 'tutorial') {
       for (const [id, p] of room.players.entries()) {
@@ -689,7 +697,9 @@ export class RoomManager {
       const team: TeamId =
         room.settings.mode === 'last_plane_teams'
           ? assignBalancedTeam(Array.from(room.players.values()))
-          : 'none';
+          : room.settings.mode === 'survival'
+            ? 'blue'
+            : 'none';
       const arch = PLANE_ARCHETYPES[cosmetics.planeId];
 
       const botPlayer: ServerPlayer = {
@@ -767,7 +777,11 @@ export class RoomManager {
   }
 
   private startMatch(room: ServerRoom): void {
+    removeEnemies(room);
     this.syncBots(room);
+    if (room.settings.mode === 'survival') {
+      for (const p of room.players.values()) p.team = 'blue';
+    }
 
     if (room.settings.mode === 'last_plane_teams') {
       const roster = Array.from(room.players.values());
@@ -793,7 +807,8 @@ export class RoomManager {
     }
 
     room.roundNumber = 1;
-    room.maxRounds = 3;
+    // Survival: a single long round (8 waves)
+    room.maxRounds = room.settings.mode === 'survival' ? 1 : 3;
     room.roundTimer = roundDuration(room.settings.mode);
     room.raceFirstFinishAt = null;
     room.teamRoundWins = { red: 0, blue: 0 };
@@ -816,6 +831,7 @@ export class RoomManager {
       spawnPlayerAtIndex(player, idx++, room.settings.mapId, roundLives(room.settings));
     }
 
+    resetSurvival(room);
     room.phase = 'countdown';
     room.countdownTimer = 2.2;
     this.broadcastRoomState(room);
@@ -825,7 +841,8 @@ export class RoomManager {
 
   private sanitizeCosmetics(raw?: Partial<PlayerCosmetics>): PlayerCosmetics {
     const planeId: PlaneId =
-      typeof raw?.planeId === 'string' && Object.hasOwn(PLANE_ARCHETYPES, raw.planeId)
+      // Only the hangar planes (the flies and drones of « Survie » are not for players)
+      typeof raw?.planeId === 'string' && (PLANE_ORDER as string[]).includes(raw.planeId)
         ? (raw.planeId as PlaneId)
         : 'plastic_jet';
     const paintId: PaintId =
@@ -854,8 +871,11 @@ export class RoomManager {
         team: p.team,
         cosmetics: p.cosmetics,
         ping: p.ping,
+        ...(p.enemyKind ? { isEnemy: true } : {}),
       });
 
+      // The scoreboard is for pilots only
+      if (p.enemyKind) continue;
       scoreboard.push({
         playerId: p.id,
         nickname: p.nickname,
@@ -890,6 +910,7 @@ export class RoomManager {
       teamRoundWins: { ...room.teamRoundWins },
       lastRoundWinner: room.lastRoundWinner,
       scoreboard,
+      survival: survivalState(room),
     };
   }
 

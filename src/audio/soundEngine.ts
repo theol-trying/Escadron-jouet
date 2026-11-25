@@ -54,6 +54,18 @@ interface EngineVoice {
   stop(): void;
 }
 
+/** Base pitch of the fly-by whoosh of each plane (Hz) */
+const FLYBY_PITCH: Partial<Record<PlaneId, number>> = {
+  plastic_jet: 520,
+  windup_biplane: 180,
+  foam_glider: 320,
+  diecast_bomber: 120,
+  toy_helicopter: 90,
+  paper_plane: 320,
+  fly: 260,
+  drone: 300,
+};
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -581,18 +593,14 @@ class SoundEngine {
    * engine type so a jet hisses and a propeller plane buzzes.
    */
   public playFlyby(planeId: PlaneId, pos: SoundPos): void {
-    const buzzy = planeId === 'windup_biplane' || planeId === 'diecast_bomber' || planeId === 'toy_helicopter';
+    const buzzy =
+      planeId === 'windup_biplane' ||
+      planeId === 'diecast_bomber' ||
+      planeId === 'toy_helicopter' ||
+      planeId === 'fly' ||
+      planeId === 'drone';
     this.noiseBurst('bandpass', buzzy ? 900 : 2600, buzzy ? 300 : 700, buzzy ? 0.2 : 0.24, 0.55, pos, 1.6);
-    const f0 =
-      planeId === 'diecast_bomber'
-        ? 120
-        : planeId === 'toy_helicopter'
-          ? 90
-          : planeId === 'windup_biplane'
-            ? 180
-            : planeId === 'foam_glider' || planeId === 'paper_plane'
-              ? 320
-              : 520;
+    const f0 = FLYBY_PITCH[planeId] ?? 520;
     this.blip(buzzy ? 'sawtooth' : 'triangle', f0 * 1.25, f0 * 0.7, 0.07, 0.5, pos);
   }
 

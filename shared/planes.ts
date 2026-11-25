@@ -170,7 +170,56 @@ const PLANE_ARCHETYPES_DESIGN: Record<PlaneId, PlaneArchetype> = {
     heavyGun: false,
     statsDisplay: { speed: 5, agility: 4, armor: 1, firepower: 2 },
   },
+  // ── « Survie » enemies (not in PLANE_ORDER: nobody can pick them) ──
+  fly: {
+    id: 'fly',
+    nameFr: 'Mouche',
+    taglineFr: 'Rapide, imprévisible, pique en fonçant dessus.',
+    materialFeelFr: 'Ailes transparentes',
+    maxHp: 18,
+    minSpeed: 40,
+    cruiseSpeed: 66,
+    maxSpeed: 92,
+    boostSpeed: 110,
+    turnRate: 3.4,
+    rollRate: 5,
+    fireRate: 1,
+    damage: 0,
+    projectileSpeed: 300,
+    overheatPerShot: 0,
+    coolRate: 30,
+    hitboxRadius: 4.2,
+    wingspan: 6,
+    heavyGun: false,
+    statsDisplay: { speed: 4, agility: 5, armor: 1, firepower: 1 },
+  },
+  drone: {
+    id: 'drone',
+    nameFr: 'Drone jouet',
+    taglineFr: 'Lent mais armé, tire des billes en rafale.',
+    materialFeelFr: 'Plastique noir',
+    maxHp: 45,
+    minSpeed: 0,
+    cruiseSpeed: 38,
+    maxSpeed: 52,
+    boostSpeed: 66,
+    turnRate: 2.0,
+    rollRate: 2.5,
+    fireRate: 2.2,
+    damage: 8,
+    projectileSpeed: 280,
+    overheatPerShot: 10,
+    coolRate: 25,
+    hitboxRadius: 6.2,
+    wingspan: 9,
+    heavyGun: false,
+    hover: { climbRate: 30 },
+    statsDisplay: { speed: 1, agility: 2, armor: 2, firepower: 2 },
+  },
 };
+
+/** Survival enemies */
+export const ENEMY_PLANES: readonly PlaneId[] = ['fly', 'drone'];
 
 
 /** Gameplay archetypes: every speed is multiplied by PLANE_SPEED_SCALE (turn rates, weapons and

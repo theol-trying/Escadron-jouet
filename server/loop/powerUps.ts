@@ -71,7 +71,8 @@ export function applyMagnet(room: ServerRoom, player: ServerPlayer, allPlayers: 
 
 /** Flying through a power-up takes it (replaces the item carried). */
 export function pickUpPowerUp(room: ServerRoom, player: ServerPlayer): void {
-  if (!player.sim.alive) return;
+  // Flies and drones of « Survie » leave the items to the pilots
+  if (!player.sim.alive || player.enemyKind) return;
   for (let i = room.powerUps.length - 1; i >= 0; i--) {
     const pu = room.powerUps[i];
     const dist = Math.hypot(pu.x - player.sim.x, pu.y - player.sim.y, pu.z - player.sim.z);

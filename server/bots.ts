@@ -126,7 +126,13 @@ export function computeBotInput(
   const right = getPlaneRight(sim);
   const up = getPlaneUp(sim);
   const personality = bot.botPersonality ?? 'hunter';
-  const skill = BOT_SKILL[settings.botDifficulty] ?? BOT_SKILL.normal;
+  // « Survie » enemies are a notch below the chosen level (there are many of them)
+  const level: BotDifficulty = bot.enemyKind
+    ? settings.botDifficulty === 'expert'
+      ? 'normal'
+      : 'easy'
+    : settings.botDifficulty;
+  const skill = BOT_SKILL[level] ?? BOT_SKILL.normal;
   // Per-bot phase so bots do not sway or burst in sync
   const botPhase = (bot.id.charCodeAt(bot.id.length - 1) % 13) * 0.48;
   const triggerWindow = skill.burst >= 1 || (elapsedTime * 0.8 + botPhase) % 1 < skill.burst;
@@ -165,7 +171,7 @@ export function computeBotInput(
 
   // Seek nearby power-up if empty
   let soughtPickup: ServerPowerUpPickup | null = null;
-  if (!sim.secondaryPowerUp && powerUps.length > 0) {
+  if (!bot.enemyKind && !sim.secondaryPowerUp && powerUps.length > 0) {
     let bestPuDist = 95;
     for (const pu of powerUps) {
       const d = Math.hypot(pu.x - sim.x, pu.y - sim.y, pu.z - sim.z);
@@ -216,6 +222,14 @@ export function computeBotInput(
         wantsBoost = true;
       }
     }
+  }
+
+  // Fly: buzzes around while diving at its target (hard to hit, it stings by flying into you)
+  if (bot.enemyKind === 'fly' && targetIsEnemy) {
+    const buzz = Math.min(25, enemyDist * 0.25);
+    targetX += Math.sin(elapsedTime * 6.1 + botPhase * 3) * buzz;
+    targetY += Math.cos(elapsedTime * 4.7 + botPhase) * buzz * 0.6;
+    targetZ += Math.cos(elapsedTime * 5.3 + botPhase * 2) * buzz;
   }
 
   // Objective modes: race through the rings / head for the king zone
@@ -399,18 +413,22 @@ export function computeBotInput(
     }
   }
 
-  if (settings.mode === 'ring_race') {
-    // No shooting in the race
+  if (settings.mode === 'ring_race' || bot.enemyKind === 'fly') {
+    // No shooting in the race; flies have no gun
     wantsFire = false;
     wantsSecondary = false;
   }
+  // Flies never brake (they ram), drones stop in mid-air to shoot when close
+  const throttle =
+    throttleOverride ??
+    (bot.enemyKind === 'fly' ? 0.7 : bot.enemyKind === 'drone' ? (enemyDist < 130 ? -1 : 0.3) : enemyDist < 45 ? -0.4 : 0.4);
 
   return {
     seq: (bot.lastProcessedSeq ?? 0) + 1,
     dt,
     aimX,
     aimY,
-    throttle: throttleOverride ?? (enemyDist < 45 ? -0.4 : 0.4),
+    throttle,
     roll: 0,
     boost: wantsBoost,
     fire: wantsFire,

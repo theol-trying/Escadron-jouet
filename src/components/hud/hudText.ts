@@ -1,3 +1,4 @@
+import type { SurvivalState } from '../../../shared/types';
 import type { HudFrameData, ObjectiveHud, ProjectedLabel } from '../../engine/engineTypes';
 import type { ZoneState } from '../../engine/objectives3d';
 import { FR } from '../../i18n/fr';
@@ -65,6 +66,27 @@ export function objectivePanelText(obj: ObjectiveHud): {
     sub: `${obj.leaderName ? `${FR.objectives.leader} : ${obj.leaderName} (${obj.leaderValue.toFixed(0)} s) · ` : ''}${FR.objectives.movesIn} ${Math.ceil(obj.movesIn)} s`,
     barPct: (obj.mine / obj.target) * 100,
     barColor: ZONE_BAR_COLORS[obj.zoneState],
+  };
+}
+
+/** « Survie »: wave panel (in the objective panel place), from the room state and the round timer. */
+export function survivalPanelText(
+  s: SurvivalState,
+  roundTimer: number
+): { title: string; main: string; sub: string; barPct: number; barColor: string } {
+  const o = FR.objectives;
+  const waiting = s.nextWaveAtTimer !== null;
+  const nextIn = waiting ? Math.max(0, Math.ceil(roundTimer - (s.nextWaveAtTimer ?? 0))) : 0;
+  return {
+    title: o.survivalTitle,
+    main: waiting
+      ? s.wave === 0
+        ? o.survivalReady
+        : `${o.survivalWave} ${s.wave} / ${s.totalWaves} ${o.survivalCleared}`
+      : `${o.survivalWave} ${s.wave} / ${s.totalWaves} · ${s.enemiesLeft} ${s.enemiesLeft > 1 ? o.survivalEnemies : o.survivalEnemy}`,
+    sub: waiting ? `${o.survivalWave} ${s.wave + 1} ${o.survivalNextIn} ${nextIn} s` : o.survivalHint,
+    barPct: ((waiting ? s.wave : Math.max(0, s.wave - 1)) / s.totalWaves) * 100,
+    barColor: '#a3e635',
   };
 }
 

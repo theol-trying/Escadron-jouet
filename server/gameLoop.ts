@@ -1,5 +1,5 @@
 import { MAPS } from '../shared/maps/index';
-import { canShoot, respawnsFreely, roundDuration } from '../shared/objectives';
+import { canShoot, hasNoSuddenDeath, isSurvival, roundDuration } from '../shared/objectives';
 import { PLANE_ARCHETYPES } from '../shared/planes';
 import type { LoopCallbacks } from './loop/callbacks';
 import { handlePlaneCrashDamage } from './loop/damage';
@@ -10,6 +10,7 @@ import { recordRewindFrame, stepProjectiles } from './loop/projectiles';
 import { settleRound, stepRespawn, stepRoundEnd } from './loop/round';
 import { stepSecondaryProjectiles } from './loop/secondary';
 import { applySuddenDeath } from './loop/suddenDeath';
+import { stepSurvival, survivalOutcome } from './survival';
 import type { ServerRoom } from './types';
 
 export type { LoopCallbacks } from './loop/callbacks';
@@ -54,7 +55,7 @@ export function stepRoomTick(
   }
 
   // Round timer & Sudden Death ("L'aspirateur arrive !")
-  const objectiveMode = respawnsFreely(room.settings.mode);
+  const objectiveMode = hasNoSuddenDeath(room.settings.mode);
   const isRace = room.settings.mode === 'ring_race';
   if (room.roundTimer > 0 || objectiveMode) {
     // Objective modes have no vacuum sudden death: the round simply ends on the timer
@@ -104,6 +105,9 @@ export function stepRoomTick(
     }
   }
 
+  // « Survie »: waves of flies and drones, fly stings
+  if (isSurvival(room.settings.mode)) stepSurvival(room, map, dt, callbacks);
+
   // Sudden Death giant cartoon vacuum suction & shrinking safe zone
   applySuddenDeath(room, allPlayers, map, dt, callbacks);
 
@@ -117,5 +121,5 @@ export function stepRoomTick(
   // 4. Objectives (rings, zone), then the end of the round
   const roundElapsed = roundDuration(room.settings.mode) - room.roundTimer;
   scoreObjectives(room, allPlayers, map, dt, roundElapsed, callbacks);
-  settleRound(room, allPlayers, map, roundElapsed, callbacks);
+  settleRound(room, allPlayers, map, roundElapsed, callbacks, isSurvival(room.settings.mode) ? survivalOutcome(room) : undefined);
 }

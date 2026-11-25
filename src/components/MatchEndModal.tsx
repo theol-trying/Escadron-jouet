@@ -47,6 +47,14 @@ export function MatchEndModal({
           </h2>
         </div>
 
+        {room.settings.mode === 'survival' && (
+          <div
+            className={`mt-3 text-center font-display text-xl font-extrabold ${room.teamRoundWins.blue > 0 ? 'text-emerald-600' : 'text-rose-600'}`}
+          >
+            {room.teamRoundWins.blue > 0 ? FR.objectives.survivalWon : FR.objectives.survivalLost}
+          </div>
+        )}
+
         {room.settings.mode === 'last_plane_teams' && (
           <div className="mt-3 text-center font-display text-xl font-extrabold">
             <span className="text-red-600">

@@ -6,7 +6,7 @@ import type { HudFrameData } from '../engine/engineTypes';
 import { FR } from '../i18n/fr';
 import { CockpitDashboard, type CockpitHandle } from './CockpitDashboard';
 import { drawMinimap } from './hud/drawMinimap';
-import { formatTimer, objectivePanelText, planeLabelsHtml, statusBadgesHtml } from './hud/hudText';
+import { formatTimer, objectivePanelText, planeLabelsHtml, statusBadgesHtml, survivalPanelText } from './hud/hudText';
 import { KillFeedList } from './hud/KillFeedList';
 import { CountdownOverlay, PauseModal, RoundEndBanner, ScoreboardModal, SpeedLinesSvg } from './hud/MatchOverlays';
 import { TouchControls, type TouchInputState } from './TouchControls';
@@ -134,6 +134,17 @@ export const HudOverlay = forwardRef<HudHandle, HudOverlayProps>(function HudOve
       if (objectivePanelRef.current) objectivePanelRef.current.style.display = obj ? 'block' : 'none';
       if (obj && objTitleRef.current && objMainRef.current && objSubRef.current && objBarRef.current) {
         const t = objectivePanelText(obj);
+        objTitleRef.current.textContent = t.title;
+        objMainRef.current.textContent = t.main;
+        objSubRef.current.textContent = t.sub;
+        objBarRef.current.style.width = `${t.barPct}%`;
+        objBarRef.current.style.backgroundColor = t.barColor;
+      }
+      // « Survie »: the wave panel takes the objective panel place
+      const surv = room.settings.mode === 'survival' ? room.survival : null;
+      if (surv && objectivePanelRef.current && objTitleRef.current && objMainRef.current && objSubRef.current && objBarRef.current) {
+        const t = survivalPanelText(surv, data.roundTimer);
+        objectivePanelRef.current.style.display = 'block';
         objTitleRef.current.textContent = t.title;
         objMainRef.current.textContent = t.main;
         objSubRef.current.textContent = t.sub;

@@ -17,8 +17,9 @@ export const PLANE_SPEED_SCALE = 0.85;
  *     both sides: an old page would draw them in the wrong place).
  * 4 = quick messages (chat:quick).
  * 5 = helicopter / paper plane, « Premier vol » mode.
+ * 6 = « Survie » mode (room state: survival, isEnemy; fly and drone planes).
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 export const REMOTE_INTERP_DELAY_MS = 95;
 export const MAX_LAG_COMPENSATION_MS = 250;

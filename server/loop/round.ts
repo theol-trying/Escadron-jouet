@@ -13,7 +13,7 @@ import {
   roundDuration,
 } from '../../shared/objectives';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
-import { checkRoundWinner, ensureBothTeams, isMatchOver } from '../../shared/rules';
+import { checkRoundWinner, ensureBothTeams, isMatchOver, type RoundOutcome } from '../../shared/rules';
 import type { PlaneSimState } from '../../shared/types';
 import type { ServerPlayer, ServerRoom } from '../types';
 import type { LoopCallbacks } from './callbacks';
@@ -196,12 +196,17 @@ export function settleRound(
   allPlayers: ServerPlayer[],
   map: MapDefinition,
   roundElapsed: number,
-  callbacks: LoopCallbacks
+  callbacks: LoopCallbacks,
+  /** Result decided elsewhere (« Survie »: server/survival.ts); null = the round goes on */
+  decided?: RoundOutcome | null
 ): void {
   // The guided first flight never ends on its own (the pilot leaves when done)
   if (isTutorial(room.settings.mode)) return;
+  if (decided === null) return;
   const objectiveMode = isObjectiveMode(room.settings.mode);
-  const outcome = objectiveMode
+  const outcome = decided
+    ? decided
+    : objectiveMode
     ? {
         winnerTeam: 'none' as const,
         ...checkObjectiveRound(
@@ -243,7 +248,7 @@ export function settleRound(
       winnerName: outcome.winnerName,
     };
 
-    if (room.settings.mode === 'last_plane_teams') {
+    if (room.settings.mode === 'last_plane_teams' || room.settings.mode === 'survival') {
       if (outcome.winnerTeam === 'red') room.teamRoundWins.red++;
       else if (outcome.winnerTeam === 'blue') room.teamRoundWins.blue++;
       for (const p of allPlayers) {

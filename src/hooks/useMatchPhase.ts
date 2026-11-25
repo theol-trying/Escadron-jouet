@@ -73,7 +73,9 @@ export function useMatchPhase(deps: MatchPhaseDeps): void {
         if (me) {
           const wins = room.teamRoundWins;
           const won =
-            room.settings.mode === 'last_plane_teams'
+            room.settings.mode === 'survival'
+              ? wins.blue > 0
+              : room.settings.mode === 'last_plane_teams'
               ? (me.team === 'red' && wins.red > wins.blue) || (me.team === 'blue' && wins.blue > wins.red)
               : room.scoreboard[0]?.playerId === me.playerId;
           const result = recordMatch(progressRef.current, { kills: me.kills, won });

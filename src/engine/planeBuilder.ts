@@ -13,6 +13,8 @@ export interface BuiltPlaneRig {
   propellers: THREE.Object3D[];
   cockpitHidden: THREE.Object3D[];
   windupKey: THREE.Object3D | null;
+  /** Insect wings that beat up and down (« Survie » flies) */
+  flappers: Array<{ obj: THREE.Object3D; side: 1 | -1 }>;
   hitFlashMaterials: THREE.Material[];
   stickerMesh: THREE.Mesh;
   shieldMesh: THREE.Mesh;
@@ -119,6 +121,7 @@ export function buildToyPlane(
   // Parts hidden in cockpit view (they would block the pilot's eye: canopy bubble, visor)
   const cockpitHidden: THREE.Object3D[] = [];
   let windupKey: THREE.Object3D | null = null;
+  const flappers: Array<{ obj: THREE.Object3D; side: 1 | -1 }> = [];
   // Materials of model-specific parts that also flash white when hit
   const extraFlashMaterials: THREE.Material[] = [];
   const disposables: Array<{ dispose: () => void }> = [
@@ -365,6 +368,82 @@ export function buildToyPlane(
 
     stickerY = 0.52;
     stickerZ = 1.6;
+  } else if (planeId === 'fly') {
+    // « Survie » fly: hairy dark body, big red eyes, beating see-through wings (no team colours)
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.55, metalness: 0.25 });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.25, metalness: 0.1, emissive: 0x450a0a });
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: 0xbae6fd,
+      transparent: true,
+      opacity: 0.62,
+      roughness: 0.1,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    disposables.push(bodyMat, eyeMat, wingMat);
+    extraFlashMaterials.push(bodyMat);
+    const thorax = new THREE.SphereGeometry(1.3, 12, 10);
+    addPart(thorax, bodyMat, [0, 0, 0]);
+    const abdomen = new THREE.SphereGeometry(1.15, 12, 10);
+    abdomen.scale(1, 0.9, 1.6);
+    addPart(abdomen, bodyMat, [0, -0.15, 2.1]);
+    const head = new THREE.SphereGeometry(0.95, 12, 10);
+    addPart(head, bodyMat, [0, 0.1, -1.7]);
+    const eye = new THREE.SphereGeometry(0.62, 10, 8);
+    addPart(eye, eyeMat, [-0.55, 0.3, -2.1]);
+    addPart(eye.clone(), eyeMat, [0.55, 0.3, -2.1]);
+    const legGeo = new THREE.CylinderGeometry(0.07, 0.05, 1.6, 5);
+    for (const lz of [-0.6, 0.1, 0.8]) {
+      addPart(legGeo.clone(), bodyMat, [-0.9, -1.0, lz], [0, 0, 0.7]);
+      addPart(legGeo.clone(), bodyMat, [0.9, -1.0, lz], [0, 0, -0.7]);
+    }
+    for (const side of [-1, 1] as const) {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.6, 0.9, 0.2);
+      const wingGeo = new THREE.CircleGeometry(1, 16);
+      wingGeo.scale(2.4, 1, 1);
+      wingGeo.rotateX(-Math.PI / 2);
+      disposables.push(wingGeo);
+      const wing = new THREE.Mesh(wingGeo, wingMat);
+      wing.position.set(side * 2.3, 0, 0.6);
+      wing.rotation.y = side * -0.25;
+      pivot.add(wing);
+      bodyGroup.add(pivot);
+      flappers.push({ obj: pivot, side });
+    }
+    stickerY = 99; // no sticker on a fly
+  } else if (planeId === 'drone') {
+    // « Survie » toy drone: black frame, four rotors, red camera eye
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.4, metalness: 0.4 });
+    const ledMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 0.9 });
+    disposables.push(frameMat, ledMat);
+    extraFlashMaterials.push(frameMat);
+    const body = new THREE.BoxGeometry(2.4, 1.1, 3.0);
+    addPart(body, frameMat, [0, 0, 0]);
+    const armGeo = new THREE.BoxGeometry(5.6, 0.32, 0.5);
+    addPart(armGeo, frameMat, [0, 0.35, 0], [0, Math.PI / 4, 0]);
+    addPart(armGeo.clone(), frameMat, [0, 0.35, 0], [0, -Math.PI / 4, 0]);
+    const eye = new THREE.SphereGeometry(0.45, 10, 8);
+    addPart(eye, ledMat, [0, 0.05, -1.55]);
+    const gun = new THREE.CylinderGeometry(0.16, 0.2, 1.4, 8);
+    gun.rotateX(Math.PI / 2);
+    addPart(gun, darkTrimMat, [0, -0.7, -1.2]);
+    const r = 2.0;
+    for (const [px, pz] of [[r, r], [-r, r], [r, -r], [-r, -r]]) {
+      const motor = new THREE.CylinderGeometry(0.35, 0.35, 0.5, 8);
+      addPart(motor, darkTrimMat, [px, 0.55, pz]);
+      const pivot = new THREE.Group();
+      pivot.position.set(px, 0.85, pz);
+      pivot.rotation.x = -Math.PI / 2; // local Z up: spinning on Z keeps the blades flat
+      const rotor = new THREE.Group();
+      const bladeGeo = new THREE.BoxGeometry(2.6, 0.3, 0.06);
+      disposables.push(bladeGeo);
+      rotor.add(new THREE.Mesh(bladeGeo, darkTrimMat));
+      pivot.add(rotor);
+      bodyGroup.add(pivot);
+      propellers.push(rotor);
+    }
+    stickerY = 99; // no sticker on a drone
   } else {
     // diecast_bomber
     // 1. Heavy broad die-cast metal fuselage
@@ -416,6 +495,7 @@ export function buildToyPlane(
   stickerGeo.rotateX(-Math.PI / 2);
   disposables.push(stickerGeo);
   const stickerMesh = new THREE.Mesh(stickerGeo, stickerMat);
+  stickerMesh.visible = stickerY < 50;
   stickerMesh.position.set(0, stickerY, stickerZ);
   bodyGroup.add(stickerMesh);
 
@@ -488,6 +568,7 @@ export function buildToyPlane(
     propellers,
     cockpitHidden,
     windupKey,
+    flappers,
     hitFlashMaterials: [hullMat, secondaryMat, accentMat, ...extraFlashMaterials],
     stickerMesh,
     shieldMesh,

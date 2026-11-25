@@ -96,6 +96,8 @@ export function animatePlaneVisual(
   const speedSpin = 18 + latest.speed * 0.25;
   for (const prop of rig.propellers) prop.rotation.z += dt * speedSpin;
   if (rig.windupKey) rig.windupKey.rotation.y += dt * (4 + latest.speed * 0.06);
+  // Insect wings beat very fast
+  for (const f of rig.flappers) f.obj.rotation.z = f.side * Math.sin(elapsedTime * 70) * 0.6;
 
   // Power-up status auras
   rig.shieldMesh.visible = latest.shielded;

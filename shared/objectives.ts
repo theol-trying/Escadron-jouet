@@ -42,9 +42,18 @@ export function respawnsFreely(mode: GameModeId): boolean {
 
 export const TUTORIAL_DURATION = 900;
 
+export function isSurvival(mode: GameModeId): boolean {
+  return mode === 'survival';
+}
+
+/** No giant vacuum at the end of the timer (objective modes, first flight, survival). */
+export function hasNoSuddenDeath(mode: GameModeId): boolean {
+  return respawnsFreely(mode) || isSurvival(mode);
+}
+
 /** Round length: elimination modes keep 4 minutes (+ sudden death), objective modes 3 minutes. */
 export function roundDuration(mode: GameModeId): number {
-  return isTutorial(mode) ? TUTORIAL_DURATION : isObjectiveMode(mode) ? 180 : 240;
+  return isTutorial(mode) || isSurvival(mode) ? TUTORIAL_DURATION : isObjectiveMode(mode) ? 180 : 240;
 }
 
 export function canShoot(mode: GameModeId): boolean {

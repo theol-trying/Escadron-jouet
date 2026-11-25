@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARENA_SCALE as S } from './constants';
 import { DESK_MAP } from './maps/desk';
-import { PLANE_ARCHETYPES } from './planes';
+import { PLANE_ARCHETYPES, PLANE_ORDER } from './planes';
 import {
   getPlaneForward,
   isOutsideSoftBounds,
@@ -211,7 +211,8 @@ test('helicopter: stops in mid-air and climbs or descends with the pitch input',
 
 test('paper plane: fastest of all, most fragile', () => {
   const paper = PLANE_ARCHETYPES.paper_plane;
-  for (const a of Object.values(PLANE_ARCHETYPES)) {
+  // Among the hangar planes (the « Survie » flies are tinier still)
+  for (const a of PLANE_ORDER.map((id) => PLANE_ARCHETYPES[id])) {
     if (a.id === 'paper_plane') continue;
     assert.ok(paper.cruiseSpeed > a.cruiseSpeed && paper.boostSpeed >= a.boostSpeed, `faster than ${a.id}`);
     assert.ok(paper.maxHp < a.maxHp, `more fragile than ${a.id}`);

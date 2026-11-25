@@ -93,6 +93,10 @@ export interface ServerPlayer {
   botPersonality?: BotPersonality;
   /** Time of the last quick message (anti-spam) */
   lastQuickAt?: number;
+  /** « Survie »: a fly or a drone of the waves (always a bot, team red) */
+  enemyKind?: 'fly' | 'drone';
+  /** Fly: seconds before it can sting again */
+  stingCooldown?: number;
   botThinkTimer?: number;
   botTargetId?: string | null;
   ready: boolean;
@@ -156,6 +160,8 @@ export interface ServerRoom {
   } | null;
   rewindHistory: RewindFrame[];
   createdAt: number;
+  /** « Survie »: wave in progress (0 before the first) and when the next one comes (room clock), if waiting */
+  survival?: { wave: number; nextWaveAt: number | null; waveStartedAt: number } | null;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {

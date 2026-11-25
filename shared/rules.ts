@@ -230,6 +230,8 @@ export function canDamageTarget(
   if (mode === 'last_plane_teams' && !friendlyFire && attackerTeam !== 'none' && attackerTeam === targetTeam) {
     return false;
   }
+  // Survival: pilots never hurt each other, nor do the flies and drones
+  if (mode === 'survival' && attackerTeam === targetTeam) return false;
   return true;
 }
 
