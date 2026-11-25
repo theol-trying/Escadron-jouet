@@ -1,4 +1,5 @@
 import type { MapId, PowerUpId } from '../types';
+import type { MapMover } from './movers';
 
 export type ColliderTier = 'static' | 'medium' | 'small';
 
@@ -159,4 +160,6 @@ export interface MapDefinition {
   powerUpSpots: PowerUpSpotConfig[];
   /** Floor lane where the giant cat walks across during the « chat » room event */
   catPath?: { ax: number; az: number; bx: number; bz: number; y: number };
+  /** Moving furniture (ceiling mobile, toy train…), see shared/maps/movers.ts */
+  movers?: MapMover[];
 }

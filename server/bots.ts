@@ -5,6 +5,7 @@ import {
   isOutsideSoftBounds,
   resolveSphereVsCollider,
 } from '../shared/flightPhysics';
+import { getMoverColliders } from '../shared/maps/movers';
 import type { MapCollider, MapDefinition } from '../shared/maps/types';
 import { PLANE_ARCHETYPES, PAINT_ORDER, PLANE_ORDER, STICKER_ORDER } from '../shared/planes';
 import { RING_RADIUS, getKingZone, getRaceCourse } from '../shared/objectives';
@@ -295,7 +296,9 @@ export function computeBotInput(
     targetZ = 0;
   }
 
-  // Ahead obstacle probe: check 26cm & 48cm ahead
+  // Ahead obstacle probe: check 26cm & 48cm ahead (fixed furniture and what moves: mobile, train)
+  const movers = getMoverColliders(map, elapsedTime);
+  const obstacles = movers.length > 0 ? [...map.colliders, ...movers] : map.colliders;
   let avoidX = 0;
   let avoidY = 0;
   let avoidZ = 0;
@@ -307,7 +310,7 @@ export function computeBotInput(
     const px = sim.x + fwd.x * dist;
     const py = sim.y + fwd.y * dist;
     const pz = sim.z + fwd.z * dist;
-    for (const col of map.colliders) {
+    for (const col of obstacles) {
       if (pointInsideExpandedCollider(px, py, pz, 12, col, elapsedTime)) {
         obstacleAhead = true;
         avoidY += 1.0; // bias climb above obstacles

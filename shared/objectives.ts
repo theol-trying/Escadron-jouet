@@ -1,5 +1,6 @@
 import { resolveSphereVsCollider } from './flightPhysics';
-import type { MapDefinition } from './maps/types';
+import { moverSweepColliders } from './maps/movers';
+import type { MapCollider, MapDefinition } from './maps/types';
 import type { GameModeId } from './types';
 
 /**
@@ -71,6 +72,18 @@ export interface RaceRing {
 }
 
 /** True when a straight flight between two points stays clear of the room's obstacles. */
+const sweptCache = new Map<MapDefinition, MapCollider[]>();
+
+/** Fixed obstacles plus the whole path of the moving furniture (mobile, train): rings and zones avoid both. */
+function fixedAndSwept(map: MapDefinition): MapCollider[] {
+  let list = sweptCache.get(map);
+  if (!list) {
+    list = [...map.colliders, ...moverSweepColliders(map)];
+    sweptCache.set(map, list);
+  }
+  return list;
+}
+
 function segmentClear(map: MapDefinition, a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): boolean {
   const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
   const steps = Math.max(2, Math.ceil(len / 6));
@@ -79,7 +92,7 @@ function segmentClear(map: MapDefinition, a: { x: number; y: number; z: number }
     const x = a.x + (b.x - a.x) * t;
     const y = a.y + (b.y - a.y) * t;
     const z = a.z + (b.z - a.z) * t;
-    for (const col of map.colliders) {
+    for (const col of fixedAndSwept(map)) {
       // Moving colliders (fridge door…) are checked at two moments of their cycle
       if (resolveSphereVsCollider(x, y, z, 8, col, 0) || resolveSphereVsCollider(x, y, z, 8, col, 5)) return false;
     }
@@ -89,7 +102,7 @@ function segmentClear(map: MapDefinition, a: { x: number; y: number; z: number }
 
 /** True when a sphere of this radius around the point touches no obstacle (moving ones at two moments). */
 function hasClearance(map: MapDefinition, p: { x: number; y: number; z: number }, radius: number): boolean {
-  for (const col of map.colliders) {
+  for (const col of fixedAndSwept(map)) {
     if (resolveSphereVsCollider(p.x, p.y, p.z, radius, col, 0) || resolveSphereVsCollider(p.x, p.y, p.z, radius, col, 5)) {
       return false;
     }

@@ -1,4 +1,5 @@
 import { getEventColliders, hash01 } from './roomEvents';
+import { getMoverColliders } from './maps/movers';
 import type { HazardZoneConfig, MapCollider, MapDefinition } from './maps/types';
 import type { PlaneArchetype } from './planes';
 import type { PlaneSimState, PlayerInputState, Vec3 } from './types';
@@ -484,8 +485,13 @@ export function stepPlanePhysics(
 
   // Collisions against map colliders
   const r = archetype.hitboxRadius;
+  // Plus what moves in the room right now: the event cat, the mobile, the toy train…
   const eventColliders = getEventColliders(map, elapsedTime);
-  const colliders = eventColliders.length > 0 ? [...map.colliders, ...eventColliders] : map.colliders;
+  const moverColliders = getMoverColliders(map, elapsedTime);
+  const colliders =
+    eventColliders.length > 0 || moverColliders.length > 0
+      ? [...map.colliders, ...eventColliders, ...moverColliders]
+      : map.colliders;
   for (const col of colliders) {
     if (destroyedColliderIds?.has(col.id)) continue;
     const hit = resolveSphereVsCollider(nx, ny, nz, r, col, elapsedTime);
