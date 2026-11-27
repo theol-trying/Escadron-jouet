@@ -53,7 +53,7 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
         src/hooks/), HudOverlay 969 → 648 (src/components/hud/) ; chrono de course corrigé (« 0:010.0 ») ;
         Express 5.3 et lucide-react 1.70.
 
-15. [ ] Nouvelles fonctionnalités (25/11, site en ligne : https://escadron.onrender.com/, chaque push déploie) :
+15. [x] Nouvelles fonctionnalités (25-27/11, site en ligne : https://escadron.onrender.com/, chaque push déploie) :
         - [x] touches personnalisables (fenêtre Commandes) + messages rapides 1 à 4 ; touche M corrigée en AZERTY
         - [x] nouveaux avions : hélicoptère jouet (surplace) et avion en papier
         - [x] « Premier vol » guidé dans le bureau (src/tutorial/, mode serveur « tutorial »)
@@ -62,16 +62,16 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
               (src/engine/replayBuffer.ts, côté client)
         - [x] mode « Survie » (server/survival.ts) : tous en équipe bleue contre 8 vagues de mouches (piquent au
               contact) et de drones (tirent) ; une seule manche ; vague limitée à 75 s ; PROTOCOL_VERSION 6
-        - [ ] chambre d’enfant (mobile qui tourne, petit train en marche)
-        - [ ] salle de bain (canard, miroir, vapeur)
-        - [ ] garage
-        - [ ] README à compléter (nouveautés), vérification en ligne
-        ➜ REPRENDRE ICI : les trois pièces. Base déjà écrite sur la branche pieces-mobiles-wip (meubles mobiles :
-          shared/maps/movers.ts, pris en compte par la physique, les bots, les anneaux et les zones) : la
-          fusionner dans main au début de ce chantier. Ensuite le README. (Arrêt demandé après la Survie, 26/11.)
+        - [x] meubles qui bougent (shared/maps/movers.ts : mobile en orbite, train sur une boucle), pris en compte
+              par la physique, les bots, les anneaux et les zones ; briques communes des scènes (sceneKit.ts)
+        - [x] chambre d’enfant (shared/maps/bedroom.ts) : mobile qui tourne, petit train en marche, nounours
+        - [x] salle de bain (bathroom.ts) : vapeur du bain qui fait monter, canard qui flotte, vrai miroir
+              (Reflector, surface claire en rendu logiciel), toilettes mortelles ; PROTOCOL_VERSION 7
+        - [x] garage (garage.ts) : vélo suspendu, établi, étagères, porte entrouverte avec rafales et feuilles
+        - [x] README complété (modes, avions, pièces, touches, messages, rediffusion, réglages), vérifié en ligne
 
-➜ Prochaines étapes : mise en ligne sur Render (Blueprint `render.yaml`, par l'utilisateur), essais à plusieurs,
-  réglages éventuels (ARENA_SCALE / PLANE_SPEED_SCALE, niveaux des bots, objectifs KING_TARGET / RACE_LAPS).
+➜ REPRENDRE ICI (27/11) : rien en cours. 7 pièces, 6 avions, 5 modes + Premier vol ; 119 tests.
+  Pistes si l’utilisateur en redemande : essais à plusieurs sur le site, réglages (niveaux des bots, Survie).
 
 ### Chantier précédent (terminé) : correctifs d'audit + arènes ×1,4 / avions ×0,85
 1. [x] Tir à la souris rétabli sur les PC à écran tactile (interface tactile seulement si le pointeur principal
