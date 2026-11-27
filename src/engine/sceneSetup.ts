@@ -7,7 +7,12 @@ import type { MapSceneHandles } from './maps/types';
 
 /** Renderer, lights and room scenes of the 3D view. */
 
-export type SceneBuilder = (scene: THREE.Scene, maxAniso: number) => MapSceneHandles;
+export interface SceneBuildOptions {
+  /** Software rendering: skip the costly extras (real mirror reflections…) */
+  lowGraphics?: boolean;
+}
+
+export type SceneBuilder = (scene: THREE.Scene, maxAniso: number, opts?: SceneBuildOptions) => MapSceneHandles;
 
 // The desk (title screen) ships with the engine; the other rooms are separate files loaded on demand
 export const SCENE_LOADERS: Record<MapId, () => Promise<SceneBuilder>> = {
@@ -16,6 +21,7 @@ export const SCENE_LOADERS: Record<MapId, () => Promise<SceneBuilder>> = {
   garden: () => import('./maps/buildGardenScene').then((m) => m.buildGardenScene),
   attic: () => import('./maps/buildAtticScene').then((m) => m.buildAtticScene),
   bedroom: () => import('./maps/buildBedroomScene').then((m) => m.buildBedroomScene),
+  bathroom: () => import('./maps/buildBathroomScene').then((m) => m.buildBathroomScene),
 };
 
 /** Software rendering (no graphics card available): lighter settings, slower frame pacing. */

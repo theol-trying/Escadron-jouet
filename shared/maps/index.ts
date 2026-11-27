@@ -5,6 +5,7 @@ import { KITCHEN_MAP } from './kitchen';
 import { GARDEN_MAP } from './garden';
 import { ATTIC_MAP } from './attic';
 import { BEDROOM_MAP } from './bedroom';
+import { BATHROOM_MAP } from './bathroom';
 
 export const MAPS: Record<MapId, MapDefinition> = {
   desk: DESK_MAP,
@@ -12,6 +13,7 @@ export const MAPS: Record<MapId, MapDefinition> = {
   garden: GARDEN_MAP,
   attic: ATTIC_MAP,
   bedroom: BEDROOM_MAP,
+  bathroom: BATHROOM_MAP,
 };
 
-export const MAP_ORDER: MapId[] = ['desk', 'kitchen', 'garden', 'attic', 'bedroom'];
+export const MAP_ORDER: MapId[] = ['desk', 'kitchen', 'garden', 'attic', 'bedroom', 'bathroom'];

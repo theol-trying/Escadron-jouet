@@ -289,7 +289,7 @@ export class ThreeGameEngine {
   }
 
   private buildMapScene(mapId: MapId): MapSceneHandles {
-    return (this.sceneBuilders.get(mapId) ?? buildDeskScene)(this.scene, this.maxAniso);
+    return (this.sceneBuilders.get(mapId) ?? buildDeskScene)(this.scene, this.maxAniso, { lowGraphics: this.isSoftwareGl });
   }
 
   /** Loads the other rooms' scene code in the background so switching rooms is instant. */

@@ -65,6 +65,19 @@ export function drawMinimap(canvas: HTMLCanvasElement, mapId: MapId, blips: read
       }
       ctx.stroke();
     }
+    // Updrafts (orange) and deadly spots (red)
+    ctx.fillStyle = 'rgba(251, 146, 60, 0.55)';
+    for (const u of activeMap.updraftZones) {
+      ctx.beginPath();
+      ctx.arc(toMx(u.x), toMy(u.z), Math.max(3, toMx(u.x + u.radius) - toMx(u.x)), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#EF4444';
+    for (const hz of activeMap.hazardZones) {
+      ctx.beginPath();
+      ctx.arc(toMx(hz.x), toMy(hz.z), 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else {
     ctx.fillStyle = '#92400E';
     ctx.fillRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));

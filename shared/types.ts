@@ -50,7 +50,7 @@ export type GameModeId =
   /** « Survie »: every pilot together against waves of flies and toy drones */
   | 'survival';
 
-export type MapId = 'desk' | 'kitchen' | 'garden' | 'attic' | 'bedroom';
+export type MapId = 'desk' | 'kitchen' | 'garden' | 'attic' | 'bedroom' | 'bathroom';
 
 export type TeamId = 'none' | 'red' | 'blue';
 
