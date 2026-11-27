@@ -5,7 +5,7 @@ import { MAPS } from '../../shared/maps/index';
 import type { MapDefinition } from '../../shared/maps/types';
 import { isObjectiveMode, roundDuration } from '../../shared/objectives';
 import { PLANE_ARCHETYPES } from '../../shared/planes';
-import { getCatPose, getRoomEvent } from '../../shared/roomEvents';
+import { getCatPaw, getCatPose, getRoomEvent } from '../../shared/roomEvents';
 import type {
   GameModeId,
   HitFeedbackEvent,
@@ -389,10 +389,17 @@ export class ThreeGameEngine {
     this.renderer.render(this.scene, this.camera);
   }
 
-  private updateRoomEvents(dt: number): HudFrameData['roomEvent'] {
+  private updateRoomEvents(dt: number, planes: ActivePlaneVisual[] = []): HudFrameData['roomEvent'] {
     const t = this.latestSnapshot?.mapEventTime ?? this.elapsedTime;
-    const ev = this.mode === 'playing' ? getRoomEvent(this.currentMap, t) : null;
-    this.cat.update(this.mode === 'playing' ? getCatPose(this.currentMap, t) : null, this.elapsedTime);
+    const playing = this.mode === 'playing';
+    const ev = playing ? getRoomEvent(this.currentMap, t) : null;
+    // The cat (if any) swats on the shared clock and watches the nearest plane
+    this.cat.update(
+      playing ? getCatPose(this.currentMap, t) : null,
+      this.elapsedTime,
+      playing ? getCatPaw(this.currentMap, t) : null,
+      planes.map((p) => p.interpPos)
+    );
 
     // Blackout: lights fade down to a dim glow, then come back
     const target = ev?.kind === 'blackout' ? 0.16 : 1;
@@ -1175,7 +1182,7 @@ export class ThreeGameEngine {
     });
 
     // Room events (same clock as the server): cat crossing, blackout, fridge opening by itself
-    const roomEvent = this.updateRoomEvents(dt);
+    const roomEvent = this.updateRoomEvents(dt, livingPlanes);
 
     // Wing trails (white ribbons from the wingtips, brighter at full throttle or turbo)
     const trailInputs: TrailInput[] = [];

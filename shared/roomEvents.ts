@@ -4,7 +4,8 @@ import type { MapCollider, MapDefinition } from './maps/types';
  * Room events, scheduled from the room clock (server `elapsedTime` = snapshot `mapEventTime`), so
  * the server and every client agree without extra messages:
  * - « Le chat traverse la pièce » — a giant cat walks along the map's catPath: a moving obstacle
- *   (capsule collider) that bumps and hurts planes;
+ *   (capsule collider) that bumps and hurts planes, and swats at them with a paw now and then (left,
+ *   then right: the paw is an obstacle too while it strikes);
  * - « Panne de courant » — the lights go out for a few seconds (visual only).
  * Nothing happens during the first period (the match is still settling).
  */
@@ -15,6 +16,10 @@ export const BLACKOUT_DURATION = 7;
 export const CAT_RADIUS = 17;
 export const CAT_HALF_LENGTH = 30;
 export const CAT_DAMAGE = 14;
+/** Paw swats: one every CAT_SWIPE_PERIOD seconds, each lasting CAT_SWIPE_DURATION */
+export const CAT_SWIPE_PERIOD = 1.6;
+export const CAT_SWIPE_DURATION = 0.6;
+export const CAT_PAW_RADIUS = 8;
 
 export type RoomEventKind = 'cat' | 'blackout';
 
@@ -71,6 +76,55 @@ export function getCatPose(map: MapDefinition, time: number): CatPose | null {
   return { x, y: path.y, z, yaw, presence, progress: t };
 }
 
+export interface CatPaw {
+  /** Paw position in the room (gameplay units) */
+  x: number;
+  y: number;
+  z: number;
+  /** Same, in the cat's own frame (design units: +X its right, +Y up, -Z ahead) */
+  local: { x: number; y: number; z: number };
+  side: 1 | -1;
+  /** 0 → 1 over the swat */
+  phase: number;
+  /** True while the paw strikes (it is an obstacle) */
+  striking: boolean;
+}
+
+/**
+ * The cat swats at the planes (« tente d'attraper les avions avec la patte »): every 1.6 s a front
+ * paw rises up and forward in front of its head, sweeps across and comes back down, alternately the
+ * left and the right one. Same clock everywhere, like the cat itself.
+ */
+export function getCatPaw(map: MapDefinition, time: number): CatPaw | null {
+  const ev = getRoomEvent(map, time);
+  const pose = getCatPose(map, time);
+  if (!ev || !pose || pose.presence < 0.9) return null;
+  const elapsed = ev.progress * ev.duration;
+  const n = Math.floor(elapsed / CAT_SWIPE_PERIOD);
+  const inSwipe = elapsed - n * CAT_SWIPE_PERIOD;
+  if (n < 1 || inSwipe > CAT_SWIPE_DURATION) return null;
+  const phase = inSwipe / CAT_SWIPE_DURATION;
+  const side: 1 | -1 = n % 2 === 1 ? 1 : -1;
+  const lift = Math.sin(phase * Math.PI);
+  const local = {
+    x: side * (14 + 22 * lift - 34 * phase * phase),
+    y: 10 + 64 * lift,
+    z: -30 - 24 * lift,
+  };
+  const s = map.arenaScale ?? 1;
+  const c = Math.cos(pose.yaw);
+  const sn = Math.sin(pose.yaw);
+  return {
+    x: pose.x + (local.x * c + local.z * sn) * s,
+    y: pose.y + local.y * s,
+    z: pose.z + (-local.x * sn + local.z * c) * s,
+    local,
+    side,
+    phase,
+    striking: phase > 0.1 && phase < 0.9,
+  };
+}
+
 /** Moving obstacles of the current room event (empty most of the time). */
 export function getEventColliders(map: MapDefinition, time: number): MapCollider[] {
   const pose = getCatPose(map, time);
@@ -80,6 +134,7 @@ export function getEventColliders(map: MapDefinition, time: number): MapCollider
   const dz = -Math.cos(pose.yaw);
   const half = CAT_HALF_LENGTH * s;
   const cy = pose.y + CAT_RADIUS * s * 1.15;
+  const paw = getCatPaw(map, time);
   return [
     {
       id: 'event_cat',
@@ -94,5 +149,19 @@ export function getEventColliders(map: MapDefinition, time: number): MapCollider
       radius: CAT_RADIUS * s,
       damageOnHit: CAT_DAMAGE,
     },
+    ...(paw?.striking
+      ? [
+          {
+            id: 'event_cat_paw',
+            kind: 'sphere' as const,
+            tier: 'static' as const,
+            x: paw.x,
+            y: paw.y,
+            z: paw.z,
+            radius: CAT_PAW_RADIUS * s,
+            damageOnHit: CAT_DAMAGE,
+          },
+        ]
+      : []),
   ];
 }

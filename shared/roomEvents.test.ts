@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import { quatFromYaw, stepPlanePhysics } from './flightPhysics';
 import { MAPS } from './maps/index';
 import { PLANE_ARCHETYPES } from './planes';
-import { ROOM_EVENT_PERIOD, getCatPose, getEventColliders, getRoomEvent } from './roomEvents';
+import {
+  CAT_SWIPE_DURATION,
+  CAT_SWIPE_PERIOD,
+  ROOM_EVENT_PERIOD,
+  getCatPaw,
+  getCatPose,
+  getEventColliders,
+  getRoomEvent,
+} from './roomEvents';
 import type { PlaneSimState } from './types';
 
 /** First moment (scanning) where a given event kind is active on a map */
@@ -51,4 +59,35 @@ test('the walking cat is a solid obstacle that bumps planes', () => {
   );
   assert.equal(res.collidedColliderId, 'event_cat');
   assert.ok(res.collisionDamage > 0);
+});
+
+test('the cat swats at planes: a paw strikes every 1.6 s, left then right, and is an obstacle meanwhile', () => {
+  const map = MAPS.kitchen;
+  const mid = findEvent('kitchen', 'cat');
+  assert.ok(mid !== null);
+  // Walk through the whole cat event and record the swats
+  const ev = getRoomEvent(map, mid!)!;
+  const start = mid! - ev.progress * ev.duration;
+  const sides: number[] = [];
+  let lastSwat = -1;
+  let highest = 0;
+  for (let t = start; t < start + ev.duration; t += 0.02) {
+    const paw = getCatPaw(map, t);
+    const cols = getEventColliders(map, t);
+    const pawCol = cols.find((c) => c.id === 'event_cat_paw');
+    assert.equal(!!pawCol, !!paw?.striking, 'the paw is solid exactly while it strikes');
+    if (!paw) continue;
+    const swat = Math.floor((t - start) / CAT_SWIPE_PERIOD);
+    if (swat !== lastSwat) {
+      sides.push(paw.side);
+      lastSwat = swat;
+    }
+    highest = Math.max(highest, paw.y);
+    assert.deepEqual(getCatPaw(map, t), paw, 'same clock → same paw');
+  }
+  assert.ok(sides.length >= 4, 'several swats during the walk');
+  for (let i = 1; i < sides.length; i++) assert.equal(sides[i], -sides[i - 1], 'left, right, left…');
+  const s = map.arenaScale ?? 1;
+  assert.ok(highest > 65 * s, 'it reaches up to where planes fly low');
+  assert.ok(CAT_SWIPE_DURATION < CAT_SWIPE_PERIOD);
 });

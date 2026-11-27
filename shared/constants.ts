@@ -19,8 +19,9 @@ export const PLANE_SPEED_SCALE = 0.85;
  * 5 = helicopter / paper plane, « Premier vol » mode.
  * 6 = « Survie » mode (room state: survival, isEnemy; fly and drone planes).
  * 7 = new rooms (bedroom, bathroom, garage) with moving pieces.
+ * 8 = the event cat swats with its paw (a moving obstacle in the shared physics).
  */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 export const REMOTE_INTERP_DELAY_MS = 95;
 export const MAX_LAG_COMPENSATION_MS = 250;
