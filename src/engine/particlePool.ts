@@ -151,7 +151,8 @@ export class ParticleAndProjectilePool {
     }
   }
 
-  public spawnSmokePuff(x: number, y: number, z: number, dark = false): void {
+  /** One puff of smoke: `darkness` 0 (pale grey) … 1 (black), bigger and longer-lived when asked. */
+  public spawnSmokePuff(x: number, y: number, z: number, darkness = 0, size = 1.15, life = 0.45): void {
     const p = this.particles[this.cursor];
     this.cursor = (this.cursor + 1) % MAX_PARTICLES;
     p.active = true;
@@ -161,19 +162,14 @@ export class ParticleAndProjectilePool {
     p.vx = (Math.random() - 0.5) * 8;
     p.vy = 6 + Math.random() * 8;
     p.vz = (Math.random() - 0.5) * 8;
-    p.life = 0.45;
-    p.maxLife = 0.45;
-    p.size = dark ? 1.8 : 1.15;
+    p.life = life;
+    p.maxLife = life;
+    p.size = size;
     p.gravity = -4;
-    if (dark) {
-      p.r = 0.25;
-      p.g = 0.25;
-      p.b = 0.28;
-    } else {
-      p.r = 0.95;
-      p.g = 0.96;
-      p.b = 1.0;
-    }
+    const shade = 0.92 - darkness * 0.72;
+    p.r = shade;
+    p.g = shade;
+    p.b = shade + 0.03;
   }
 
   public updateParticles(dt: number): void {

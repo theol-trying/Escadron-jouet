@@ -129,6 +129,13 @@ export interface ActivePlaneVisual {
   lastDistToLocal: number;
   flybyCooldown: number;
   hitFlashTimer: number;
+  /** Last frame's pose, to tell how the plane turns (control surfaces) and moves (falling parts) */
+  prevQuat: THREE.Quaternion;
+  prevPos: THREE.Vector3;
+  /** Smoothed control deflections, -1..1 (roll right, nose up, nose left) */
+  ctrl: { roll: number; pitch: number; yaw: number };
+  /** How many parts have broken off */
+  detached: number;
 }
 
 /** What the engine knows about each pilot of the room (from the lobby state). */

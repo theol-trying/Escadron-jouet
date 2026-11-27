@@ -63,6 +63,8 @@ import type { TutorialProbe } from '../tutorial/tutorial';
 import { WingTrails, type TrailInput } from './wingTrails';
 import { GlowFx } from './glowFx';
 import { SpeedLines } from './speedLines';
+import { FallingParts } from './fallingParts';
+import { SmokeFx } from './smokeFx';
 
 export type {
   CameraView,
@@ -100,6 +102,10 @@ export class ThreeGameEngine {
   private glow: GlowFx;
   /** Turbo speed streaks around the view */
   private speedLines: SpeedLines;
+  /** Plane parts that broke off, tumbling to the floor */
+  private fallingParts: FallingParts;
+  /** Soft smoke of damaged planes */
+  private smoke: SmokeFx;
   private podium: Podium | null = null;
   private objectives3d: ObjectiveRenderer;
   private objectiveTracker: ObjectiveTracker;
@@ -275,6 +281,8 @@ export class ThreeGameEngine {
     this.pool.setGlow(this.glow);
     this.scene.add(this.camera); // the speed lines ride on the camera
     this.speedLines = new SpeedLines(this.camera);
+    this.fallingParts = new FallingParts(this.scene);
+    this.smoke = new SmokeFx(this.scene);
     this.trails = new WingTrails(this.scene);
     this.debris = new DebrisField(this.scene);
     this.objectives3d = new ObjectiveRenderer(this.scene);
@@ -498,6 +506,8 @@ export class ThreeGameEngine {
     this.trails.clear();
     this.debris.clear();
     this.glow.clear();
+    this.fallingParts.clear();
+    this.smoke.clear();
     for (const pv of this.planeVisuals.values()) {
       this.scene.remove(pv.rig.root);
       pv.rig.dispose();
@@ -893,6 +903,7 @@ export class ThreeGameEngine {
     if (this.mode !== 'playing') this.speedLines.update(0, dt);
     const buffer = this.renderer.getDrawingBufferSize(this._drawSize);
     this.glow.setViewport(this.camera.fov, buffer.y);
+    this.smoke.setViewport(this.camera.fov, buffer.y);
     this.glow.end(dt, this.camera);
   }
 
@@ -904,6 +915,8 @@ export class ThreeGameEngine {
     this.mapHandles.updateAnimations(animTime, dt);
 
     this.pool.updateParticles(dt);
+    this.fallingParts.update(dt, 0.8);
+    this.smoke.update(dt);
     this.pool.updateProjectiles(now);
     this.debris.update(dt);
     this.extrasRenderer.syncAndAnimate(
@@ -1030,7 +1043,13 @@ export class ThreeGameEngine {
         }
       }
 
-      animatePlaneVisual(pv, shown, this.roomPlayersMeta.get(pv.id)?.maxHp ?? 100, dt, this.elapsedTime, this.pool);
+      animatePlaneVisual(pv, shown, this.roomPlayersMeta.get(pv.id)?.maxHp ?? 100, dt, this.elapsedTime, {
+        pool: this.pool,
+        glow: this.glow,
+        smoke: this.smoke,
+        parts: this.fallingParts,
+        effects: this.profile.effects,
+      });
 
       if (pv.rig.root.visible) {
         livingPlanes.push(pv);
@@ -1231,6 +1250,8 @@ export class ThreeGameEngine {
     this.pool.dispose();
     this.glow.dispose();
     this.speedLines.dispose();
+    this.smoke.dispose();
+    this.fallingParts.clear();
     this.trails.dispose();
     this.debris.dispose();
     this.podium?.dispose();

@@ -22,7 +22,17 @@ export interface BuiltPlaneRig {
   spawnShieldMesh: THREE.Mesh;
   magnetRingMesh: THREE.Mesh;
   glueBlobMesh: THREE.Mesh;
+  /** Moving control surfaces (hinged pivots): ailerons (roll), elevators (pitch), rudders (yaw), elevons (both) */
+  controlSurfaces: ControlSurface[];
+  /** Parts that break off as the plane gets damaged (the first one at 60 % HP, the second at 35 %) */
+  detachables: THREE.Object3D[];
   dispose: () => void;
+}
+
+export interface ControlSurface {
+  obj: THREE.Object3D;
+  kind: 'aileron' | 'elevator' | 'rudder' | 'elevon';
+  side: 1 | -1;
 }
 
 function createExtrudedWing(
@@ -122,6 +132,8 @@ export function buildToyPlane(
   const cockpitHidden: THREE.Object3D[] = [];
   let windupKey: THREE.Object3D | null = null;
   const flappers: Array<{ obj: THREE.Object3D; side: 1 | -1 }> = [];
+  const controlSurfaces: ControlSurface[] = [];
+  const detachables: THREE.Object3D[] = [];
   // Materials of model-specific parts that also flash white when hit
   const extraFlashMaterials: THREE.Material[] = [];
   const disposables: Array<{ dispose: () => void }> = [
@@ -152,6 +164,28 @@ export function buildToyPlane(
     return mesh;
   };
 
+  /** A hinged flap: the pivot sits on the hinge line, the flap trails behind it (+Z). */
+  const addSurface = (
+    kind: ControlSurface['kind'],
+    side: 1 | -1,
+    hinge: [number, number, number],
+    size: [number, number, number],
+    mat: THREE.Material
+  ): THREE.Group => {
+    const pivot = new THREE.Group();
+    pivot.position.set(hinge[0], hinge[1], hinge[2]);
+    const geo = new THREE.BoxGeometry(size[0], size[1], size[2]);
+    disposables.push(geo);
+    const flap = new THREE.Mesh(geo, mat);
+    flap.position.z = size[2] / 2;
+    flap.castShadow = true;
+    addCartoonOutline(flap, 1.06, undefined, 'toy');
+    pivot.add(flap);
+    bodyGroup.add(pivot);
+    controlSurfaces.push({ obj: pivot, kind, side });
+    return pivot;
+  };
+
   let stickerY = 0.7;
   let stickerZ = 0.4;
 
@@ -177,14 +211,21 @@ export function buildToyPlane(
 
     // 5. Twin tail fins
     const finGeo = new THREE.BoxGeometry(0.28, 1.8, 1.5);
-    addPart(finGeo, accentMat, [-1.1, 0.9, 3.0], [0.25, 0, 0.2]);
+    const leftFin = addPart(finGeo, accentMat, [-1.1, 0.9, 3.0], [0.25, 0, 0.2]);
     addPart(finGeo.clone(), accentMat, [1.1, 0.9, 3.0], [0.25, 0, -0.2]);
+
+    // Ailerons near the wingtips, small tailplanes with their elevators
+    for (const side of [-1, 1] as const) {
+      addSurface('aileron', side, [side * 3.7, -0.1, 1.72], [2.0, 0.14, 0.5], accentMat);
+      addPart(new THREE.BoxGeometry(1.5, 0.14, 0.8), secondaryMat, [side * 1.5, 0.05, 3.3]);
+      addSurface('elevator', side, [side * 1.5, 0.05, 3.68], [1.4, 0.12, 0.42], accentMat);
+    }
 
     // 6. Wingtip toy missiles / caps
     const podGeo = new THREE.CylinderGeometry(0.26, 0.26, 1.9, 8);
     podGeo.rotateX(Math.PI / 2);
     addPart(podGeo, accentMat, [-5.2, -0.1, 1.1]);
-    addPart(podGeo.clone(), accentMat, [5.2, -0.1, 1.1]);
+    detachables.push(addPart(podGeo.clone(), accentMat, [5.2, -0.1, 1.1]), leftFin);
 
     // 7. Rear toy thruster nozzle
     const nozzleGeo = new THREE.CylinderGeometry(0.7, 0.95, 1.1, 10);
@@ -209,14 +250,18 @@ export function buildToyPlane(
 
     // 4. Interplane struts
     const strutGeo = new THREE.CylinderGeometry(0.14, 0.14, 2.1, 6);
-    addPart(strutGeo, brassMat, [-3.1, 0.4, -0.8]);
-    addPart(strutGeo.clone(), brassMat, [3.1, 0.4, -0.8]);
+    const leftStrut = addPart(strutGeo, brassMat, [-3.1, 0.4, -0.8]);
+    detachables.push(addPart(strutGeo.clone(), brassMat, [3.1, 0.4, -0.8]), leftStrut);
+    // Ailerons on the upper wing
+    for (const side of [-1, 1] as const) addSurface('aileron', side, [side * 3.7, 1.45, -0.05], [2.0, 0.12, 0.45], hullMat);
 
     // 5. Tail fin & stabilizer
     const hStab = createExtrudedWing(2.1, 1.1, 0.85, 0.1, 0.22);
     addPart(hStab, secondaryMat, [0, 0.25, 2.9]);
     const vStab = new THREE.BoxGeometry(0.24, 1.4, 1.2);
     addPart(vStab, accentMat, [0, 0.85, 2.9]);
+    addSurface('elevator', 1, [0, 0.25, 3.35], [3.4, 0.12, 0.45], secondaryMat);
+    addSurface('rudder', 1, [0, 0.95, 3.45], [0.14, 1.1, 0.45], accentMat);
 
     // 6. Front spinning propeller
     const propGroup = new THREE.Group();
@@ -256,7 +301,7 @@ export function buildToyPlane(
     // 2. Rubber nose bumper cap
     const bumperGeo = new THREE.SphereGeometry(0.84, 10, 10);
     bumperGeo.scale(1, 1, 1.2);
-    addPart(bumperGeo, accentMat, [0, 0, -3.2]);
+    const bumper = addPart(bumperGeo, accentMat, [0, 0, -3.2]);
 
     // 3. Wide high-aspect glider wings with dihedral (~11.4cm span)
     const leftWingGeo = createExtrudedWing(2.85, 2.2, 1.1, 0.7, 0.24);
@@ -271,7 +316,10 @@ export function buildToyPlane(
     // 5. Twin V-tail stabilizers
     const vTail = new THREE.BoxGeometry(0.22, 1.6, 1.25);
     addPart(vTail, accentMat, [-0.65, 0.75, 3.0], [0.2, 0, 0.45]);
-    addPart(vTail.clone(), accentMat, [0.65, 0.75, 3.0], [0.2, 0, -0.45]);
+    const rightTail = addPart(vTail.clone(), accentMat, [0.65, 0.75, 3.0], [0.2, 0, -0.45]);
+    detachables.push(bumper, rightTail);
+    // Ailerons on the outer part of the wings
+    for (const side of [-1, 1] as const) addSurface('aileron', side, [side * 4.6, 0.44, 1.0], [1.6, 0.1, 0.45], accentMat);
 
     stickerY = 0.85;
     stickerZ = -0.3;
@@ -291,13 +339,14 @@ export function buildToyPlane(
     const finGeo = new THREE.BoxGeometry(0.22, 1.5, 1.0);
     addPart(finGeo, accentMat, [0, 0.85, 4.9], [-0.25, 0, 0]);
     const stabGeo = new THREE.BoxGeometry(2.0, 0.16, 0.7);
-    addPart(stabGeo, accentMat, [0, 0.25, 4.3]);
+    const stab = addPart(stabGeo, accentMat, [0, 0.25, 4.3]);
 
     // 3. Landing skids
     const skidGeo = new THREE.CylinderGeometry(0.14, 0.14, 3.6, 6);
     skidGeo.rotateX(Math.PI / 2);
     addPart(skidGeo, darkTrimMat, [-1.0, -1.55, -0.4]);
-    addPart(skidGeo.clone(), darkTrimMat, [1.0, -1.55, -0.4]);
+    const rightSkid = addPart(skidGeo.clone(), darkTrimMat, [1.0, -1.55, -0.4]);
+    detachables.push(stab, rightSkid);
     const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 6);
     for (const [lx, lz] of [[-1.0, -1.4], [1.0, -1.4], [-1.0, 0.6], [1.0, 0.6]]) {
       addPart(legGeo.clone(), darkTrimMat, [lx * 0.85, -1.15, lz], [0, 0, lx * 0.25]);
@@ -363,8 +412,11 @@ export function buildToyPlane(
     tri([0, 0.32, -5.0, -0.6, 0.32, 4.1, 0.6, 0.32, 4.1], foldMat);
     tri([0, 0.3, -5.2, 0, 0.3, 4.2, 0, -1.25, 4.0], foldMat);
     // Small winglets folded up at the tips
-    tri([-5.0, 0.75, 4.2, -4.6, 0.75, 1.8, -4.85, 1.7, 4.2], foldMat);
-    tri([5.0, 0.75, 4.2, 4.85, 1.7, 4.2, 4.6, 0.75, 1.8], foldMat);
+    const leftWinglet = tri([-5.0, 0.75, 4.2, -4.6, 0.75, 1.8, -4.85, 1.7, 4.2], foldMat);
+    const rightWinglet = tri([5.0, 0.75, 4.2, 4.85, 1.7, 4.2, 4.6, 0.75, 1.8], foldMat);
+    detachables.push(rightWinglet, leftWinglet);
+    // Folded-up flaps at the back of the wings (elevons: pitch and roll together)
+    for (const side of [-1, 1] as const) addSurface('elevon', side, [side * 3.0, 0.6, 3.75], [2.0, 0.04, 0.55], foldMat);
 
     stickerY = 0.52;
     stickerZ = 1.6;
@@ -477,14 +529,17 @@ export function buildToyPlane(
     // 5. Twin heavy under-wing cannons
     const barrelGeo = new THREE.CylinderGeometry(0.22, 0.28, 2.2, 8);
     barrelGeo.rotateX(Math.PI / 2);
-    addPart(barrelGeo, accentMat, [-3.9, -0.45, -1.2]);
-    addPart(barrelGeo.clone(), accentMat, [3.9, -0.45, -1.2]);
+    const leftBarrel = addPart(barrelGeo, accentMat, [-3.9, -0.45, -1.2]);
+    detachables.push(addPart(barrelGeo.clone(), accentMat, [3.9, -0.45, -1.2]), leftBarrel);
+    for (const side of [-1, 1] as const) addSurface('aileron', side, [side * 4.3, 0.2, 0.95], [2.2, 0.16, 0.5], secondaryMat);
 
     // 6. Broad tail assembly
     const tailH = createExtrudedWing(2.6, 1.3, 1.0, 0.1, 0.3);
     addPart(tailH, secondaryMat, [0, 0.35, 3.2]);
     const tailV = new THREE.BoxGeometry(0.32, 1.85, 1.5);
     addPart(tailV, hullMat, [0, 1.1, 3.1]);
+    addSurface('elevator', 1, [0, 0.35, 3.75], [4.0, 0.14, 0.5], secondaryMat);
+    addSurface('rudder', 1, [0, 1.2, 3.8], [0.16, 1.4, 0.5], hullMat);
 
     stickerY = 1.08;
     stickerZ = 0.2;
@@ -575,6 +630,8 @@ export function buildToyPlane(
     spawnShieldMesh,
     magnetRingMesh,
     glueBlobMesh,
+    controlSurfaces,
+    detachables,
     dispose: () => {
       for (const d of disposables) {
         d.dispose();
