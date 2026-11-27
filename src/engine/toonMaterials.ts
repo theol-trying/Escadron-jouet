@@ -182,45 +182,6 @@ export function addCartoonOutline(
   return outline;
 }
 
-export function createWoodGrainTexture(maxAniso = 4): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#D99B58';
-  ctx.fillRect(0, 0, 512, 512);
-
-  // Oversized cartoon wood planks & grain lines to sell miniature scale
-  for (let i = 0; i < 42; i++) {
-    const y = (i / 42) * 512;
-    ctx.strokeStyle = i % 3 === 0 ? 'rgba(130, 74, 28, 0.34)' : 'rgba(166, 102, 46, 0.25)';
-    ctx.lineWidth = 3 + (i % 4) * 2;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    for (let x = 0; x <= 512; x += 64) {
-      ctx.lineTo(x, y + Math.sin(x * 0.02 + i) * 7);
-    }
-    ctx.stroke();
-  }
-
-  // Plank seams
-  ctx.strokeStyle = 'rgba(92, 48, 16, 0.4)';
-  ctx.lineWidth = 4;
-  for (let y = 128; y < 512; y += 128) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(512, y);
-    ctx.stroke();
-  }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 2);
-  tex.anisotropy = maxAniso;
-  return tex;
-}
 
 export function createCarpetTexture(maxAniso = 4): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -412,45 +373,6 @@ export function createStickerTexture(stickerId: string): THREE.CanvasTexture {
   return tex;
 }
 
-export function createTileTexture(
-  maxAniso = 4,
-  colorA = '#FFFBEB',
-  colorB = '#FED7AA',
-  repeatX = 10,
-  repeatY = 8
-): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
-  const half = 128;
-
-  ctx.fillStyle = colorA;
-  ctx.fillRect(0, 0, half, half);
-  ctx.fillRect(half, half, half, half);
-
-  ctx.fillStyle = colorB;
-  ctx.fillRect(half, 0, half, half);
-  ctx.fillRect(0, half, half, half);
-
-  ctx.strokeStyle = 'rgba(15, 23, 42, 0.16)';
-  ctx.lineWidth = 4;
-  ctx.strokeRect(0, 0, 256, 256);
-  ctx.beginPath();
-  ctx.moveTo(half, 0);
-  ctx.lineTo(half, 256);
-  ctx.moveTo(0, half);
-  ctx.lineTo(256, half);
-  ctx.stroke();
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeatX, repeatY);
-  tex.anisotropy = maxAniso;
-  return tex;
-}
 
 export function createGraniteTexture(maxAniso = 4): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -535,3 +457,6 @@ export function createSandTexture(maxAniso = 4): THREE.CanvasTexture {
   tex.anisotropy = maxAniso;
   return tex;
 }
+
+/** Wood planks and glazed tiles live in richTextures.ts (re-exported for the room builders). */
+export { createTileTexture, createWoodGrainTexture } from './richTextures';

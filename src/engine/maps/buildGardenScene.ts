@@ -4,7 +4,7 @@ import { ARENA_SCALE } from '../../../shared/constants';
 import { GARDEN_MAP_DESIGN } from '../../../shared/maps/garden';
 import type { MapSceneHandles } from './types';
 import type { SceneBuildOptions } from '../sceneSetup';
-import { addCornerShading, addSunShafts } from './sunShafts';
+import { addGrassField, footprintsOf } from './grassField';
 import {
   addCartoonOutline,
   createCelMaterial,
@@ -419,7 +419,21 @@ export function buildGardenScene(scene: THREE.Scene, maxAniso: number, opts: Sce
     powerUpZoneRings.push(ring);
   }
 
-  const roomFx: Array<{ update: (t: number) => void; dispose: () => void }> = [];
+  // Lawn grass waving in the wind (kept out of the sandbox, pots, doghouse and stepping stones)
+  const roomFx = [
+    addGrassField(rootGroup, {
+      count: opts.profile?.grassBlades ?? 5000,
+      area: { minX: -240, maxX: 240, minZ: -182, maxZ: 182 },
+      avoid: [
+        ...footprintsOf(GARDEN_MAP_DESIGN.colliders),
+        ...[[-48, -22], [-18, -8], [-55, 22], [-75, 44], [62, -40], [98, -12], [122, 26]].map(([x, z]) => ({ x, z, r: 19 })),
+      ],
+      minHeight: 5,
+      maxHeight: 11,
+      receiveShadow: opts.profile?.quality === 'high',
+    }),
+  ];
+  disposables.push(...roomFx);
 
   return {
     cameraColliders,

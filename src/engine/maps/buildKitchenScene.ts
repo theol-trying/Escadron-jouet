@@ -3,13 +3,13 @@ import { getHingeDoorAngleAtTime } from '../../../shared/flightPhysics';
 import { ARENA_SCALE } from '../../../shared/constants';
 import { KITCHEN_MAP_DESIGN } from '../../../shared/maps/kitchen';
 import type { MapSceneHandles } from './types';
+import { createTileMaps } from '../richTextures';
 import type { SceneBuildOptions } from '../sceneSetup';
 import { addCornerShading, addSunShafts } from './sunShafts';
 import {
   addCartoonOutline,
   createCelMaterial,
   createGraniteTexture,
-  createTileTexture,
   createWoodGrainTexture,
 } from '../toonMaterials';
 
@@ -23,8 +23,13 @@ export function buildKitchenScene(scene: THREE.Scene, maxAniso: number, opts: Sc
   rootGroup.scale.setScalar(ARENA_SCALE);
   scene.add(rootGroup);
 
-  const floorTex = createTileTexture(maxAniso, '#FFFBEB', '#FDBA74', 10, 8);
-  const backsplashTex = createTileTexture(maxAniso, '#FFFFFF', '#BAE6FD', 14, 4);
+  // Glazed tiles on the floor and the backsplash (grout in relief in high quality)
+  const detailed = opts.profile?.detailedMaterials ?? false;
+  const floorMaps = createTileMaps(maxAniso, '#FFFBEB', '#FDBA74', 10, 8, detailed);
+  const backsplashMaps = createTileMaps(maxAniso, '#FFFFFF', '#BAE6FD', 14, 4, detailed);
+  const floorTex = floorMaps.map;
+  const backsplashTex = backsplashMaps.map;
+  for (const b of [floorMaps.bump, backsplashMaps.bump]) if (b) disposables.push(b);
   const graniteTex = createGraniteTexture(maxAniso);
   const woodTex = createWoodGrainTexture(maxAniso);
   disposables.push(floorTex, backsplashTex, graniteTex, woodTex);
@@ -32,6 +37,12 @@ export function buildKitchenScene(scene: THREE.Scene, maxAniso: number, opts: Sc
   const floorMat = createCelMaterial(0xffffff, { map: floorTex });
   const wallMat = createCelMaterial(0xfff7e6);
   const backsplashMat = createCelMaterial(0xffffff, { map: backsplashTex });
+  if (floorMaps.bump && backsplashMaps.bump) {
+    floorMat.bumpMap = floorMaps.bump;
+    floorMat.bumpScale = 1.5;
+    backsplashMat.bumpMap = backsplashMaps.bump;
+    backsplashMat.bumpScale = 1.5;
+  }
   const graniteMat = createCelMaterial(0xffffff, { map: graniteTex });
   const cabinetMat = createCelMaterial(0x38bdf8);
   const cabinetCreamMat = createCelMaterial(0xfef3c7);

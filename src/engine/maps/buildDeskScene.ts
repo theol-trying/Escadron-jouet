@@ -3,6 +3,7 @@ import { ARENA_SCALE } from '../../../shared/constants';
 import { DESK_MAP_DESIGN } from '../../../shared/maps/desk';
 import { getFanYawAtTime } from '../../../shared/flightPhysics';
 import type { MapSceneHandles } from './types';
+import { createWoodGrainMaps } from '../richTextures';
 import type { SceneBuildOptions } from '../sceneSetup';
 import { addCornerShading, addSunShafts } from './sunShafts';
 import {
@@ -11,7 +12,6 @@ import {
   createCelMaterial,
   createMonitorScreenTexture,
   createWallpaperTexture,
-  createWoodGrainTexture,
 } from '../toonMaterials';
 
 export function buildDeskScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
@@ -24,13 +24,20 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number, opts: Scene
   rootGroup.scale.setScalar(ARENA_SCALE);
   scene.add(rootGroup);
 
-  const woodTex = createWoodGrainTexture(maxAniso);
+  // Rich wood grain on the desk (with a relief map in high quality)
+  const woodMaps = createWoodGrainMaps(maxAniso, opts.profile?.detailedMaterials ?? false);
+  const woodTex = woodMaps.map;
+  if (woodMaps.bump) disposables.push(woodMaps.bump);
   const carpetTex = createCarpetTexture(maxAniso);
   const wallTex = createWallpaperTexture(maxAniso);
   const monitorTex = createMonitorScreenTexture(maxAniso);
   disposables.push(woodTex, carpetTex, wallTex, monitorTex);
 
   const woodMat = createCelMaterial(0xd99b58, { map: woodTex });
+  if (woodMaps.bump) {
+    woodMat.bumpMap = woodMaps.bump;
+    woodMat.bumpScale = 0.8;
+  }
   const darkWoodMat = createCelMaterial(0xa4662c);
   const carpetMat = createCelMaterial(0x3b82f6, { map: carpetTex });
   const wallMat = createCelMaterial(0xfff5d6, { map: wallTex });
