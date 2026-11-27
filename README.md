@@ -10,6 +10,7 @@ dans des pièces de la maison à taille géante. Pensé d’abord pour PC (clavi
 - [Jouer](#jouer)
 - [Commandes](#commandes)
 - [Paramètres du joueur](#paramètres-du-joueur)
+- [Graphismes](#graphismes)
 - [Ajouter tes propres musiques](#ajouter-tes-propres-musiques)
 - [Régler l’équilibrage](#régler-léquilibrage)
 - [Développement](#développement)
@@ -60,8 +61,8 @@ puis utiliser un objet, vue cockpit). Les consignes affichent tes propres touche
 - **Le garage** — vélo **suspendu au plafond**, établi et panneau à outils, étagères en métal, et la porte entrouverte sur
   la rue qui laisse entrer des **rafales** (et des feuilles).
 
-Des **événements** surviennent en cours de partie : un chat géant traverse la pièce (obstacle qui bouscule les avions),
-ou le courant saute quelques secondes.
+Des **événements** surviennent en cours de partie : un chat géant traverse la pièce (obstacle qui bouscule les avions,
+et qui **donne des coups de patte** à ceux qui passent devant lui), ou le courant saute quelques secondes.
 
 ### Pendant la partie
 
@@ -137,7 +138,28 @@ Dans **Paramètres** (enregistrés dans le navigateur) :
 - volumes : général, effets, ambiance de la pièce, **musique** ;
 - **mode de contrôle** (clavier + souris / clavier seul), sensibilité souris ou clavier, axe vertical inversé ;
 - **aide à la visée légère** (corrige un peu la trajectoire quand un adversaire est presque dans le viseur) ;
-- **vue de la caméra** : poursuite ou **cockpit** (tableau de bord propre à chaque avion, avec horizon artificiel).
+- **vue de la caméra** : poursuite ou **cockpit** (tableau de bord propre à chaque avion, avec horizon artificiel) ;
+- **qualité graphique** : *Auto* (choisie d’après la carte graphique), *Basse*, *Moyenne* ou *Haute* (voir ci-dessous).
+
+---
+
+## Graphismes
+
+Style dessin animé : contours noirs d’épaisseur égale sur tous les jouets, halos autour des balles traçantes et des
+explosions, traits de vitesse au turbo. Les pièces ont des rayons de soleil par les fenêtres (et la lucarne du grenier)
+avec de la poussière qui flotte dedans, des coins plus sombres, du bois veiné, du carrelage émaillé et, au jardin, de
+l’herbe qui ondule au vent et l’arroseur qui projette de vraies gouttes. Les avions abîmés fument de plus en plus,
+perdent des morceaux et prennent feu ; leurs gouvernes bougent quand ils manœuvrent. Les explosions finissent en
+confettis de plastique, et un avion qui frôle un mur fait des étincelles.
+
+| Qualité | Pour qui | Ce qui change |
+|---|---|---|
+| **Basse** | rendu logiciel, très petites machines | pas d’ombres ni de contours sur les meubles, pas de rayons de soleil ni d’herbe, moins d’effets |
+| **Moyenne** | puces intégrées (Intel, AMD) — choisie automatiquement sur ce genre de PC | ombres nettes peu coûteuses, 5 000 brins d’herbe, miroir en petite résolution |
+| **Haute** | cartes graphiques dédiées, puces Apple | ombres douces et larges, image plus fine, relief du bois et du carrelage, 14 000 brins d’herbe |
+
+*Auto* refait le choix à chaque ouverture ; un niveau choisi à la main est gardé. Le lissage des bords se décide au
+lancement : il change au prochain chargement de la page.
 
 ---
 
@@ -187,7 +209,8 @@ Les principaux réglages sont regroupés pour être modifiés sans chercher :
 | Niveaux des bots (`BOT_SKILL`) | [`server/bots.ts`](server/bots.ts) | Facile / Normal / Expert |
 | Course et roi du ciel (`RACE_LAPS`, `KING_TARGET`, `KING_ZONE_PERIOD`…) | [`shared/objectives.ts`](shared/objectives.ts) | 2 tours, 30 s, zone qui bouge toutes les 30 s |
 | Survie (`SURVIVAL_WAVES`, `MAX_ENEMIES`, `STING_DAMAGE`, `WAVE_TIME_LIMIT`…) | [`server/survival.ts`](server/survival.ts) | 8 vagues, 14 ennemis au plus, piqûre 9 PV, vague arrêtée après 75 s |
-| Événements de pièce (fréquence, durées) | [`shared/roomEvents.ts`](shared/roomEvents.ts) | un événement toutes les ~70 s |
+| Événements de pièce (fréquence, durées, coups de patte du chat) | [`shared/roomEvents.ts`](shared/roomEvents.ts) | un événement toutes les ~70 s, un coup de patte toutes les 1,6 s |
+| Niveaux de qualité graphique (ombres, herbe, poussière, effets…) | [`src/settings/graphicsQuality.ts`](src/settings/graphicsQuality.ts) | Basse / Moyenne / Haute, détection de la carte graphique |
 | Meubles qui bougent (mobile, petit train) | [`shared/maps/movers.ts`](shared/maps/movers.ts) + la pièce | vitesse, rayon, nombre de wagons, dégâts au choc |
 | Pièces (obstacles, apparitions, bonus) | [`shared/maps/`](shared/maps) | un fichier par pièce, en « unités de conception » |
 

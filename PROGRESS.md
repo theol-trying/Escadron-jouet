@@ -70,7 +70,19 @@ Consigne : jeu PC d'abord (pas de priorité téléphone / tactile).
         - [x] garage (garage.ts) : vélo suspendu, établi, étagères, porte entrouverte avec rafales et feuilles
         - [x] README complété (modes, avions, pièces, touches, messages, rediffusion, réglages), vérifié en ligne
 
-➜ REPRENDRE ICI (27/11) : rien en cours. 7 pièces, 6 avions, 5 modes + Premier vol ; 119 tests.
+16. [x] Mises à jour graphiques (27/11), un commit poussé par étape :
+        - [x] réglage « Qualité graphique » Auto/Basse/Moyenne/Haute (src/settings/graphicsQuality.ts ; Auto = d'après
+              la carte graphique : Intel/AMD intégrés → moyenne) ; contours à épaisseur constante (normales lissées)
+        - [x] halos des billes et des explosions (glowFx.ts), lignes de vitesse au turbo (speedLines.ts)
+        - [x] rayons de soleil + poussière (maps/sunShafts.ts) bureau, cuisine, lucarne, chambre, garage ; coins ombrés
+        - [x] bois veiné et carrelage émaillé (richTextures.ts, relief en haute) ; herbe qui ondule (maps/grassField.ts)
+        - [x] avions : gouvernes mobiles, pièces qui se détachent (fallingParts.ts), fumée douce (smokeFx.ts), feu
+        - [x] confettis, étincelles de frottement (impactFx.ts, roomContact.ts), gouttes de l'arroseur (sprinklerWater.ts)
+        - [x] chat vivant : coups de patte partagés (shared/roomEvents.ts, obstacle), tête qui suit les avions ;
+              PROTOCOL_VERSION 8
+        - [x] README (section Graphismes), vérifié en ligne
+
+➜ REPRENDRE ICI (27/11) : rien en cours. 7 pièces, 6 avions, 5 modes + Premier vol ; 125 tests.
   Pistes si l’utilisateur en redemande : essais à plusieurs sur le site, réglages (niveaux des bots, Survie).
 
 ### Chantier précédent (terminé) : correctifs d'audit + arènes ×1,4 / avions ×0,85
