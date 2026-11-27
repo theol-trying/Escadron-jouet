@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 let sharedGradientMap: THREE.DataTexture | null = null;
-const outlineMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+const outlineMaterialCache = new Map<string, THREE.ShaderMaterial>();
 
 export function getToonGradientMap(): THREE.DataTexture {
   if (!sharedGradientMap) {
@@ -40,28 +40,144 @@ export function createCelMaterial(
   });
 }
 
-export function getOutlineMaterial(color: number = 0x18181b): THREE.MeshBasicMaterial {
-  const key = String(color);
+/**
+ * Cartoon outlines (« contour façon dessin animé »): a back-facing copy of the mesh pushed outward
+ * along smoothed normals by a constant number of screen pixels (capped in world size), so every toy
+ * gets an even ink line whatever its shape, size or distance.
+ *  - 'toy': planes, items, small things (always drawn, thin cap)
+ *  - 'prop': big creatures and the podium (always drawn)
+ *  - 'room': the furniture (hidden on « Qualité graphique : basse »)
+ */
+export type OutlineKind = 'toy' | 'prop' | 'room';
+
+const OUTLINE_STYLE: Record<OutlineKind, { px: number; maxWidth: number }> = {
+  toy: { px: 2.2, maxWidth: 0.3 },
+  prop: { px: 2.4, maxWidth: 3 },
+  room: { px: 1.8, maxWidth: 3 },
+};
+
+/** Size of one screen pixel at 1 unit from the camera (updated every frame by the engine). */
+const outlinePixelScale = { value: 0.0015 };
+let roomOutlinesVisible = true;
+
+export function setOutlinePixelScale(fovDeg: number, viewportHeightPx: number): void {
+  outlinePixelScale.value = (2 * Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2)) / Math.max(1, viewportHeightPx);
+}
+
+export function setRoomOutlinesVisible(visible: boolean): void {
+  roomOutlinesVisible = visible;
+  for (const [key, mat] of outlineMaterialCache) if (key.startsWith('room:')) mat.visible = visible;
+}
+
+const OUTLINE_VERTEX = /* glsl */ `
+#include <common>
+#include <fog_pars_vertex>
+attribute vec3 outlineNormal;
+uniform float uWidthPx;
+uniform float uPxScale;
+uniform float uMaxWidth;
+void main() {
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  vec3 n = normalize(normalMatrix * outlineNormal);
+  float dist = max(1.0, -mvPosition.z);
+  mvPosition.xyz += n * min(uMaxWidth, uWidthPx * dist * uPxScale);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}
+`;
+
+const OUTLINE_FRAGMENT = /* glsl */ `
+uniform vec3 diffuse;
+uniform float opacity;
+#include <common>
+#include <fog_pars_fragment>
+void main() {
+  gl_FragColor = vec4(diffuse, opacity);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}
+`;
+
+export function getOutlineMaterial(color: number = 0x18181b, kind: OutlineKind = 'room', widthFactor = 1): THREE.ShaderMaterial {
+  const key = `${kind}:${color}:${widthFactor.toFixed(2)}`;
   let mat = outlineMaterialCache.get(key);
   if (!mat) {
-    mat = new THREE.MeshBasicMaterial({
-      color,
+    const style = OUTLINE_STYLE[kind];
+    const uniforms = THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        diffuse: { value: new THREE.Color(color) },
+        opacity: { value: 1 },
+        uWidthPx: { value: style.px * widthFactor },
+        uMaxWidth: { value: style.maxWidth * widthFactor },
+      },
+    ]);
+    uniforms.uPxScale = outlinePixelScale; // shared: one update per frame for every outline
+    mat = new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader: OUTLINE_VERTEX,
+      fragmentShader: OUTLINE_FRAGMENT,
       side: THREE.BackSide,
+      fog: true,
     });
+    if (kind === 'room') mat.visible = roomOutlinesVisible;
     outlineMaterialCache.set(key, mat);
   }
   return mat;
 }
 
+/** Normals averaged over every vertex at the same place, so the pushed-out hull has no cracks at hard edges. */
+export function ensureOutlineNormals(geometry: THREE.BufferGeometry): void {
+  if (geometry.getAttribute('outlineNormal')) return;
+  const pos = geometry.getAttribute('position');
+  if (!pos) return;
+  if (!geometry.getAttribute('normal')) geometry.computeVertexNormals();
+  const nor = geometry.getAttribute('normal');
+  const sums = new Map<string, [number, number, number]>();
+  const keys: string[] = new Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${Math.round(pos.getX(i) * 1000)},${Math.round(pos.getY(i) * 1000)},${Math.round(pos.getZ(i) * 1000)}`;
+    keys[i] = k;
+    const sum = sums.get(k) ?? [0, 0, 0];
+    sum[0] += nor.getX(i);
+    sum[1] += nor.getY(i);
+    sum[2] += nor.getZ(i);
+    sums.set(k, sum);
+  }
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const [x, y, z] = sums.get(keys[i])!;
+    const len = Math.hypot(x, y, z);
+    if (len > 1e-6) {
+      out[i * 3] = x / len;
+      out[i * 3 + 1] = y / len;
+      out[i * 3 + 2] = z / len;
+    } else {
+      out[i * 3] = nor.getX(i);
+      out[i * 3 + 1] = nor.getY(i);
+      out[i * 3 + 2] = nor.getZ(i);
+    }
+  }
+  geometry.setAttribute('outlineNormal', new THREE.BufferAttribute(out, 3));
+}
+
+/**
+ * Adds the ink outline to a mesh. `thicknessRatio` (historical scale-based value, 1.02…1.1) now
+ * tunes the line width around the kind's default.
+ */
 export function addCartoonOutline(
   mesh: THREE.Mesh,
   thicknessRatio = 1.07,
-  outlineColor = 0x16161d
+  outlineColor = 0x16161d,
+  kind: OutlineKind = 'room'
 ): THREE.Mesh {
-  const outline = new THREE.Mesh(mesh.geometry, getOutlineMaterial(outlineColor));
-  outline.scale.setScalar(thicknessRatio);
+  ensureOutlineNormals(mesh.geometry);
+  const widthFactor = Math.min(1.5, Math.max(0.7, (thicknessRatio - 1) / 0.06));
+  const outline = new THREE.Mesh(mesh.geometry, getOutlineMaterial(outlineColor, kind, Math.round(widthFactor * 4) / 4));
   outline.castShadow = false;
   outline.receiveShadow = false;
+  outline.userData.isOutline = true;
   mesh.add(outline);
   return outline;
 }

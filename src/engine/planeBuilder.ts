@@ -147,7 +147,7 @@ export function buildToyPlane(
     mesh.position.set(pos[0], pos[1], pos[2]);
     mesh.rotation.set(rot[0], rot[1], rot[2]);
     mesh.castShadow = true;
-    addCartoonOutline(mesh, outlineRatio);
+    addCartoonOutline(mesh, outlineRatio, undefined, 'toy');
     bodyGroup.add(mesh);
     return mesh;
   };

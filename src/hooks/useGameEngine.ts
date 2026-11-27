@@ -3,6 +3,7 @@ import type { RoomState } from '../../shared/types';
 import type { HudHandle } from '../components/HudOverlay';
 import type { HudFrameData, ThreeGameEngine } from '../engine/ThreeGameEngine';
 import type { GameplaySettings } from '../settings/gameplaySettings';
+import { detectedQualityHere, resolveGraphicsQuality } from '../settings/graphicsQuality';
 
 export interface GameEngineDeps {
   canvasMountRef: RefObject<HTMLDivElement | null>;
@@ -26,14 +27,18 @@ export function useGameEngine(deps: GameEngineDeps): void {
 
     void import('../engine/ThreeGameEngine').then(({ ThreeGameEngine }) => {
       if (cancelled) return;
-      const engine = new ThreeGameEngine(mount, (hudData: HudFrameData) => {
-        hudRef.current?.updateFrame(
-          hudData,
-          engine.inputState.aimX,
-          engine.inputState.aimY,
-          engine.inputState.boost
-        );
-      });
+      const engine = new ThreeGameEngine(
+        mount,
+        (hudData: HudFrameData) => {
+          hudRef.current?.updateFrame(
+            hudData,
+            engine.inputState.aimX,
+            engine.inputState.aimY,
+            engine.inputState.boost
+          );
+        },
+        resolveGraphicsQuality(gameplayRef.current.graphicsQuality, detectedQualityHere())
+      );
       engineRef.current = engine;
       // Development only: the engine is reachable from the browser console for checks
       if (import.meta.env.DEV) (window as unknown as { __engine?: ThreeGameEngine }).__engine = engine;

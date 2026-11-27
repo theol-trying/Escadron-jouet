@@ -58,7 +58,7 @@ export class Podium {
     const baseMat = createCelMaterial(0x2563eb);
     const base = new THREE.Mesh(baseGeo, baseMat);
     base.position.y = -1.5;
-    addCartoonOutline(base, 1.02);
+    addCartoonOutline(base, 1.06, undefined, 'prop');
     this.group.add(base);
     this.disposables.push(baseGeo, baseMat);
 
@@ -68,7 +68,7 @@ export class Podium {
       const mat = createCelMaterial(slot.color);
       const block = new THREE.Mesh(geo, mat);
       block.position.set(slot.x, slot.height / 2, 0);
-      addCartoonOutline(block, 1.03);
+      addCartoonOutline(block, 1.06, undefined, 'prop');
       this.group.add(block);
       this.disposables.push(geo, mat);
 

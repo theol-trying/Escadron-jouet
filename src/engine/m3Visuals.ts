@@ -57,7 +57,7 @@ export class MatchExtrasRenderer {
         metalness: 0.15,
       });
       const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-      addCartoonOutline(coreMesh, 1.09);
+      addCartoonOutline(coreMesh, 1.09, undefined, 'toy');
 
       const haloMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
@@ -114,13 +114,13 @@ export class MatchExtrasRenderer {
       group.visible = false;
 
       const missileBody = new THREE.Mesh(missileGeo, missileMat);
-      addCartoonOutline(missileBody, 1.1);
+      addCartoonOutline(missileBody, 1.1, undefined, 'toy');
       const waterSphere = new THREE.Mesh(waterGeo, waterMat);
-      addCartoonOutline(waterSphere, 1.08);
+      addCartoonOutline(waterSphere, 1.08, undefined, 'toy');
       const firecrackerBody = new THREE.Mesh(firecrackerGeo, firecrackerMat);
-      addCartoonOutline(firecrackerBody, 1.1);
+      addCartoonOutline(firecrackerBody, 1.1, undefined, 'toy');
       const glueMineBody = new THREE.Mesh(mineGeo, mineMat);
-      addCartoonOutline(glueMineBody, 1.08);
+      addCartoonOutline(glueMineBody, 1.08, undefined, 'toy');
 
       group.add(missileBody, waterSphere, firecrackerBody, glueMineBody);
       scene.add(group);
@@ -172,15 +172,15 @@ export class MatchExtrasRenderer {
 
     const mouthMesh = new THREE.Mesh(mouthGeo, vacRedMat);
     mouthMesh.castShadow = true;
-    addCartoonOutline(mouthMesh, 1.04);
+    addCartoonOutline(mouthMesh, 1.04, undefined, 'toy');
 
     const rimMesh = new THREE.Mesh(intakeRimGeo, vacChromeMat);
     rimMesh.position.set(0, -1, 8.5);
-    addCartoonOutline(rimMesh, 1.04);
+    addCartoonOutline(rimMesh, 1.04, undefined, 'toy');
 
     const neckMesh = new THREE.Mesh(neckGeo, vacChromeMat);
     neckMesh.position.set(0, 16, -2);
-    addCartoonOutline(neckMesh, 1.05);
+    addCartoonOutline(neckMesh, 1.05, undefined, 'toy');
 
     // Cartoon angry/googly eyes on top of the vacuum head
     for (const sx of [-7.5, 7.5]) {

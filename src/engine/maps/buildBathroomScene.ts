@@ -78,12 +78,13 @@ export function buildBathroomScene(scene: THREE.Scene, maxAniso: number, opts: S
   addBeam(65, 90, -178, 65, 104, -168, 2.5, chromeMat);
   addBox(28, 90, -165, 42, 95, -155, mat(0xf9a8d4), rootGroup, false, false); // soap
   addBox(13, 103, -185, 117, 197, -182, porcelainMat); // mirror frame
-  if (opts.lowGraphics) {
+  const mirrorRes = opts.profile?.mirrorResolution ?? 512;
+  if (mirrorRes <= 0) {
     addBox(15, 105, -182, 115, 195, -181, mat(0xdbeafe, { emissive: 0xe0f2fe, emissiveIntensity: 0.35 }), rootGroup, false, false);
   } else {
     const mirror = new Reflector(new THREE.PlaneGeometry(100, 90), {
-      textureWidth: 512,
-      textureHeight: 460,
+      textureWidth: mirrorRes,
+      textureHeight: Math.round(mirrorRes * 0.9),
       color: 0xd9e6ee,
       multisample: 0,
     });

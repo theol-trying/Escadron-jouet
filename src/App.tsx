@@ -27,6 +27,7 @@ import {
   saveGameplaySettings,
   type GameplaySettings,
 } from './settings/gameplaySettings';
+import { detectedQualityHere, resolveGraphicsQuality } from './settings/graphicsQuality';
 
 const DEFAULT_COSMETICS: PlayerCosmetics = {
   planeId: 'plastic_jet',
@@ -120,6 +121,11 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.setCameraView(gameplaySettings.cameraView);
   }, [gameplaySettings.cameraView]);
+
+  // « Qualité graphique » (auto = from the graphics card)
+  useEffect(() => {
+    engineRef.current?.setGraphicsQuality(resolveGraphicsQuality(gameplaySettings.graphicsQuality, detectedQualityHere()));
+  }, [gameplaySettings.graphicsQuality]);
 
   // In a match, ask before leaving the page: on a QWERTY keyboard, pressing Ctrl (special item) while
   // climbing with W triggers Ctrl+W (close tab), which browsers never let a page block.

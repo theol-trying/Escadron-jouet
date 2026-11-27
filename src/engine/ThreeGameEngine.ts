@@ -47,11 +47,15 @@ import {
   SCENE_LOADERS,
   addEnvironment,
   addRoomLights,
+  applyShadowProfile,
   createRenderer,
   detectSoftwareGl,
+  pixelRatioFor,
   roomFog,
   type SceneBuilder,
 } from './sceneSetup';
+import { graphicsProfile, type GraphicsProfile, type GraphicsQuality } from '../settings/graphicsQuality';
+import { setOutlinePixelScale, setRoomOutlinesVisible } from './toonMaterials';
 import { TitleTour } from './titleTour';
 import { RaceGhostRunner } from './raceGhost';
 import { REPLAY_AFTER_MS, REPLAY_BEFORE_MS, ReplayBuffer } from './replayBuffer';
@@ -96,7 +100,10 @@ export class ThreeGameEngine {
   private sceneBuilders = new Map<MapId, SceneBuilder>([['desk', buildDeskScene]]);
   /** Room events: lights dimmed during a blackout, the giant cat */
   private lights: Array<{ light: THREE.Light; base: number }>;
+  private sun: THREE.DirectionalLight;
   private lightLevel = 1;
+  /** « Qualité graphique »: what the 3D view draws and how finely */
+  private profile: GraphicsProfile;
   private cat: CatVisual;
   private gameMode: GameModeId = 'last_plane_ffa';
   private readonly podiumAnchor = new THREE.Vector3();
@@ -231,15 +238,17 @@ export class ThreeGameEngine {
   private heardProjectileIds = new Set<number>();
   private lastShotSoundAt = new Map<string, number>();
 
-  constructor(container: HTMLElement, onHudUpdate: (data: HudFrameData) => void) {
+  constructor(container: HTMLElement, onHudUpdate: (data: HudFrameData) => void, quality: GraphicsQuality = 'medium') {
     this.container = container;
     this.hudCallback = onHudUpdate;
     this.isSoftwareGl = detectSoftwareGl();
+    this.profile = graphicsProfile(this.isSoftwareGl ? 'low' : quality);
+    setRoomOutlinesVisible(this.profile.roomOutlines);
 
     const width = Math.max(320, container.clientWidth || window.innerWidth);
     const height = Math.max(240, container.clientHeight || window.innerHeight);
 
-    this.renderer = createRenderer(container, this.isSoftwareGl, width, height);
+    this.renderer = createRenderer(container, this.isSoftwareGl, width, height, this.profile);
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.currentMap.skyColor);
     this.scene.fog = roomFog(this.currentMapId, this.currentMap.fogColor);
@@ -247,7 +256,9 @@ export class ThreeGameEngine {
 
     this.camera = new THREE.PerspectiveCamera(70, width / height, 0.5, 950 * ARENA_SCALE);
     this.cameraRig = new CameraRig(this.camera);
-    this.lights = addRoomLights(this.scene, this.isSoftwareGl);
+    const roomLights = addRoomLights(this.scene, this.isSoftwareGl, this.profile);
+    this.lights = roomLights.lights;
+    this.sun = roomLights.sun;
     this.cat = new CatVisual(this.scene);
 
     // Build initial 3D world
@@ -289,7 +300,19 @@ export class ThreeGameEngine {
   }
 
   private buildMapScene(mapId: MapId): MapSceneHandles {
-    return (this.sceneBuilders.get(mapId) ?? buildDeskScene)(this.scene, this.maxAniso, { lowGraphics: this.isSoftwareGl });
+    return (this.sceneBuilders.get(mapId) ?? buildDeskScene)(this.scene, this.maxAniso, { profile: this.profile });
+  }
+
+  /** « Qualité graphique »: shadows, pixel density, outlines and the room's extras (rebuilt). */
+  public setGraphicsQuality(quality: GraphicsQuality): void {
+    const next = graphicsProfile(this.isSoftwareGl ? 'low' : quality);
+    if (next === this.profile) return;
+    this.profile = next;
+    this.renderer.setPixelRatio(pixelRatioFor(next, this.isSoftwareGl));
+    this.handleResize();
+    applyShadowProfile(this.renderer, this.scene, this.sun, next, this.isSoftwareGl);
+    setRoomOutlinesVisible(next.roomOutlines);
+    if (this.sceneBuilders.has(this.currentMapId)) this.applyMapScene(this.currentMapId);
   }
 
   /** Loads the other rooms' scene code in the background so switching rooms is instant. */
@@ -806,6 +829,7 @@ export class ThreeGameEngine {
       this.elapsedTime += dt;
 
       this.updateScene(dt, now);
+      setOutlinePixelScale(this.camera.fov, this.container.clientHeight || 600);
       this.renderer.render(this.scene, this.camera);
 
       if (this.isSoftwareGl) {

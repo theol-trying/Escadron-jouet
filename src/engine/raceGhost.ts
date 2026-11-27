@@ -111,6 +111,11 @@ export class RaceGhostRunner {
     rig.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
+      // Ink outlines share their material with every toy: a ghost simply has none
+      if (mesh.userData.isOutline) {
+        mesh.visible = false;
+        return;
+      }
       mesh.castShadow = false;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {

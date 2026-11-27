@@ -12,6 +12,7 @@ test('gameplay settings: saved values are kept', () => {
     aimAssist: false,
     cameraView: 'cockpit',
     keyBindings: { ...DEFAULT_BINDINGS, fire: ['KeyF'] },
+    graphicsQuality: 'low',
   };
   assert.deepEqual(parseGameplaySettings(saved), saved);
 });

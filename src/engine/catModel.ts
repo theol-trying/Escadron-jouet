@@ -26,7 +26,7 @@ export class CatVisual {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(...pos);
       m.castShadow = true;
-      if (outline) addCartoonOutline(m, 1.04);
+      if (outline) addCartoonOutline(m, 1.06, undefined, 'prop');
       parent.add(m);
       this.disposables.push(geo);
       return m;

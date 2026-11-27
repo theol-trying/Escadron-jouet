@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type { AudioSettings } from '../audio/soundEngine';
 import { FR } from '../i18n/fr';
 import type { GameplaySettings } from '../settings/gameplaySettings';
+import { detectedQualityHere } from '../settings/graphicsQuality';
 
 interface SettingsModalProps {
   audio: AudioSettings;
@@ -132,6 +133,29 @@ export function SettingsModal({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-sm font-semibold">{FR.settings.graphicsQuality}</div>
+            <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label={FR.settings.graphicsQuality}>
+              {(['auto', 'low', 'medium', 'high'] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  role="radio"
+                  aria-checked={gameplay.graphicsQuality === level}
+                  onClick={() => onChangeGameplay({ graphicsQuality: level })}
+                  className={`toy-btn rounded-xl px-2 py-2 text-sm font-bold ${
+                    gameplay.graphicsQuality === level ? 'bg-sky-400 text-slate-950' : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {FR.settings.graphicsLevels[level]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              {FR.settings.graphicsHint(FR.settings.graphicsLevels[detectedQualityHere()].toLowerCase())}
+            </p>
           </div>
 
           <div>

@@ -205,6 +205,10 @@ export const FR = {
     schemeMouse: 'Clavier + souris',
     schemeKeyboard: 'Clavier seul',
     resetDefaults: 'Réinitialiser',
+    graphicsQuality: 'Qualité graphique',
+    graphicsLevels: { auto: 'Auto', low: 'Basse', medium: 'Moyenne', high: 'Haute' },
+    graphicsHint: (detected: string) =>
+      `Auto choisit d’après la carte graphique (ici : ${detected}). Basse retire les ombres et les effets coûteux.`,
   },
 
   leaveGuard: 'Quitter la partie en cours ?',
