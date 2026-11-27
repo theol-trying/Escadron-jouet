@@ -70,7 +70,7 @@ function makeInput(overrides: Partial<PlayerInputState> = {}): PlayerInputState 
 }
 
 test('every room is available with 16 spawns, 5 power-up spots, and valid destructible colliders', () => {
-  assert.deepEqual(MAP_ORDER.slice(0, 4), ['desk', 'kitchen', 'garden', 'attic']);
+  assert.deepEqual(MAP_ORDER, ['desk', 'kitchen', 'garden', 'attic', 'bedroom', 'bathroom', 'garage']);
   for (const mapId of MAP_ORDER) {
     const map = MAPS[mapId];
     assert.equal(map.available, true, `${mapId} should be available`);
@@ -211,4 +211,26 @@ test('arena scale enlarges gameplay map data uniformly and keeps the 3D design v
     if (a.kind === 'box' && b.kind === 'box') assert.ok(near(b.maxY, a.maxY * S));
     if (a.kind !== 'box' && b.kind !== 'box') assert.ok(near(b.radius, a.radius * S));
   }
+});
+
+test('bathroom steam lifts planes over the bath, and flying into the toilets is fatal', () => {
+  const map = MAPS.bathroom;
+  const steam = map.updraftZones.find((u) => u.id === 'bath_steam');
+  const toilets = map.hazardZones.find((h) => h.id === 'toilet_hazard');
+  assert.ok(steam && toilets);
+  assert.ok(toilets.damage >= 9999);
+  // The steam column stands over the bath water, the toilet hazard over the bowl
+  const water = map.colliders.find((c) => c.id === 'tub_water');
+  const bowl = map.colliders.find((c) => c.id === 'toilet_bowl');
+  assert.ok(water?.kind === 'box' && steam.x > water.minX && steam.x < water.maxX && steam.z > water.minZ && steam.z < water.maxZ);
+  assert.ok(bowl?.kind === 'box' && toilets.x > bowl.minX && toilets.x < bowl.maxX && toilets.z > bowl.minZ && toilets.z < bowl.maxZ);
+});
+
+test('garage: the hung bicycle is solid, and the open door blows wind into the room', () => {
+  const map = MAPS.garage;
+  const bikeParts = map.colliders.filter((c) => c.id.startsWith('bike_'));
+  assert.ok(bikeParts.length >= 20, 'wheels, frame, saddle, handlebar and hooks');
+  assert.equal(map.windZones.length, 1);
+  const gust = map.windZones[0];
+  assert.ok(gust.originZ > 0 && Math.abs(gust.baseYaw) < 0.01, 'from the front door toward the back');
 });
