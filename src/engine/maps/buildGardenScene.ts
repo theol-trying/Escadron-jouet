@@ -5,6 +5,7 @@ import { GARDEN_MAP_DESIGN } from '../../../shared/maps/garden';
 import type { MapSceneHandles } from './types';
 import type { SceneBuildOptions } from '../sceneSetup';
 import { addGrassField, footprintsOf } from './grassField';
+import { addSprinklerWater } from './sprinklerWater';
 import {
   addCartoonOutline,
   createCelMaterial,
@@ -432,6 +433,8 @@ export function buildGardenScene(scene: THREE.Scene, maxAniso: number, opts: Sce
       maxHeight: 11,
       receiveShadow: opts.profile?.quality === 'high',
     }),
+    // Water drops along the sprinkler jets and splashes where they land
+    addSprinklerWater(rootGroup, GARDEN_MAP_DESIGN.windZones[0], 20, opts.profile?.effects ?? 0.8),
   ];
   disposables.push(...roomFx);
 

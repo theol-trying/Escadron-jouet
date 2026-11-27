@@ -65,6 +65,9 @@ import { GlowFx } from './glowFx';
 import { SpeedLines } from './speedLines';
 import { FallingParts } from './fallingParts';
 import { SmokeFx } from './smokeFx';
+import { ConfettiFx, SparkFx } from './impactFx';
+import { inSprinklerSpray, movingColliders, roomContact } from './roomContact';
+import { PAINT_PALETTES } from '../../shared/planes';
 
 export type {
   CameraView,
@@ -106,6 +109,14 @@ export class ThreeGameEngine {
   private fallingParts: FallingParts;
   /** Soft smoke of damaged planes */
   private smoke: SmokeFx;
+  /** Plastic confetti of explosions, sparks of planes scraping the room */
+  private confetti: ConfettiFx;
+  private sparks: SparkFx;
+  /** Per plane: when it may throw sparks / water drops again */
+  private readonly sparkCooldown = new Map<string, number>();
+  private readonly _vel = new THREE.Vector3();
+  /** What moves in the room this frame (computed once for every plane's spark check) */
+  private frameMoving: import('../../shared/maps/types').MapCollider[] | null = null;
   private podium: Podium | null = null;
   private objectives3d: ObjectiveRenderer;
   private objectiveTracker: ObjectiveTracker;
@@ -283,6 +294,8 @@ export class ThreeGameEngine {
     this.speedLines = new SpeedLines(this.camera);
     this.fallingParts = new FallingParts(this.scene);
     this.smoke = new SmokeFx(this.scene);
+    this.confetti = new ConfettiFx(this.scene);
+    this.sparks = new SparkFx(this.scene);
     this.trails = new WingTrails(this.scene);
     this.debris = new DebrisField(this.scene);
     this.objectives3d = new ObjectiveRenderer(this.scene);
@@ -508,6 +521,9 @@ export class ThreeGameEngine {
     this.glow.clear();
     this.fallingParts.clear();
     this.smoke.clear();
+    this.confetti.clear();
+    this.sparks.clear();
+    this.sparkCooldown.clear();
     for (const pv of this.planeVisuals.values()) {
       this.scene.remove(pv.rig.root);
       pv.rig.dispose();
@@ -605,6 +621,18 @@ export class ThreeGameEngine {
         this.glow.flash(pData.x, pData.y, pData.z, 22, 0xffd27a, 0.45, 0.8);
         this.glow.flash(pData.x, pData.y, pData.z, 10, 0xffffff, 0.18, 1.5);
         this.glow.shockwave(pData.x, pData.y, pData.z, 15, 0xfde68a, 0.5);
+        // Plastic confetti in the plane's colours and toy-box colours
+        const palette = PAINT_PALETTES[paintId] ?? PAINT_PALETTES.red;
+        const own =
+          pData.team === 'red' ? ['#EF4444', '#FEE2E2'] : pData.team === 'blue' ? ['#2563EB', '#DBEAFE'] : [palette.primary, palette.secondary];
+        this.confetti.burst(
+          pData.x,
+          pData.y,
+          pData.z,
+          Math.round(70 * this.profile.effects),
+          [...own.map((c) => new THREE.Color(c).getHex()), 0xfacc15, 0x38bdf8, 0xf472b6, 0x22c55e, 0xffffff],
+          70
+        );
         soundEngine.playPopExplosion(isLocal ? undefined : { x: pData.x, y: pData.y, z: pData.z });
         if (isLocal) {
           this.cameraRig.shake(0.75);
@@ -646,6 +674,7 @@ export class ThreeGameEngine {
             this.pool.spawnBurst(cfg.x, cfg.y, cfg.z, 24, [0xfacc15, 0xef4444, 0x38bdf8, 0xf472b6, 0xffffff], 68, 2.2, 42, 0.75);
             this.glow.flash(cfg.x, cfg.y, cfg.z, cfg.radius * 2.2, 0xffe4a0, 0.35, 0.7);
             this.glow.shockwave(cfg.x, cfg.y, cfg.z, cfg.radius * 1.6, 0xffffff, 0.4);
+            this.confetti.burst(cfg.x, cfg.y, cfg.z, Math.round(36 * this.profile.effects), DebrisField.colorsOf(group), 55);
           }
           soundEngine.playPropBreak(cfg ? { x: cfg.x, y: cfg.y, z: cfg.z } : undefined);
         }
@@ -917,6 +946,8 @@ export class ThreeGameEngine {
     this.pool.updateParticles(dt);
     this.fallingParts.update(dt, 0.8);
     this.smoke.update(dt);
+    this.confetti.update(dt, this.elapsedTime, 0.6);
+    this.sparks.update(dt);
     this.pool.updateProjectiles(now);
     this.debris.update(dt);
     this.extrasRenderer.syncAndAnimate(
@@ -949,6 +980,35 @@ export class ThreeGameEngine {
     }
 
     this.updateMatch(dt, now);
+  }
+
+  /**
+   * A plane scraping the room throws sparks from the touching point; one flying through the
+   * sprinkler's jet sprays water drops. Same clock as the room (moving pieces, cat).
+   */
+  private planeContactFx(pv: ActivePlaneVisual, dt: number): void {
+    const wait = (this.sparkCooldown.get(pv.id) ?? 0) - dt;
+    this.sparkCooldown.set(pv.id, wait);
+    if (wait > 0) return;
+    const p = pv.interpPos;
+    this._vel.copy(p).sub(pv.prevPos).divideScalar(Math.max(0.001, dt));
+    const speed = this._vel.length();
+    if (speed < 20 || speed > 400) return;
+    const meta = this.roomPlayersMeta.get(pv.id);
+    const r = (PLANE_ARCHETYPES[meta?.planeId ?? 'plastic_jet'] ?? PLANE_ARCHETYPES.plastic_jet).hitboxRadius + 0.8;
+    const t = this.latestSnapshot?.mapEventTime ?? this.elapsedTime;
+    this.frameMoving ??= movingColliders(this.currentMap, t);
+    const c = roomContact(this.currentMap, p.x, p.y, p.z, r, t, this.destroyedColliderIds, this.frameMoving);
+    if (c) {
+      this.sparks.scrape(c.x, c.y, c.z, c.nx, c.ny, c.nz, this._vel.x, this._vel.y, this._vel.z, 1 + Math.round(4 * this.profile.effects));
+      this.glow.flash(c.x, c.y, c.z, 3.5, 0xffc46b, 0.12, 0.4);
+      this.sparkCooldown.set(pv.id, 0.05);
+      return;
+    }
+    if (inSprinklerSpray(this.currentMap, p.x, p.y, p.z, t)) {
+      this.pool.spawnBurst(p.x, p.y, p.z, 2 + Math.round(4 * this.profile.effects), [0x7dd3fc, 0xe0f2fe, 0xffffff], 34, 0.55, 70, 0.45);
+      this.sparkCooldown.set(pv.id, 0.07);
+    }
   }
 
   /** End of match: the podium turns, the camera orbits it, confetti falls. */
@@ -1000,6 +1060,7 @@ export class ThreeGameEngine {
         this.pool.syncProjectiles(replay.clip.frameAt(idx)?.snapshot.projectiles ?? []);
       }
     }
+    this.frameMoving = null;
     const minimapBlips: MinimapBlip[] = [];
     const livingPlanes: ActivePlaneVisual[] = [];
     const localVisual = this.localPlayerId ? this.planeVisuals.get(this.localPlayerId) : undefined;
@@ -1042,6 +1103,8 @@ export class ThreeGameEngine {
           });
         }
       }
+
+      if (pv.rig.root.visible && !replay) this.planeContactFx(pv, dt);
 
       animatePlaneVisual(pv, shown, this.roomPlayersMeta.get(pv.id)?.maxHp ?? 100, dt, this.elapsedTime, {
         pool: this.pool,
@@ -1251,6 +1314,8 @@ export class ThreeGameEngine {
     this.glow.dispose();
     this.speedLines.dispose();
     this.smoke.dispose();
+    this.confetti.dispose();
+    this.sparks.dispose();
     this.fallingParts.clear();
     this.trails.dispose();
     this.debris.dispose();
