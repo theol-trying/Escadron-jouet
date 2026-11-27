@@ -3,6 +3,8 @@ import { getFanYawAtTime } from '../../../shared/flightPhysics';
 import { ARENA_SCALE } from '../../../shared/constants';
 import { GARDEN_MAP_DESIGN } from '../../../shared/maps/garden';
 import type { MapSceneHandles } from './types';
+import type { SceneBuildOptions } from '../sceneSetup';
+import { addCornerShading, addSunShafts } from './sunShafts';
 import {
   addCartoonOutline,
   createCelMaterial,
@@ -11,7 +13,7 @@ import {
   createWoodGrainTexture,
 } from '../toonMaterials';
 
-export function buildGardenScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
+export function buildGardenScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
   const disposables: Array<{ dispose: () => void }> = [];
   const cameraColliders: THREE.Object3D[] = [];
   const destructibleGroups = new Map<string, THREE.Object3D>();
@@ -417,11 +419,14 @@ export function buildGardenScene(scene: THREE.Scene, maxAniso: number): MapScene
     powerUpZoneRings.push(ring);
   }
 
+  const roomFx: Array<{ update: (t: number) => void; dispose: () => void }> = [];
+
   return {
     cameraColliders,
     destructibleGroups,
     powerUpZoneRings,
     updateAnimations: (elapsedTime: number) => {
+      for (const f of roomFx) f.update(elapsedTime);
       const wz = GARDEN_MAP_DESIGN.windZones[0];
       if (wz) {
         sprinklerRotor.rotation.y = getFanYawAtTime(

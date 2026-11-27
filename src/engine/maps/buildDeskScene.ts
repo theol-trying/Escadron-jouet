@@ -3,6 +3,8 @@ import { ARENA_SCALE } from '../../../shared/constants';
 import { DESK_MAP_DESIGN } from '../../../shared/maps/desk';
 import { getFanYawAtTime } from '../../../shared/flightPhysics';
 import type { MapSceneHandles } from './types';
+import type { SceneBuildOptions } from '../sceneSetup';
+import { addCornerShading, addSunShafts } from './sunShafts';
 import {
   addCartoonOutline,
   createCarpetTexture,
@@ -12,7 +14,7 @@ import {
   createWoodGrainTexture,
 } from '../toonMaterials';
 
-export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
+export function buildDeskScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
   const disposables: Array<{ dispose: () => void }> = [];
   const cameraColliders: THREE.Object3D[] = [];
   const destructibleGroups = new Map<string, THREE.Object3D>();
@@ -560,11 +562,23 @@ export function buildDeskScene(scene: THREE.Scene, maxAniso: number): MapSceneHa
   const dustMotes = new THREE.Points(moteGeo, moteMat);
   rootGroup.add(dustMotes);
 
+  // Sun shafts through the window (with dust in the light) and soft shading in the corners
+  const roomFx = [
+    addSunShafts(
+      rootGroup,
+      [{ center: [-247, 126, 0], right: [0, 0, 1], up: [0, 1, 0], width: 216, height: 120, panes: [2, 2], dir: [0.66, -0.72, -0.18], length: 300, floorY: 0, strength: 0.15 }],
+      opts.profile
+    ),
+    addCornerShading(rootGroup, { minX: -248, maxX: 252, minZ: -186, maxZ: 186, height: 236, ceiling: true }),
+  ];
+  disposables.push(...roomFx);
+
   return {
     cameraColliders,
     destructibleGroups,
     powerUpZoneRings,
     updateAnimations: (elapsedTime: number, dt: number) => {
+      for (const f of roomFx) f.update(elapsedTime);
       const wz = DESK_MAP_DESIGN.windZones[0];
       if (wz) {
         fanHead.rotation.y = getFanYawAtTime(

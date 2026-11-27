@@ -4,6 +4,7 @@ import { BATHROOM_MAP_DESIGN } from '../../../shared/maps/bathroom';
 import type { SceneBuildOptions } from '../sceneSetup';
 import { createTileTexture, createWoodGrainTexture } from '../toonMaterials';
 import { createRoomKit } from './sceneKit';
+import { addCornerShading } from './sunShafts';
 import type { MapSceneHandles } from './types';
 
 /**
@@ -206,9 +207,13 @@ export function buildBathroomScene(scene: THREE.Scene, maxAniso: number, opts: S
   addMesh(new THREE.CylinderGeometry(20, 17, 30, 18), mat(0xd6a461), basket).position.set(-140, 15, 160);
   [0xf472b6, 0x60a5fa, 0xfde047].forEach((c, i) => addSphere(-148 + i * 8, 30, 154 + (i % 2) * 10, 8, mat(c), basket, false));
 
+  // Soft shading in the corners (no window here: the steam is the show)
+  const roomFx = [kit.own(addCornerShading(rootGroup, { minX: -251, maxX: 251, minZ: -187, maxZ: 187, height: 224, ceiling: true }, 0.24))];
+
   kit.addPowerUpRings(BATHROOM_MAP_DESIGN.powerUpSpots);
 
   return kit.finish((t) => {
+    for (const f of roomFx) f.update(t);
     // Rubber duck bobbing on the bath water
     duck.position.y = 44 + Math.sin(t * 1.7) * 1.2;
     duck.rotation.z = Math.sin(t * 1.3) * 0.08;

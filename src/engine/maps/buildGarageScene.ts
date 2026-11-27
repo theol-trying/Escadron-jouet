@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { GARAGE_BIKE, GARAGE_MAP_DESIGN } from '../../../shared/maps/garage';
 import { createWoodGrainTexture } from '../toonMaterials';
+import type { SceneBuildOptions } from '../sceneSetup';
 import { createRoomKit } from './sceneKit';
+import { addCornerShading, addSunShafts } from './sunShafts';
 import type { MapSceneHandles } from './types';
 
 /** Canvas texture helper (drawn once, repeated). */
@@ -30,7 +32,7 @@ function canvasTexture(
  * scooter, tyres and oil drum, and the overhead door half open on a sunny street (the wind zone
  * blows leaves in). Every solid piece mirrors a collider of GARAGE_MAP_DESIGN.
  */
-export function buildGarageScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
+export function buildGarageScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
   const kit = createRoomKit(scene);
   const { rootGroup, own, mat, addMesh, addBox, addBeam, addSphere } = kit;
 
@@ -270,7 +272,7 @@ export function buildGarageScene(scene: THREE.Scene, maxAniso: number): MapScene
     addBox(x - 4, 0, 182, x + 4, 110, 186, darkSteelMat, rootGroup, false, false);
   }
   // Sunlight coming in through the door
-  const sun = new THREE.SpotLight(0xfff1c1, 1.2, 520, 0.7, 0.6, 1);
+  const sun = new THREE.SpotLight(0xfff1c1, 0.85, 520, 0.7, 0.6, 1);
   sun.position.set(0, 120, 230);
   sun.target.position.set(0, 0, 20);
   rootGroup.add(sun, sun.target);
@@ -337,10 +339,23 @@ export function buildGarageScene(scene: THREE.Scene, maxAniso: number): MapScene
   }
   addMesh(new THREE.CylinderGeometry(4, 4, 2, 10), yellowMat, drum, false).position.set(-122, 61, 154);
 
+  // Sunlight pouring in under the half-open door (with dust in the light) and soft shading in the corners
+  const roomFx = [
+    kit.own(
+      addSunShafts(
+        rootGroup,
+        [{ center: [0, 55, 184], right: [1, 0, 0], up: [0, 1, 0], width: 300, height: 110, panes: [3, 1], dir: [0.15, -0.34, -0.93], length: 300, floorY: 0, strength: 0.11 }],
+        opts.profile
+      )
+    ),
+    kit.own(addCornerShading(rootGroup, { minX: -251, maxX: 251, minZ: -187, maxZ: 187, height: 224, ceiling: true }, 0.34)),
+  ];
+
   kit.addPowerUpRings(GARAGE_MAP_DESIGN.powerUpSpots);
 
   const wind = GARAGE_MAP_DESIGN.windZones[0];
   return kit.finish((t) => {
+    for (const f of roomFx) f.update(t);
     // Front wheel of the bike turning slowly (someone gave it a push)
     wheels[1].rotation.z = -t * 0.9;
     // Neon flicker now and then

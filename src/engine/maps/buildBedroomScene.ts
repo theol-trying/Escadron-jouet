@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { BEDROOM_MAP_DESIGN } from '../../../shared/maps/bedroom';
 import { moverPieces, type LoopMover, type OrbitMover } from '../../../shared/maps/movers';
 import { createCarpetTexture, createWallpaperTexture, createWoodGrainTexture } from '../toonMaterials';
+import type { SceneBuildOptions } from '../sceneSetup';
 import { createRoomKit } from './sceneKit';
+import { addCornerShading, addSunShafts } from './sunShafts';
 import type { MapSceneHandles } from './types';
 
 /**
@@ -10,7 +12,7 @@ import type { MapSceneHandles } from './types';
  * circling the rug and a mobile turning under the ceiling. Every solid piece mirrors a collider of
  * BEDROOM_MAP_DESIGN; the train and the mobile follow shared/maps/movers.ts on the room clock.
  */
-export function buildBedroomScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
+export function buildBedroomScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
   const kit = createRoomKit(scene);
   const { rootGroup, own, mat, addMesh, addBox, addBeam, addSphere } = kit;
 
@@ -197,10 +199,23 @@ export function buildBedroomScene(scene: THREE.Scene, maxAniso: number): MapScen
     band.rotation.y = rot;
   }
 
+  // Sun shafts through the window (with dust in the light) and soft shading in the corners
+  const roomFx = [
+    kit.own(
+      addSunShafts(
+        rootGroup,
+        [{ center: [0, 130, 185], right: [1, 0, 0], up: [0, 1, 0], width: 110, height: 80, panes: [2, 2], dir: [0.12, -0.55, -0.83], length: 280, floorY: 0, strength: 0.16 }],
+        opts.profile
+      )
+    ),
+    kit.own(addCornerShading(rootGroup, { minX: -251, maxX: 251, minZ: -187, maxZ: 187, height: 224, ceiling: true })),
+  ];
+
   kit.addPowerUpRings(BEDROOM_MAP_DESIGN.powerUpSpots);
 
   const tmp = new THREE.Vector3();
   return kit.finish((t) => {
+    for (const f of roomFx) f.update(t);
     // Mobile turns with the shared clock (same place as its colliders)
     bars.rotation.y = -orbit.speed * t;
     moverPieces(orbit, t).forEach((p, i) => {

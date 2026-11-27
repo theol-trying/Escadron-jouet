@@ -7,13 +7,15 @@ import {
   ATTIC_RIDGE_Y,
 } from '../../../shared/maps/attic';
 import type { MapSceneHandles } from './types';
+import type { SceneBuildOptions } from '../sceneSetup';
+import { addCornerShading, addSunShafts } from './sunShafts';
 import { addCartoonOutline, createCelMaterial, createWoodGrainTexture } from '../toonMaterials';
 
 /**
  * « Le grenier »: pitched roof on rafters, plank floor, furniture along the walls. Every solid
  * piece mirrors a collider of ATTIC_MAP_DESIGN (design units; the group is scaled by ARENA_SCALE).
  */
-export function buildAtticScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
+export function buildAtticScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
   const disposables: Array<{ dispose: () => void }> = [];
   const cameraColliders: THREE.Object3D[] = [];
   const destructibleGroups = new Map<string, THREE.Object3D>();
@@ -229,31 +231,14 @@ export function buildAtticScene(scene: THREE.Scene, maxAniso: number): MapSceneH
   const spider = addMesh(new THREE.SphereGeometry(4, 10, 8), mat(0x111827), rootGroup, false, false);
   spider.position.set(web.x, web.y + web.height / 2, web.z);
 
-  // Dormer window glow on the right gable + light shaft where the gusts come in
+  // Dormer window glow on the right gable (the light shafts are added below)
   const wz = ATTIC_MAP_DESIGN.windZones[0];
   const windowMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
-  const shaftMat = new THREE.MeshBasicMaterial({ color: 0xfff7d6, transparent: true, opacity: 0.12, depthWrite: false });
-  disposables.push(windowMat, shaftMat);
+  disposables.push(windowMat);
   const win = addMesh(new THREE.PlaneGeometry(70, 52), windowMat, rootGroup, false, false);
   win.position.set(249.5, wz.originY, wz.originZ);
   win.rotation.y = -Math.PI / 2;
-  const shaft = addMesh(new THREE.CylinderGeometry(30, 46, 200, 16, 1, true), shaftMat, rootGroup, false, false);
-  shaft.position.set(150, wz.originY - 10, wz.originZ);
-  shaft.rotation.z = Math.PI / 2;
 
-  // Dust motes drifting in the air
-  const dustCount = 160;
-  const dustPos = new Float32Array(dustCount * 3);
-  for (let i = 0; i < dustCount; i++) {
-    dustPos[i * 3] = (Math.random() - 0.5) * 460;
-    dustPos[i * 3 + 1] = 10 + Math.random() * 180;
-    dustPos[i * 3 + 2] = (Math.random() - 0.5) * 320;
-  }
-  const dustGeo = new THREE.BufferGeometry();
-  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-  const dustMat = new THREE.PointsMaterial({ color: 0xfff7e0, size: 1.6, transparent: true, opacity: 0.7, depthWrite: false });
-  disposables.push(dustGeo, dustMat);
-  rootGroup.add(new THREE.Points(dustGeo, dustMat));
 
   // Power-up zone rings
   const zoneRingGeo = new THREE.TorusGeometry(9, 0.9, 8, 24);
@@ -267,25 +252,28 @@ export function buildAtticScene(scene: THREE.Scene, maxAniso: number): MapSceneH
     powerUpZoneRings.push(ring);
   }
 
+  // Sun shafts through the dormer window (with dust in the light) and soft shading along the walls
+  const roomFx = [
+    addSunShafts(
+      rootGroup,
+      [{ center: [249, wz.originY, wz.originZ], right: [0, 0, -1], up: [0, 1, 0], width: 70, height: 52, panes: [2, 2], dir: [-0.74, -0.62, -0.12], length: 260, floorY: 0, strength: 0.2 }],
+      opts.profile
+    ),
+    addCornerShading(rootGroup, { minX: -251, maxX: 251, minZ: -187, maxZ: 187, height: ATTIC_EAVES_Y }),
+  ];
+  disposables.push(...roomFx);
+
   return {
     cameraColliders,
     destructibleGroups,
     powerUpZoneRings,
     updateAnimations: (elapsedTime: number, dt: number) => {
+      for (const f of roomFx) f.update(elapsedTime);
       // The bulb sways gently on its cord
       bulbPivot.rotation.z = Math.sin(elapsedTime * 0.9) * 0.05;
       bulbPivot.rotation.x = Math.sin(elapsedTime * 0.7 + 1) * 0.04;
       // The spider bobs on its web
       spider.position.y = web.y + web.height / 2 + Math.sin(elapsedTime * 1.7) * 3;
-      // Dust drifts slowly upward and loops
-      const attr = dustGeo.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < dustCount; i++) {
-        let y = attr.getY(i) + dt * 3;
-        if (y > 190) y = 10;
-        attr.setY(i, y);
-        attr.setX(i, attr.getX(i) + Math.sin(elapsedTime * 0.3 + i) * dt * 2);
-      }
-      attr.needsUpdate = true;
       for (let i = 0; i < powerUpZoneRings.length; i++) {
         const ring = powerUpZoneRings[i];
         const pulse = 1 + Math.sin(elapsedTime * 3.2 + i) * 0.12;

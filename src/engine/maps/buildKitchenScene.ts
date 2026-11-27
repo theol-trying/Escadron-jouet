@@ -3,6 +3,8 @@ import { getHingeDoorAngleAtTime } from '../../../shared/flightPhysics';
 import { ARENA_SCALE } from '../../../shared/constants';
 import { KITCHEN_MAP_DESIGN } from '../../../shared/maps/kitchen';
 import type { MapSceneHandles } from './types';
+import type { SceneBuildOptions } from '../sceneSetup';
+import { addCornerShading, addSunShafts } from './sunShafts';
 import {
   addCartoonOutline,
   createCelMaterial,
@@ -11,7 +13,7 @@ import {
   createWoodGrainTexture,
 } from '../toonMaterials';
 
-export function buildKitchenScene(scene: THREE.Scene, maxAniso: number): MapSceneHandles {
+export function buildKitchenScene(scene: THREE.Scene, maxAniso: number, opts: SceneBuildOptions = {}): MapSceneHandles {
   const disposables: Array<{ dispose: () => void }> = [];
   const cameraColliders: THREE.Object3D[] = [];
   const destructibleGroups = new Map<string, THREE.Object3D>();
@@ -436,11 +438,23 @@ export function buildKitchenScene(scene: THREE.Scene, maxAniso: number): MapScen
     powerUpZoneRings.push(ring);
   }
 
+  // Sun shafts through the window (with dust in the light) and soft shading in the corners
+  const roomFx = [
+    addSunShafts(
+      rootGroup,
+      [{ center: [-247, 141, 12.5], right: [0, 0, 1], up: [0, 1, 0], width: 165, height: 94, panes: [2, 1], dir: [0.66, -0.72, -0.18], length: 290, floorY: 0, strength: 0.15 }],
+      opts.profile
+    ),
+    addCornerShading(rootGroup, { minX: -248, maxX: 249, minZ: -184, maxZ: 183, height: 236, ceiling: true }),
+  ];
+  disposables.push(...roomFx);
+
   return {
     cameraColliders,
     destructibleGroups,
     powerUpZoneRings,
     updateAnimations: (elapsedTime: number, dt: number) => {
+      for (const f of roomFx) f.update(elapsedTime);
       // Animated swinging fridge door synced with server elapsedTime
       fridgeDoorPivot.rotation.y = getHingeDoorAngleAtTime(-1.18, 10, elapsedTime);
 
