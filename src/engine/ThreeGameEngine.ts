@@ -61,6 +61,8 @@ import { RaceGhostRunner } from './raceGhost';
 import { REPLAY_AFTER_MS, REPLAY_BEFORE_MS, ReplayBuffer } from './replayBuffer';
 import type { TutorialProbe } from '../tutorial/tutorial';
 import { WingTrails, type TrailInput } from './wingTrails';
+import { GlowFx } from './glowFx';
+import { SpeedLines } from './speedLines';
 
 export type {
   CameraView,
@@ -94,6 +96,10 @@ export class ThreeGameEngine {
   private pool: ParticleAndProjectilePool;
   private trails: WingTrails;
   private debris: DebrisField;
+  /** Halos: pellets, explosion flashes and shockwaves, hits, muzzle flashes */
+  private glow: GlowFx;
+  /** Turbo speed streaks around the view */
+  private speedLines: SpeedLines;
   private podium: Podium | null = null;
   private objectives3d: ObjectiveRenderer;
   private objectiveTracker: ObjectiveTracker;
@@ -265,6 +271,10 @@ export class ThreeGameEngine {
     this.maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     this.mapHandles = this.buildMapScene(this.currentMapId);
     this.pool = new ParticleAndProjectilePool(this.scene);
+    this.glow = new GlowFx(this.scene);
+    this.pool.setGlow(this.glow);
+    this.scene.add(this.camera); // the speed lines ride on the camera
+    this.speedLines = new SpeedLines(this.camera);
     this.trails = new WingTrails(this.scene);
     this.debris = new DebrisField(this.scene);
     this.objectives3d = new ObjectiveRenderer(this.scene);
@@ -487,6 +497,7 @@ export class ThreeGameEngine {
   public resetMatchVisuals(): void {
     this.trails.clear();
     this.debris.clear();
+    this.glow.clear();
     for (const pv of this.planeVisuals.values()) {
       this.scene.remove(pv.rig.root);
       pv.rig.dispose();
@@ -581,6 +592,9 @@ export class ThreeGameEngine {
       // Detect elimination transition for cartoon POP burst
       if (pv.wasAlive && !pData.alive) {
         this.pool.spawnBurst(pData.x, pData.y, pData.z, 24, [0xef4444, 0xfacc15, 0x38bdf8, 0xffffff], 72, 2.0, 45, 0.75);
+        this.glow.flash(pData.x, pData.y, pData.z, 22, 0xffd27a, 0.45, 0.8);
+        this.glow.flash(pData.x, pData.y, pData.z, 10, 0xffffff, 0.18, 1.5);
+        this.glow.shockwave(pData.x, pData.y, pData.z, 15, 0xfde68a, 0.5);
         soundEngine.playPopExplosion(isLocal ? undefined : { x: pData.x, y: pData.y, z: pData.z });
         if (isLocal) {
           this.cameraRig.shake(0.75);
@@ -620,6 +634,8 @@ export class ThreeGameEngine {
             // The prop bursts into chunky pieces of its own colours
             this.debris.burst(cfg.x, cfg.y, cfg.z, cfg.radius, DebrisField.colorsOf(group));
             this.pool.spawnBurst(cfg.x, cfg.y, cfg.z, 24, [0xfacc15, 0xef4444, 0x38bdf8, 0xf472b6, 0xffffff], 68, 2.2, 42, 0.75);
+            this.glow.flash(cfg.x, cfg.y, cfg.z, cfg.radius * 2.2, 0xffe4a0, 0.35, 0.7);
+            this.glow.shockwave(cfg.x, cfg.y, cfg.z, cfg.radius * 1.6, 0xffffff, 0.4);
           }
           soundEngine.playPropBreak(cfg ? { x: cfg.x, y: cfg.y, z: cfg.z } : undefined);
         }
@@ -665,6 +681,7 @@ export class ThreeGameEngine {
       // Absorbed (spawn protection, bubble shield) or repair: light spark only — no hit flash or
       // camera shake, and a sound that says why nothing happened.
       this.pool.spawnBurst(ev.x, ev.y, ev.z, 4, [0xbae6fd, 0xffffff], 50, 1.0, 20, 0.25);
+      this.glow.flash(ev.x, ev.y, ev.z, 7, 0x7dd3fc, 0.2, 0.6);
       if (ev.attackerId !== ev.targetId) {
         const target = this.planeVisuals.get(ev.targetId)?.buffer.at(-1)?.data;
         if (target?.invuln) soundEngine.playDeflect(where);
@@ -673,6 +690,7 @@ export class ThreeGameEngine {
       return;
     }
     this.pool.spawnBurst(ev.x, ev.y, ev.z, ev.fatal ? 18 : 7, [0xfacc15, 0xf97316, 0xffffff], 50, 1.3, 20, 0.35);
+    this.glow.flash(ev.x, ev.y, ev.z, ev.fatal ? 16 : 9, 0xffb347, 0.22, 0.9);
     const pv = this.planeVisuals.get(ev.targetId);
     if (pv) {
       pv.hitFlashTimer = 0.08;
@@ -795,6 +813,7 @@ export class ThreeGameEngine {
       this.localFireVisualCooldown = 1 / arch.fireRate;
       soundEngine.playPelletShot(arch.heavyGun);
       const fwd = getPlaneForward(this.localSim);
+      this.glow.flash(this.localSim.x + fwd.x * 7, this.localSim.y + fwd.y * 7, this.localSim.z + fwd.z * 7, 4, 0xfff1b0, 0.08, 0.5);
       this.pool.spawnBurst(
         this.localSim.x + fwd.x * 6,
         this.localSim.y + fwd.y * 6,
@@ -869,6 +888,17 @@ export class ThreeGameEngine {
   }
 
   private updateScene(dt: number, now: number): void {
+    this.glow.begin();
+    this.updateSceneParts(dt, now);
+    if (this.mode !== 'playing') this.speedLines.update(0, dt);
+    const buffer = this.renderer.getDrawingBufferSize(this._drawSize);
+    this.glow.setViewport(this.camera.fov, buffer.y);
+    this.glow.end(dt, this.camera);
+  }
+
+  private readonly _drawSize = new THREE.Vector2();
+
+  private updateSceneParts(dt: number, now: number): void {
     const animTime =
       this.mode === 'playing' && this.latestSnapshot ? this.latestSnapshot.mapEventTime : this.elapsedTime;
     this.mapHandles.updateAnimations(animTime, dt);
@@ -1110,6 +1140,12 @@ export class ThreeGameEngine {
     }
     this.cockpitActive = cockpitActive;
 
+    // Turbo: speed streaks around our own view (not while spectating or replaying)
+    this.speedLines.update(
+      this.profile.speedLines && !replay && focusPos === localVisual?.interpPos && isBoosting ? 1 : 0,
+      dt
+    );
+
     if (focusPos && focusQuat && cockpitActive) {
       this.cameraRig.cockpit(focusPos, focusQuat, this.localCosmetics.planeId, isBoosting, dt);
     } else if (focusPos && focusQuat) {
@@ -1193,6 +1229,8 @@ export class ThreeGameEngine {
     }
     this.mapHandles.dispose();
     this.pool.dispose();
+    this.glow.dispose();
+    this.speedLines.dispose();
     this.trails.dispose();
     this.debris.dispose();
     this.podium?.dispose();

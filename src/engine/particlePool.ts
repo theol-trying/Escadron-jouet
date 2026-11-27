@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { GlowFx } from './glowFx';
 
 interface ParticleItem {
   active: boolean;
@@ -44,6 +45,13 @@ export class ParticleAndProjectilePool {
   private projectilesAt = 0;
   private dummy = new THREE.Object3D();
   private color = new THREE.Color();
+  /** Soft round halo around each pellet (« halo sur les balles traçantes ») */
+  private glow: GlowFx | null = null;
+  private projectileHex: number[] = [];
+
+  public setGlow(glow: GlowFx): void {
+    this.glow = glow;
+  }
 
   constructor(scene: THREE.Scene) {
     // Toy plastic shards / sparks / smoke cubes (cel-styled rounded low-poly)
@@ -217,6 +225,7 @@ export class ParticleAndProjectilePool {
       const pr = this.projectiles[i];
       const hex =
         pr.team === 'red' ? 0xff4d4d : pr.team === 'blue' ? 0x38bdf8 : pr.heavy ? 0xf97316 : 0xfacc15;
+      this.projectileHex[i] = hex;
       this.color.setHex(hex);
       this.projectileMesh.setColorAt(i, this.color);
       this.projectileGlowMesh.setColorAt(i, this.color);
@@ -246,6 +255,7 @@ export class ParticleAndProjectilePool {
       this.dummy.updateMatrix();
       this.projectileMesh.setMatrixAt(i, this.dummy.matrix);
       this.projectileGlowMesh.setMatrixAt(i, this.dummy.matrix);
+      this.glow?.add(x, y, z, pr.heavy ? 7 : 5, this.projectileHex[i] ?? 0xfacc15, 0.55);
     }
     this.projectileMesh.instanceMatrix.needsUpdate = true;
     this.projectileGlowMesh.instanceMatrix.needsUpdate = true;
