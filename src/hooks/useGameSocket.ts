@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { PROTOCOL_VERSION } from '../../shared/constants';
+import { MAP_ORDER } from '../../shared/maps/index';
 import { decodeSnapshot, type WireSnapshot } from '../../shared/snapshotCodec';
 import type { KillFeedEntry, MapId, PlayerCosmetics, QuickMessage, RoomSettings, RoomState } from '../../shared/types';
 import { soundEngine } from '../audio/soundEngine';
@@ -173,7 +174,7 @@ export function useGameSocket(deps: GameSocketDeps) {
         autostartDoneRef.current = true;
         const rawMap = params.get('map');
         const mapParam: MapId | undefined =
-          rawMap === 'desk' || rawMap === 'kitchen' || rawMap === 'garden' || rawMap === 'attic' ? rawMap : undefined;
+          rawMap && (MAP_ORDER as string[]).includes(rawMap) ? (rawMap as MapId) : undefined;
         joinRoom('create', undefined, true, mapParam);
       }
     };

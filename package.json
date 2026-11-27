@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test shared/flightPhysics.test.ts shared/rules.test.ts shared/powerups.test.ts shared/maps/maps.test.ts server/roomManager.test.ts server/gameLoop.test.ts server/bots.test.ts server/objectiveModes.test.ts server/survival.test.ts src/progression.test.ts src/audio/spatialMix.test.ts src/components/hud/hudText.test.ts src/engine/aimAssist.test.ts src/engine/flightAttitude.test.ts src/engine/localPrediction.test.ts src/engine/raceGhostData.test.ts src/engine/replayBuffer.test.ts src/input/flightControls.test.ts src/input/keyBindings.test.ts src/settings/gameplaySettings.test.ts src/tutorial/tutorial.test.ts shared/objectives.test.ts shared/roomEvents.test.ts shared/snapshotCodec.test.ts",
+    "test": "tsx --test shared/flightPhysics.test.ts shared/rules.test.ts shared/powerups.test.ts shared/maps/maps.test.ts shared/maps/movers.test.ts server/roomManager.test.ts server/gameLoop.test.ts server/bots.test.ts server/objectiveModes.test.ts server/survival.test.ts src/progression.test.ts src/audio/spatialMix.test.ts src/components/hud/hudText.test.ts src/engine/aimAssist.test.ts src/engine/flightAttitude.test.ts src/engine/localPrediction.test.ts src/engine/raceGhostData.test.ts src/engine/replayBuffer.test.ts src/input/flightControls.test.ts src/input/keyBindings.test.ts src/settings/gameplaySettings.test.ts src/tutorial/tutorial.test.ts shared/objectives.test.ts shared/roomEvents.test.ts shared/snapshotCodec.test.ts",
     "autosave": "node scripts/autosave.mjs"
   },
   "dependencies": {

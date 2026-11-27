@@ -46,6 +46,25 @@ export function drawMinimap(canvas: HTMLCanvasElement, mapId: MapId, blips: read
     ctx.beginPath();
     ctx.arc(toMx(18), toMy(18), 4.5, 0, Math.PI * 2);
     ctx.fill();
+  } else if (mapId !== 'desk') {
+    // Other rooms: footprint of the big furniture and the path of what moves (train…)
+    ctx.fillStyle = '#334155';
+    for (const c of activeMap.colliders) {
+      if (c.kind !== 'box' || c.tier !== 'static' || c.maxY - c.minY < 25) continue;
+      ctx.fillRect(toMx(c.minX), toMy(c.minZ), toMx(c.maxX) - toMx(c.minX), toMy(c.maxZ) - toMy(c.minZ));
+    }
+    ctx.strokeStyle = '#FBBF24';
+    ctx.lineWidth = 1;
+    for (const m of activeMap.movers ?? []) {
+      ctx.beginPath();
+      if (m.kind === 'loop') {
+        m.points.forEach((p, i) => (i ? ctx.lineTo(toMx(p.x), toMy(p.z)) : ctx.moveTo(toMx(p.x), toMy(p.z))));
+        ctx.closePath();
+      } else {
+        ctx.ellipse(toMx(m.cx), toMy(m.cz), toMx(m.cx + m.radius) - toMx(m.cx), toMy(m.cz + m.radius) - toMy(m.cz), 0, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+    }
   } else {
     ctx.fillStyle = '#92400E';
     ctx.fillRect(toMx(-195), toMy(-120), toMx(145) - toMx(-195), toMy(35) - toMy(-120));

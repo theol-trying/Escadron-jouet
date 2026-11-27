@@ -15,6 +15,7 @@ export const SCENE_LOADERS: Record<MapId, () => Promise<SceneBuilder>> = {
   kitchen: () => import('./maps/buildKitchenScene').then((m) => m.buildKitchenScene),
   garden: () => import('./maps/buildGardenScene').then((m) => m.buildGardenScene),
   attic: () => import('./maps/buildAtticScene').then((m) => m.buildAtticScene),
+  bedroom: () => import('./maps/buildBedroomScene').then((m) => m.buildBedroomScene),
 };
 
 /** Software rendering (no graphics card available): lighter settings, slower frame pacing. */
