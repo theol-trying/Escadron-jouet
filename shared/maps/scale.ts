@@ -1,4 +1,5 @@
 import { ARENA_SCALE, PLANE_SPEED_SCALE } from '../constants';
+import { scaleMover } from './movers';
 import type { MapCollider, MapDefinition } from './types';
 
 const DEFAULT_WIND_HALF_EXTENT = 35;
@@ -99,6 +100,7 @@ export function scaleMapDefinition(
       height: h.height * s,
     })),
     powerUpSpots: def.powerUpSpots.map((p) => ({ ...p, x: p.x * s, y: p.y * s, z: p.z * s })),
+    movers: def.movers?.map((m) => scaleMover(m, s)),
     catPath: def.catPath
       ? { ax: def.catPath.ax * s, az: def.catPath.az * s, bx: def.catPath.bx * s, bz: def.catPath.bz * s, y: def.catPath.y * s }
       : undefined,
